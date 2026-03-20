@@ -1,0 +1,155 @@
+import express from 'express';
+import axios from 'axios';
+import dotenv from 'dotenv';
+import { google } from 'googleapis';
+import { GoogleGenAI, createUserContent, createPartFromUri } from '@google/genai';
+import { writeFile, unlink } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+
+// 🛑 ALTERAÇÃO: Removido o import do 'firebase-functions/v2/https'
+// 🛑 ALTERAÇÃO: Importando 'cert' do firebase-admin/app para autenticação externa
+import { initializeApp as initializeAdminApp, getApps, cert } from 'firebase-admin/app';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+
+dotenv.config();
+
+// ============================================================================
+// 1. CONFIGURAÇÕES E CONSTANTES
+// ============================================================================
+
+const splitCsv = (val, fallback = '') =>
+  String(val || fallback)
+    .split(',')
+    .map((v) => v.trim())
+    .filter(Boolean);
+
+const CONFIG = {
+  PORT: process.env.PORT || 3000, // 🟢 NOVA CONSTANTE PARA O SERVIDOR LOCAL
+
+  // APIs
+  HUBSPOT_TOKEN: process.env.HUBSPOT_TOKEN,
+  GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+
+  // Modelos IA
+  GEMINI_ANALYSIS_MODEL: process.env.GEMINI_ANALYSIS_MODEL || 'gemini-2.0-flash',
+  GEMINI_TRANSCRIPTION_MODEL: process.env.GEMINI_TRANSCRIPTION_MODEL || 'gemini-2.0-flash',
+
+  // Google Sheets
+  WRITE_TO_SHEETS: String(process.env.WRITE_TO_SHEETS || 'false').toLowerCase() === 'true',
+  GOOGLE_SERVICE_ACCOUNT_EMAIL: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+  GOOGLE_PRIVATE_KEY: (process.env.GOOGLE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+  GOOGLE_SHEETS_ID: process.env.GOOGLE_SHEETS_ID,
+  GOOGLE_SHEETS_TAB: process.env.GOOGLE_SHEETS_TAB || 'Avaliação SDR',
+
+  // Regras de Negócio
+  CALLS_COLLECTION: process.env.CALLS_COLLECTION || 'calls_analysis',
+  MIN_DURATION_MS: Number(process.env.MIN_DURATION_MS || 120000),
+  MIN_TEXT_LENGTH_FOR_ANALYSIS: Number(process.env.MIN_TEXT_LENGTH_FOR_ANALYSIS || 180),
+
+  // Refetch do link da gravação
+  REFETCH_ATTEMPTS: Number(process.env.REFETCH_ATTEMPTS || 2),
+  REFETCH_WAIT_MS: Number(process.env.REFETCH_WAIT_MS || 15000),
+
+  // Busca e Testes
+  TEST_CALLS_DEFAULT_LIMIT: Number(process.env.TEST_CALLS_DEFAULT_LIMIT || 50),
+  TEST_CALLS_MAX_LIMIT: Number(process.env.TEST_CALLS_MAX_LIMIT || 200),
+  TEST_CALLS_DEFAULT_AFTER_DAYS: Number(process.env.TEST_CALLS_DEFAULT_AFTER_DAYS || 30),
+
+  // Propriedades HubSpot
+  PROPS: {
+    TITLE: splitCsv(process.env.CALL_TITLE_PROPERTIES, 'hs_call_title,subject'),
+    OWNER: splitCsv(process.env.CALL_OWNER_PROPERTIES, 'hubspot_owner_id,hs_call_owner_id,hubspot_team_id,hs_created_by_user_id'),
+    DURATION: splitCsv(process.env.CALL_DURATION_PROPERTIES, 'hs_call_duration,duration,duracao_ms'),
+    STATUS: splitCsv(process.env.CALL_STATUS_PROPERTIES, 'hs_call_status,status'),
+    TIMESTAMP: splitCsv(process.env.CALL_TIMESTAMP_PROPERTIES, 'hs_timestamp,createdate'),
+    RECORDING: splitCsv(process.env.CALL_RECORDING_URL_PROPERTIES, 'hs_call_recording_url,url_gravacao_chamada,recording_url'),
+  },
+};
+
+// ============================================================================
+// 2. INICIALIZAÇÃO DE SERVIÇOS GLOBAIS
+// ============================================================================
+
+// 🛑 ALTERAÇÃO: Configuração explícita das credenciais do Firebase
+if (!getApps().length) {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    // Se você passar o JSON da Service Account direto no .env
+    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    initializeAdminApp({ credential: cert(serviceAccount) });
+  } else if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+    // Se usar o padrão do Google apontando para um arquivo .json
+    initializeAdminApp();
+  } else {
+    console.warn('[WARN] Nenhuma credencial do Firebase configurada. O Firestore pode falhar.');
+    initializeAdminApp();
+  }
+}
+
+const db = getFirestore();
+const gemini = CONFIG.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: CONFIG.GEMINI_API_KEY }) : null;
+
+const hubspot = axios.create({
+  baseURL: 'https://api.hubapi.com',
+  headers: {
+    Authorization: `Bearer ${CONFIG.HUBSPOT_TOKEN}`,
+    'Content-Type': 'application/json',
+  },
+  timeout: 30000,
+});
+
+/* ============================================================================[O restante das suas funções de utilitário, schemas, promps e lógica 
+    (fetchOwnerDetails, fetchCall, transcribeRecording, analyzeCall, processCall, etc) 
+    continuam EXATAMENTE IGUAIS AQUI] 
+   ============================================================================ */
+
+// ... (Copie e cole aqui o restante das suas funções intactas até a parte do Express) ...
+// Estou omitindo as funções intermediárias na resposta apenas para não poluir, 
+// você não precisa alterar nenhuma lógica de negócio (funções 3, 4, 5 e 6).
+
+// ============================================================================
+// 7. EXPRESS APP & ROTAS
+// ============================================================================
+
+const app = express();
+app.use(express.json({ limit: '5mb' }));
+
+app.use((req, _res, next) => {
+  console.log(`[HTTP] ${req.method} ${req.originalUrl}`);
+  next();
+});
+
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+app.post('/analyze-call', async (req, res, next) => {
+  /* ... igual ao seu código ... */
+});
+
+app.post('/analyze-call-batch', async (req, res, next) => {
+  /* ... igual ao seu código ... */
+});
+
+app.post('/analyze-calls-search', async (req, res, next) => {
+  /* ... igual ao seu código ... */
+});
+
+app.post('/hubspot-webhook', async (req, res, next) => {
+  /* ... igual ao seu código ... */
+});
+
+// Middleware Global de Tratamento de Erros
+app.use((err, req, res, next) => {
+  console.error('[ERROR]', err.message);
+  res.status(500).json({
+    success: false,
+    error: err.message || 'Internal Server Error',
+  });
+});
+
+// 🛑 ALTERAÇÃO: Substituímos o onRequest() do Firebase pelo app.listen() padrão
+app.listen(CONFIG.PORT, () => {
+  console.log(`🚀 Servidor rodando na porta ${CONFIG.PORT}`);
+});
