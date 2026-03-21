@@ -21,6 +21,10 @@ function healthHandler(_req: Request, res: Response) {
   });
 }
 
+app.get('/', (_req, res) => {
+  res.status(200).send('ok');
+});
+
 app.get('/health', healthHandler);
 app.get('/api/healthz', healthHandler);
 
