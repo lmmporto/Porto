@@ -9,7 +9,7 @@ app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use((req: Request, _res: Response, next: NextFunction) => {
-  console.log(`[HTTP] ${req.method} ${req.originalUrl}`);
+  console.log(`[HTTP] ${new Date().toISOString()} ${req.method} ${req.originalUrl}`);
   next();
 });
 
@@ -27,7 +27,7 @@ app.get('/api/healthz', healthHandler);
 app.use('/api', router);
 
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('[ERROR]', err.message);
+  console.error('[ERROR]', new Date().toISOString(), err.message);
   res.status(500).json({ success: false, error: err.message });
 });
 
