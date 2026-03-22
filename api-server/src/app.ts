@@ -98,9 +98,23 @@ passport.use(
         const emailDomain = email.split('@')[1]?.toLowerCase();
         const allowedDomain = CONFIG.ALLOWED_EMAIL_DOMAIN.toLowerCase();
 
+        console.log('[GOOGLE AUTH]', {
+          email,
+          emailDomain,
+          allowedDomain: CONFIG.ALLOWED_EMAIL_DOMAIN,
+          profileId: profile.id,
+        });
+
         if (emailDomain !== allowedDomain) {
+          console.log('[GOOGLE AUTH] domínio não autorizado', {
+            emailDomain,
+            allowedDomain,
+          });
+
           return done(null, false, { message: 'Domínio não autorizado.' });
         }
+
+        console.log('[GOOGLE AUTH] usuário autorizado', { email });
 
         const user: AuthUser = {
           id: profile.id,
