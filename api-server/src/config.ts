@@ -9,9 +9,22 @@ const splitCsv = (val: string | undefined, fallback = ''): string[] =>
 
 export const CONFIG = {
   PORT: process.env.PORT || 3000,
+  NODE_ENV: process.env.NODE_ENV || 'development',
 
   HUBSPOT_TOKEN: process.env.HUBSPOT_TOKEN,
   GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+  OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+
+  FIREBASE_SERVICE_ACCOUNT_JSON: process.env.FIREBASE_SERVICE_ACCOUNT_JSON,
+
+  WEBHOOK_SECRET: process.env.WEBHOOK_SECRET,
+  SESSION_SECRET: process.env.SESSION_SECRET,
+
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+  GOOGLE_CALLBACK_URL: process.env.GOOGLE_CALLBACK_URL,
+  ALLOWED_EMAIL_DOMAIN: process.env.ALLOWED_EMAIL_DOMAIN || 'nibo.com',
+  FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:3000',
 
   GEMINI_ANALYSIS_MODEL: process.env.GEMINI_ANALYSIS_MODEL || 'gemini-1.5-flash',
   GEMINI_TRANSCRIPTION_MODEL: process.env.GEMINI_TRANSCRIPTION_MODEL || 'gemini-1.5-flash',
