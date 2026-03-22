@@ -1,10 +1,35 @@
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import cors from 'cors';
+import session from 'express-session';
+import passport from 'passport';
+import { Strategy as GoogleStrategy, type Profile } from 'passport-google-oauth20';
 import router from './routes/index.js';
+import { CONFIG } from './config.js';
+
+type AuthUser = {
+  id: string;
+  email: string;
+  name: string;
+  picture?: string;
+};
+
+declare global {
+  namespace Express {
+    interface User extends AuthUser {}
+  }
+}
 
 const app: Express = express();
 
-app.use(cors());
+app.set('trust proxy', 1);
+
+app.use(
+  cors({
+    origin: CONFIG.FRONTEND_URL,
+    credentials: true,
+  })
+);
+
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -13,11 +38,101 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
   next();
 });
 
+if (!CONFIG.SESSION_SECRET) {
+  throw new Error('SESSION_SECRET environment variable is required.');
+}
+
+if (!CONFIG.GOOGLE_CLIENT_ID) {
+  throw new Error('GOOGLE_CLIENT_ID environment variable is required.');
+}
+
+if (!CONFIG.GOOGLE_CLIENT_SECRET) {
+  throw new Error('GOOGLE_CLIENT_SECRET environment variable is required.');
+}
+
+if (!CONFIG.GOOGLE_CALLBACK_URL) {
+  throw new Error('GOOGLE_CALLBACK_URL environment variable is required.');
+}
+
+app.use(
+  session({
+    name: 'sdr.sid',
+    secret: CONFIG.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      httpOnly: true,
+      secure: CONFIG.NODE_ENV === 'production',
+      sameSite: CONFIG.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 1000 * 60 * 60 * 24 * 7,
+    },
+  })
+);
+
+app.use(passport.initialize());
+app.use(passport.session());
+
+passport.serializeUser((user, done) => {
+  done(null, user);
+});
+
+passport.deserializeUser((user: Express.User, done) => {
+  done(null, user);
+});
+
+passport.use(
+  new GoogleStrategy(
+    {
+      clientID: CONFIG.GOOGLE_CLIENT_ID,
+      clientSecret: CONFIG.GOOGLE_CLIENT_SECRET,
+      callbackURL: CONFIG.GOOGLE_CALLBACK_URL,
+    },
+    async (_accessToken: string, _refreshToken: string, profile: Profile, done) => {
+      try {
+        const email = profile.emails?.[0]?.value?.toLowerCase();
+
+        if (!email) {
+          return done(new Error('Google não retornou e-mail.'));
+        }
+
+        const emailDomain = email.split('@')[1]?.toLowerCase();
+        const allowedDomain = CONFIG.ALLOWED_EMAIL_DOMAIN.toLowerCase();
+
+        if (emailDomain !== allowedDomain) {
+          return done(null, false, { message: 'Domínio não autorizado.' });
+        }
+
+        const user: AuthUser = {
+          id: profile.id,
+          email,
+          name: profile.displayName || email,
+          picture: profile.photos?.[0]?.value,
+        };
+
+        return done(null, user);
+      } catch (error) {
+        return done(error as Error);
+      }
+    }
+  )
+);
+
 function healthHandler(_req: Request, res: Response) {
   res.json({
     status: 'ok',
     version: 'MONOLITHIC-NO-ROLE-V1',
     timestamp: new Date().toISOString(),
+  });
+}
+
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (req.isAuthenticated && req.isAuthenticated()) {
+    return next();
+  }
+
+  return res.status(401).json({
+    success: false,
+    error: 'Não autenticado',
   });
 }
 
@@ -28,21 +143,68 @@ app.get('/', (_req, res) => {
 app.get('/health', healthHandler);
 app.get('/api/healthz', healthHandler);
 
-import passport from "passport";
+app.get(
+  '/auth/google',
+  passport.authenticate('google', {
+    scope: ['profile', 'email'],
+    session: true,
+  })
+);
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
+app.get(
+  '/auth/google/callback',
+  passport.authenticate('google', {
+    failureRedirect: `${CONFIG.FRONTEND_URL}/login?error=google_auth_failed`,
+    session: true,
+  }),
+  (_req, res) => {
+    res.redirect(`${CONFIG.FRONTEND_URL}/dashboard`);
+  }
+);
+
+app.get('/auth/me', (req, res) => {
   if (req.isAuthenticated && req.isAuthenticated()) {
-    return next();
+    return res.status(200).json({
+      authenticated: true,
+      user: req.user,
+    });
   }
 
   return res.status(401).json({
-    success: false,
-    error: "Não autenticado",
+    authenticated: false,
   });
-}
+});
 
-app.use("/api/hubspot-webhook", router);
-app.use("/api", requireAuth, router);
+app.post('/auth/logout', (req, res) => {
+  req.logout((logoutErr) => {
+    if (logoutErr) {
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao fazer logout',
+      });
+    }
+
+    req.session.destroy((sessionErr) => {
+      if (sessionErr) {
+        return res.status(500).json({
+          success: false,
+          error: 'Erro ao destruir sessão',
+        });
+      }
+
+      res.clearCookie('sdr.sid');
+      return res.status(200).json({
+        success: true,
+      });
+    });
+  });
+});
+
+// webhook continua público, mas protegido por secret dentro do calls.ts
+app.use('/api/hubspot-webhook', router);
+
+// resto da api protegido
+app.use('/api', requireAuth, router);
 
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   console.error('[ERROR]', new Date().toISOString(), err.message);
