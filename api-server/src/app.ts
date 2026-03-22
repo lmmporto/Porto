@@ -54,6 +54,14 @@ if (!CONFIG.GOOGLE_CALLBACK_URL) {
   throw new Error('GOOGLE_CALLBACK_URL environment variable is required.');
 }
 
+if (!CONFIG.ALLOWED_EMAIL_DOMAIN) {
+  throw new Error('ALLOWED_EMAIL_DOMAIN environment variable is required.');
+}
+
+if (!CONFIG.FRONTEND_URL) {
+  throw new Error('FRONTEND_URL environment variable is required.');
+}
+
 app.use(
   session({
     name: 'sdr.sid',
@@ -91,18 +99,25 @@ passport.use(
       try {
         const email = profile.emails?.[0]?.value?.toLowerCase();
 
+        console.log('[GOOGLE AUTH] profile recebido', {
+          id: profile.id,
+          displayName: profile.displayName,
+          email,
+          rawEmails: profile.emails,
+        });
+
         if (!email) {
+          console.log('[GOOGLE AUTH] sem email no profile');
           return done(new Error('Google não retornou e-mail.'));
         }
 
         const emailDomain = email.split('@')[1]?.toLowerCase();
         const allowedDomain = CONFIG.ALLOWED_EMAIL_DOMAIN.toLowerCase();
 
-        console.log('[GOOGLE AUTH]', {
+        console.log('[GOOGLE AUTH] validando domínio', {
           email,
           emailDomain,
-          allowedDomain: CONFIG.ALLOWED_EMAIL_DOMAIN,
-          profileId: profile.id,
+          allowedDomain,
         });
 
         if (emailDomain !== allowedDomain) {
@@ -114,8 +129,6 @@ passport.use(
           return done(null, false, { message: 'Domínio não autorizado.' });
         }
 
-        console.log('[GOOGLE AUTH] usuário autorizado', { email });
-
         const user: AuthUser = {
           id: profile.id,
           email,
@@ -123,8 +136,11 @@ passport.use(
           picture: profile.photos?.[0]?.value,
         };
 
+        console.log('[GOOGLE AUTH] usuário autorizado', user);
+
         return done(null, user);
       } catch (error) {
+        console.error('[GOOGLE AUTH] erro no callback', error);
         return done(error as Error);
       }
     }
@@ -162,6 +178,8 @@ app.get(
   passport.authenticate('google', {
     scope: ['profile', 'email'],
     session: true,
+    prompt: 'select_account',
+    hd: CONFIG.ALLOWED_EMAIL_DOMAIN,
   })
 );
 
