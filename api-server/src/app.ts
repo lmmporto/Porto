@@ -155,17 +155,6 @@ function healthHandler(_req: Request, res: Response) {
   });
 }
 
-function requireAuth(req: Request, res: Response, next: NextFunction) {
-  if (req.isAuthenticated && req.isAuthenticated()) {
-    return next();
-  }
-
-  return res.status(401).json({
-    success: false,
-    error: 'Não autenticado',
-  });
-}
-
 app.get('/', (_req, res) => {
   res.status(200).send('ok');
 });
@@ -232,11 +221,7 @@ app.post('/auth/logout', (req, res) => {
   });
 });
 
-// webhook continua público, mas protegido por secret dentro do calls.ts
-app.use('/api/hubspot-webhook', router);
-
-// resto da api protegido
-app.use('/api', requireAuth, router);
+app.use('/api', router);
 
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   console.error('[ERROR]', new Date().toISOString(), err.message);
