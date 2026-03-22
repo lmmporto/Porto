@@ -28,7 +28,21 @@ app.get('/', (_req, res) => {
 app.get('/health', healthHandler);
 app.get('/api/healthz', healthHandler);
 
-app.use('/api', router);
+import passport from "passport";
+
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (req.isAuthenticated && req.isAuthenticated()) {
+    return next();
+  }
+
+  return res.status(401).json({
+    success: false,
+    error: "Não autenticado",
+  });
+}
+
+app.use("/api/hubspot-webhook", router);
+app.use("/api", requireAuth, router);
 
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   console.error('[ERROR]', new Date().toISOString(), err.message);
