@@ -2,6 +2,8 @@ import { hubspot } from "../clients.js";
 import { CONFIG } from "../config.js";
 import { firstFilled } from "../utils.js";
 
+// --- INTERFACES ---
+
 export interface OwnerDetails {
   ownerId: string | null;
   ownerName: string;
@@ -16,12 +18,15 @@ export interface CallData {
   ownerId: string;
   durationMs: number;
   status: string;
+  disposition: string; // Resultado da chamada (Busy, No Answer, etc)
   timestamp: string;
   recordingUrl: string;
   transcript: string;
   transcriptSourceType: string;
   transcriptLength: number;
 }
+
+// --- FUNÇÕES ---
 
 export async function fetchOwnerDetails(
   ownerId: string | null,
@@ -47,7 +52,7 @@ export async function fetchOwnerDetails(
       teamName: data?.teams?.[0]?.name || "Sem equipe",
       userId: data?.userId || data?.userIdIncludingInactive || null,
     };
-  } catch {
+  } catch (error) {
     return {
       ownerId: String(ownerId),
       ownerName: `Owner ${ownerId}`,
@@ -59,9 +64,13 @@ export async function fetchOwnerDetails(
 }
 
 export async function fetchCall(callId: string): Promise<CallData> {
-  const properties = [...new Set([...Object.values(CONFIG.PROPS).flat()])];
+  // Combinamos as propriedades do config com o campo de desfecho da chamada
+  const propertiesToFetch = [
+    ...new Set([...Object.values(CONFIG.PROPS).flat(), 'hs_call_disposition'])
+  ];
+
   const { data } = await hubspot.get(`/crm/v3/objects/calls/${callId}`, {
-    params: { properties: properties.join(","), archived: false },
+    params: { properties: propertiesToFetch.join(","), archived: false },
   });
 
   const props: Record<string, unknown> = data?.properties || {};
@@ -73,6 +82,7 @@ export async function fetchCall(callId: string): Promise<CallData> {
     ownerId: ownerId ? String(ownerId) : "",
     durationMs: Number(firstFilled(props, CONFIG.PROPS.DURATION) || 0),
     status: firstFilled(props, CONFIG.PROPS.STATUS) || "",
+    disposition: String(props.hs_call_disposition || "Sem resultado"),
     timestamp:
       firstFilled(props, CONFIG.PROPS.TIMESTAMP) || new Date().toISOString(),
     recordingUrl: firstFilled(props, CONFIG.PROPS.RECORDING) || "",
@@ -87,15 +97,8 @@ export async function searchCallsInHubSpot({
 }: {
   limit?: number;
 }) {
-  const properties = [...new Set([...Object.values(CONFIG.PROPS).flat()])];
-  const filters = [
-    {
-      propertyName: "hs_call_duration",
-      operator: "GTE",
-      value: String(CONFIG.MIN_DURATION_MS),
-    },
-  ];
-
+  const properties = [...new Set([...Object.values(CONFIG.PROPS).flat(), 'hs_call_disposition'])];
+  
   const body = {
     limit: Math.min(
       Number(limit) || CONFIG.TEST_CALLS_DEFAULT_LIMIT,
@@ -103,7 +106,7 @@ export async function searchCallsInHubSpot({
     ),
     sorts: [{ propertyName: "hs_timestamp", direction: "DESCENDING" }],
     properties,
-    filterGroups: [{ filters }],
+    filterGroups: [], // Removido filtro de duração para pegar até as curtas
   };
 
   const { data } = await hubspot.post("/crm/v3/objects/calls/search", body);

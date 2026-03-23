@@ -9,7 +9,7 @@ import { CONFIG } from '../config.js';
 import { sanitizeText, safeJsonParse, detectAudioExtension } from '../utils.js';
 import type { CallData, OwnerDetails } from './hubspot.js';
 
-// --- SCHEMAS E INTERFACES ATUALIZADOS ---
+// --- SCHEMAS ---
 
 const ANALYSIS_RESPONSE_SCHEMA = {
   type: 'object',
@@ -22,12 +22,12 @@ const ANALYSIS_RESPONSE_SCHEMA = {
     'ponto_atencao', 
     'maior_dificuldade', 
     'pontos_fortes',
-    'perguntas_sugeridas', // Novo
-    'analise_escuta'       // Novo
+    'perguntas_sugeridas', 
+    'analise_escuta'
   ],
   properties: {
     status_final: { type: 'string', enum: ['APROVADO', 'REPROVADO', 'ATENCAO'] },
-    nota_spin: { type: 'number', minimum: 0, maximum: 10 },
+    nota_spin: { type: 'number' },
     resumo: { type: 'string' },
     alertas: { type: 'array', items: { type: 'string' } },
     ponto_atencao: { type: 'string' },
@@ -37,6 +37,17 @@ const ANALYSIS_RESPONSE_SCHEMA = {
     analise_escuta: { type: 'string' },
   },
 };
+
+const TRANSCRIPTION_RESPONSE_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['transcript'],
+  properties: {
+    transcript: { type: 'string' },
+  },
+};
+
+// --- INTERFACES ---
 
 export interface AnalysisResult {
   status_final: string;
@@ -71,18 +82,27 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
       timeout: 120000,
       headers: { Authorization: `Bearer ${CONFIG.HUBSPOT_TOKEN}` },
       maxRedirects: 5,
+      validateStatus: (status) => status >= 200 && status < 400,
     });
 
     const contentType = String(audioResponse.headers['content-type'] || '');
     const ext = detectAudioExtension(contentType);
+
+    if (!contentType.toLowerCase().includes('audio')) {
+      throw new Error(`Conteúdo baixado não é áudio. content-type=${contentType}`);
+    }
+
     const buffer = Buffer.from(audioResponse.data as ArrayBuffer);
+    if (!buffer || buffer.byteLength === 0) {
+      throw new Error('Arquivo de áudio vazio.');
+    }
 
     localFilePath = path.join(os.tmpdir(), `call-${randomUUID()}.${ext}`);
     await writeFile(localFilePath, buffer);
 
     uploadedFile = await gemini.files.upload({ file: localFilePath, config: { mimeType: contentType } });
 
-    const prompt = 'Transcreva integralmente este áudio de ligação em português do Brasil. Retorne apenas JSON válido. {"transcript":"texto"}';
+    const prompt = 'Transcreva integralmente este áudio de ligação em português do Brasil. Retorne apenas JSON válido.';
 
     const response = await gemini.models.generateContent({
       model: CONFIG.GEMINI_TRANSCRIPTION_MODEL,
@@ -90,12 +110,17 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
         createPartFromUri(uploadedFile.uri!, uploadedFile.mimeType!),
         prompt,
       ]),
-      config: { responseMimeType: 'application/json', temperature: 0 },
+      config: {
+        responseMimeType: 'application/json',
+        responseJsonSchema: TRANSCRIPTION_RESPONSE_SCHEMA,
+        temperature: 0,
+      },
     });
 
     return sanitizeText((safeJsonParse(response?.text)?.transcript as string) || '');
-  } catch (error: any) {
-    throw new Error(`TRANSCRIPTION_FAILED: ${error.message}`);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    throw new Error(`TRANSCRIPTION_FAILED: ${msg}`);
   } finally {
     if (uploadedFile?.name) await gemini.files.delete({ name: uploadedFile.name }).catch(() => {});
     if (localFilePath) await unlink(localFilePath).catch(() => {});
@@ -109,18 +134,18 @@ export async function analyzeCallWithGemini(call: CallData, ownerDetails: OwnerD
 Você é um Coach de Vendas de alta performance (Nível Gemini 2.5). Sua análise deve ser rigorosa e focada em transformar o SDR em um consultor de elite.
 
 --- REGRAS DE STATUS (Obrigatório) ---
-- nota_spin 0 a 4: REPROVADO (SDR foi apenas um processador de pedidos/cancelamentos).
+- nota_spin 0 a 4: REPROVADO (SDR foi apenas um tirador de pedidos).
 - nota_spin 5 a 7: ATENCAO (Fez o básico, mas não explorou a dor ou conexão).
 - nota_spin 8 a 10: APROVADO (Consultor real, usou escuta ativa e SPIN).
 
 --- FOCO DA ANÁLISE ---
 1. OPORTUNIDADES PERDIDAS: Identifique momentos em que o cliente deu uma "deixa" (dor ou informação valiosa) e o SDR não explorou.
-2. ANÁLISE DE ESCUTA: Avalie a fluidez. O SDR interrompeu o cliente? Soube ouvir? (Considere desculpas por delay/atraso de rede como ponto positivo de etiqueta).
+2. ANÁLISE DE ESCUTA: Avalie a fluidez. O SDR interrompeu o cliente? Soube ouvir? (Considere desculpas por delay como ponto positivo de etiqueta).
 3. PERGUNTAS SUGERIDAS: Identifique lacunas na descoberta e sugira exatamente quais perguntas de "Problema" ou "Implicação" deveriam ter sido feitas para gerar valor.
 
 --- REGRA DE NOTA (SLA + PERFORMANCE) ---
 - SLA (4.0 pts): 1 pergunta de Situação + 1 de Problema. Se não fizer NENHUMA, a nota máxima é 2.
-- CONEXÃO (6.0 pts): Capacidade de usar as palavras do cliente para conectar à solução (Radar Ica / Nibo).
+- CONEXÃO (6.0 pts): Capacidade de usar o que o cliente disse para conectar à solução (Radar Ica / Nibo).
 
 Metadados:
 - SDR/Owner: ${ownerDetails.ownerName}
@@ -145,7 +170,7 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
   const parsed = safeJsonParse(rawResponse);
   
   if (!parsed) {
-    throw new Error(`Gemini 2.5 retornou um formato JSON inválido. Resposta bruta: ${rawResponse}`);
+    throw new Error(`Gemini retornou um formato JSON inválido. Resposta bruta: ${rawResponse}`);
   }
 
   return {
