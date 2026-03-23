@@ -8,9 +8,11 @@ import {
   type CallData,
   type OwnerDetails,
 } from "./hubspot.js";
-import { transcribeRecordingFromHubSpot, analyzeCallWithGemini } from "./ai.js";
 
-// 1. LISTA DE EQUIPES PERMITIDAS PARA ANÁLISE (Extraído do Firestore/HubSpot)
+// Importação atualizada para o novo nome do arquivo
+import { transcribeRecordingFromHubSpot, analyzeCallWithGemini } from "./analysis.service.js";
+
+// LISTA DE EQUIPES PERMITIDAS PARA ANÁLISE
 const ALLOWED_TEAMS = [
   "Time William",
   "Equipe Alex",
@@ -26,7 +28,8 @@ export async function processCall(callId: string): Promise<any> {
   let call = await fetchCall(callId);
   const owner: OwnerDetails = await fetchOwnerDetails(call.ownerId || null);
 
-  // 2. PAYLOAD BASE: Registro universal de todas as tentativas no Funil
+  // PAYLOAD BASE: Registro universal de todas as tentativas no Funil
+  // IMPORTANTE: Adicionamos 'wasConnected' e 'outcome' aqui para o Dashboard individual funcionar
   const basePayload = {
     callId: String(call.id),
     title: call.title || "Ligação sem título",
@@ -35,7 +38,8 @@ export async function processCall(callId: string): Promise<any> {
     ownerUserId: owner.userId || null,
     teamId: owner.teamId || null,
     teamName: owner.teamName || "Sem equipe",
-    outcome: call.disposition || "Sem resultado", // Puxado do ajuste que fizemos no hubspot.ts
+    outcome: call.disposition || "Sem resultado", 
+    wasConnected: call.wasConnected, // Flag crucial para o filtro "Conectadas"
     durationMs: Number(call.durationMs || 0),
     recordingUrl: call.recordingUrl || null,
     updatedAt: FieldValue.serverTimestamp(),
@@ -55,7 +59,7 @@ export async function processCall(callId: string): Promise<any> {
     return { success: true, reason: "TEAM_NOT_MONITORED" };
   }
 
-  // --- FILTRO 2: DURAÇÃO MÍNIMA (Geralmente 2 min) ---
+  // --- FILTRO 2: DURAÇÃO MÍNIMA (Geralmente 2 min para análise profunda) ---
   if (call.durationMs && call.durationMs < CONFIG.MIN_DURATION_MS) {
     console.log(`[LOG] Call ${callId} curta (${call.durationMs}ms) de ${owner.ownerName}`);
     await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).set({
@@ -67,7 +71,7 @@ export async function processCall(callId: string): Promise<any> {
 
   // --- DAQUI PARA BAIXO: SÓ EQUIPES CERTAS + LIGAÇÕES LONGAS ---
 
-  // 3. Polling para aguardar a URL da gravação
+  // Polling para aguardar a URL da gravação (HubSpot demora alguns segundos para liberar o áudio)
   for (let attempt = 1; attempt <= CONFIG.REFETCH_ATTEMPTS && !call.recordingUrl; attempt++) {
     await sleep(CONFIG.REFETCH_WAIT_MS);
     call = await fetchCall(callId);
@@ -82,7 +86,7 @@ export async function processCall(callId: string): Promise<any> {
   }
 
   try {
-    // 4. IA - Transcrição e Análise (Gemini 2.5)
+    // IA - Transcrição e Análise (Gemini 2.5)
     const transcript = await transcribeRecordingFromHubSpot(call);
     
     if (!transcript) {
@@ -96,13 +100,13 @@ export async function processCall(callId: string): Promise<any> {
     call.transcript = transcript;
     const { analysis, rawPrompt, rawResponse } = await analyzeCallWithGemini(call, owner);
 
-    // 5. SALVAMENTO FINAL
+    // SALVAMENTO FINAL COM IA
     await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).set({
       ...basePayload,
       processingStatus: "DONE",
       analyzedAt: FieldValue.serverTimestamp(),
       
-      // Dados da IA 2.5
+      // Dados da IA 2.5 (SPIN Coach)
       status_final: analysis.status_final,
       nota_spin: Number(analysis.nota_spin || 0),
       resumo: analysis.resumo,
@@ -113,7 +117,7 @@ export async function processCall(callId: string): Promise<any> {
       perguntas_sugeridas: analysis.perguntas_sugeridas || [],
       analise_escuta: analysis.analise_escuta || "",
       
-      // Debug
+      // Metadados de Auditoria
       rawPrompt,
       rawResponse
     }, { merge: true });
@@ -121,6 +125,7 @@ export async function processCall(callId: string): Promise<any> {
     return { success: true, status: "ANALYZED" };
 
   } catch (error: any) {
+    console.error(`[ERROR] Falha na análise da Call ${callId}:`, error.message);
     await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).set({
       ...basePayload,
       processingStatus: "FAILED_ANALYSIS",

@@ -12,13 +12,15 @@ export interface OwnerDetails {
   userId: string | null;
 }
 
+// AQUI ESTAVA O ERRO: Adicionamos disposition e wasConnected
 export interface CallData {
   id: string;
   title: string;
   ownerId: string;
   durationMs: number;
   status: string;
-  disposition: string; // Resultado da chamada (Busy, No Answer, etc)
+  disposition: string; 
+  wasConnected: boolean; 
   timestamp: string;
   recordingUrl: string;
   transcript: string;
@@ -26,45 +28,38 @@ export interface CallData {
   transcriptLength: number;
 }
 
+// Mapa para traduzir os IDs do HubSpot
+const DISPOSITION_MAP: Record<string, string> = {
+  'f2473a22-7177-4401-b261-2745e4d063b9': 'Connected',
+  '9d6f194e-9407-497d-b48c-e8369376663f': 'Busy',
+  '17b43444-9a54-4b4f-8683-936a57ae2305': 'No Answer',
+  'a4c4c379-d06d-4910-bc02-7c320e21f822': 'Left Voicemail',
+  '73a0d17f-1163-4515-bc05-161f9da8d211': 'Wrong Number',
+};
+
 // --- FUNÇÕES ---
 
-export async function fetchOwnerDetails(
-  ownerId: string | null,
-): Promise<OwnerDetails> {
+export async function fetchOwnerDetails(ownerId: string | null): Promise<OwnerDetails> {
   try {
     if (!ownerId) {
-      return {
-        ownerId: null,
-        ownerName: "Sem owner",
-        teamId: null,
-        teamName: "Sem equipe",
-        userId: null,
-      };
+      return { ownerId: null, ownerName: "Sem owner", teamId: null, teamName: "Sem equipe", userId: null };
     }
     const { data } = await hubspot.get(`/crm/v3/owners/${ownerId}`);
     return {
       ownerId: String(ownerId),
-      ownerName:
-        data?.firstName || data?.lastName
-          ? `${data?.firstName || ""} ${data?.lastName || ""}`.trim()
-          : `Owner ${ownerId}`,
+      ownerName: data?.firstName || data?.lastName 
+        ? `${data?.firstName || ""} ${data?.lastName || ""}`.trim() 
+        : `Owner ${ownerId}`,
       teamId: data?.teams?.[0]?.id || null,
       teamName: data?.teams?.[0]?.name || "Sem equipe",
       userId: data?.userId || data?.userIdIncludingInactive || null,
     };
   } catch (error) {
-    return {
-      ownerId: String(ownerId),
-      ownerName: `Owner ${ownerId}`,
-      teamId: null,
-      teamName: "Sem equipe",
-      userId: null,
-    };
+    return { ownerId: String(ownerId), ownerName: `Owner ${ownerId}`, teamId: null, teamName: "Sem equipe", userId: null };
   }
 }
 
 export async function fetchCall(callId: string): Promise<CallData> {
-  // Combinamos as propriedades do config com o campo de desfecho da chamada
   const propertiesToFetch = [
     ...new Set([...Object.values(CONFIG.PROPS).flat(), 'hs_call_disposition'])
   ];
@@ -75,38 +70,37 @@ export async function fetchCall(callId: string): Promise<CallData> {
 
   const props: Record<string, unknown> = data?.properties || {};
   const ownerId = firstFilled(props, CONFIG.PROPS.OWNER);
+  const duration = Number(firstFilled(props, CONFIG.PROPS.DURATION) || 0);
+  const dispId = String(props.hs_call_disposition || "");
+  const recording = firstFilled(props, CONFIG.PROPS.RECORDING) || "";
+
+  // Regra de conexão: mais de 20s e tem gravação
+  const wasConnected = duration > 20000 && recording !== "";
 
   return {
     id: data.id,
     title: firstFilled(props, CONFIG.PROPS.TITLE) || `Call ${callId}`,
     ownerId: ownerId ? String(ownerId) : "",
-    durationMs: Number(firstFilled(props, CONFIG.PROPS.DURATION) || 0),
+    durationMs: duration,
     status: firstFilled(props, CONFIG.PROPS.STATUS) || "",
-    disposition: String(props.hs_call_disposition || "Sem resultado"),
-    timestamp:
-      firstFilled(props, CONFIG.PROPS.TIMESTAMP) || new Date().toISOString(),
-    recordingUrl: firstFilled(props, CONFIG.PROPS.RECORDING) || "",
+    disposition: DISPOSITION_MAP[dispId] || "Attempt", 
+    wasConnected,
+    timestamp: firstFilled(props, CONFIG.PROPS.TIMESTAMP) || new Date().toISOString(),
+    recordingUrl: recording,
     transcript: "",
     transcriptSourceType: "NONE",
     transcriptLength: 0,
   };
 }
 
-export async function searchCallsInHubSpot({
-  limit = 100,
-}: {
-  limit?: number;
-}) {
+export async function searchCallsInHubSpot({ limit = 100 }: { limit?: number }) {
   const properties = [...new Set([...Object.values(CONFIG.PROPS).flat(), 'hs_call_disposition'])];
   
   const body = {
-    limit: Math.min(
-      Number(limit) || CONFIG.TEST_CALLS_DEFAULT_LIMIT,
-      CONFIG.TEST_CALLS_MAX_LIMIT,
-    ),
+    limit: Math.min(Number(limit) || CONFIG.TEST_CALLS_DEFAULT_LIMIT, CONFIG.TEST_CALLS_MAX_LIMIT),
     sorts: [{ propertyName: "hs_timestamp", direction: "DESCENDING" }],
     properties,
-    filterGroups: [], // Removido filtro de duração para pegar até as curtas
+    filterGroups: [],
   };
 
   const { data } = await hubspot.post("/crm/v3/objects/calls/search", body);
