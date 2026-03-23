@@ -10,6 +10,9 @@ import {
 } from "./hubspot.js";
 import { transcribeRecordingFromHubSpot, analyzeCallWithGemini } from "./ai.js";
 
+// 1. LISTA DE PESSOAS PERMITIDAS (Ajuste os nomes conforme aparecem no HubSpot)
+const ALLOWED_OWNERS = ["Alex", "Amanda", "Lucas", "Will"];
+
 async function markSkippedCall(
   call: CallData,
   reason: string,
@@ -59,10 +62,26 @@ export async function processCall(callId: string): Promise<ProcessResult> {
     durationMs: Number(call.durationMs || 0),
   };
 
+  // --- NOVOS FILTROS DE NEGÓCIO ---
+
+  // Filtro 1: Apenas Alex, Amanda, Lucas ou Will
+  const isAllowedOwner = ALLOWED_OWNERS.some(name => 
+    owner.ownerName?.toLowerCase().includes(name.toLowerCase())
+  );
+
+  if (!isAllowedOwner) {
+    console.log(`[PROCESS] Call ${callId} pulada: Owner "${owner.ownerName}" não está na lista permitida.`);
+    await markSkippedCall(call, "OWNER_NOT_ALLOWED", ownerExtra);
+    return { success: true, skipped: true, reason: "OWNER_NOT_ALLOWED", callId };
+  }
+
+  // Filtro 2: Duração Mínima
   if (call.durationMs && call.durationMs < CONFIG.MIN_DURATION_MS) {
     await markSkippedCall(call, "CALL_TOO_SHORT", ownerExtra);
     return { success: true, skipped: true, reason: "CALL_TOO_SHORT", callId };
   }
+
+  // --- FIM DOS FILTROS ---
 
   for (
     let attempt = 1;
@@ -114,14 +133,8 @@ export async function processCall(callId: string): Promise<ProcessResult> {
 
   console.log("[PROCESS] Analisando call com IA...");
   
-  // 1. Recebe a análise e os dados brutos
   const { analysis, rawPrompt, rawResponse } = await analyzeCallWithGemini(call, owner);
 
-  // 2. LOGS PARA O RENDER (Confirmação visual no painel)
-  console.log("DEBUG - Prompt capturado:", rawPrompt ? "SIM (Tamanho: " + rawPrompt.length + ")" : "NÃO (vazio)");
-  console.log("DEBUG - Resposta bruta capturada:", rawResponse ? "SIM" : "NÃO");
-
-  // 3. Monta o payload ÚNICO para o banco
   const payload = {
     callId: call.id,
     title: call.title || "Ligação sem título",
@@ -129,18 +142,14 @@ export async function processCall(callId: string): Promise<ProcessResult> {
     ownerName: owner.ownerName || "Owner não identificado",
     ownerUserId: owner.userId || null,
     teamId: owner.teamId || null,
-    teamName: owner.teamName || "Sem equipe",
+    teamName: owner.teamName || "Sem equipe", // Aqui já vem a equipe principal vinda do seu fetchOwnerDetails
     durationMs: Number(call.durationMs || 0),
     recordingUrl: call.recordingUrl || null,
     processingStatus: "DONE",
     analyzedAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
-    
-    // CAMPOS DE DEBUG (O que faltava no seu Firebase)
     rawPrompt: rawPrompt || "Erro: Prompt não capturado",
     rawResponse: rawResponse || "Erro: Resposta não capturada",
-
-    // RESULTADOS DA ANÁLISE
     status_final: analysis.status_final,
     nota_spin: Number(analysis.nota_spin || 0),
     resumo: analysis.resumo || "Sem resumo disponível",
@@ -154,8 +163,6 @@ export async function processCall(callId: string): Promise<ProcessResult> {
     .collection(CONFIG.CALLS_COLLECTION)
     .doc(String(call.id))
     .set(payload, { merge: true });
-
-  console.log(`[PROCESS] Call ${callId} finalizada com sucesso. Status: ${analysis.status_final}`);
 
   return {
     success: true,
