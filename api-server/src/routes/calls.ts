@@ -40,6 +40,17 @@ function requireWebhookSecret(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (req.isAuthenticated && req.isAuthenticated()) {
+    return next();
+  }
+
+  res.status(401).json({
+    success: false,
+    error: "Não autenticado",
+  });
+}
+
 async function analyzeCallHandler(
   req: Request,
   res: Response,
@@ -273,8 +284,8 @@ router.post(
   },
 );
 
-router.post("/analyze-call", analyzeCallHandler);
-router.post("/analyze-calls-search", analyzeCallsSearchHandler);
 router.post("/hubspot-webhook", requireWebhookSecret, hubspotWebhookHandler);
+router.post("/analyze-call", requireAuth, analyzeCallHandler);
+router.post("/analyze-calls-search", requireAuth, analyzeCallsSearchHandler);
 
 export default router;
