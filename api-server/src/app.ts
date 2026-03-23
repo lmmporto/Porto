@@ -1,10 +1,13 @@
-import express, { type Express, type Request, type Response, type NextFunction } from 'express';
+import express from 'express';
+import type { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import session from 'express-session';
 import passport from 'passport';
 import { Strategy as GoogleStrategy, type Profile } from 'passport-google-oauth20';
 import router from './routes/index.js';
 import { CONFIG } from './config.js';
+// Importação da função de processamento (ajustada para ESM)
+import { processCall } from './services/processCall.js';
 
 type AuthUser = {
   id: string;
@@ -84,7 +87,7 @@ passport.serializeUser((user, done) => {
   done(null, user);
 });
 
-passport.deserializeUser((user: Express.User, done) => {
+passport.deserializeUser((user: any, done) => {
   done(null, user);
 });
 
@@ -103,29 +106,16 @@ passport.use(
           id: profile.id,
           displayName: profile.displayName,
           email,
-          rawEmails: profile.emails,
         });
 
         if (!email) {
-          console.log('[GOOGLE AUTH] sem email no profile');
           return done(new Error('Google não retornou e-mail.'));
         }
 
         const emailDomain = email.split('@')[1]?.toLowerCase();
         const allowedDomain = CONFIG.ALLOWED_EMAIL_DOMAIN.toLowerCase();
 
-        console.log('[GOOGLE AUTH] validando domínio', {
-          email,
-          emailDomain,
-          allowedDomain,
-        });
-
         if (emailDomain !== allowedDomain) {
-          console.log('[GOOGLE AUTH] domínio não autorizado', {
-            emailDomain,
-            allowedDomain,
-          });
-
           return done(null, false, { message: 'Domínio não autorizado.' });
         }
 
@@ -136,18 +126,14 @@ passport.use(
           picture: profile.photos?.[0]?.value,
         };
 
-        console.log('[GOOGLE AUTH] usuário autorizado', user);
-
         return done(null, user);
       } catch (error) {
-        console.error('[GOOGLE AUTH] erro no callback', error);
         return done(error as Error);
       }
     }
   )
 );
 
-// Impede cache em todas as rotas de autenticação
 app.use('/auth', (_req: Request, res: Response, next: NextFunction) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
@@ -159,7 +145,7 @@ app.use('/auth', (_req: Request, res: Response, next: NextFunction) => {
 function healthHandler(_req: Request, res: Response) {
   res.json({
     status: 'ok',
-    version: 'MONOLITHIC-NO-ROLE-V1',
+    version: 'MONOLITHIC-DEBUG-V1',
     timestamp: new Date().toISOString(),
   });
 }
@@ -192,48 +178,51 @@ app.get(
   }
 );
 
-app.get('/auth/me', (req, res) => {
+app.get('/auth/me', (req: any, res: Response) => {
   if (req.isAuthenticated && req.isAuthenticated()) {
     return res.status(200).json({
       authenticated: true,
       user: req.user,
     });
   }
+  return res.status(401).json({ authenticated: false });
+});
 
-  return res.status(401).json({
-    authenticated: false,
+app.post('/auth/logout', (req: any, res: Response) => {
+  req.logout((logoutErr: any) => {
+    if (logoutErr) return res.status(500).json({ success: false });
+    req.session.destroy(() => {
+      res.clearCookie('sdr.sid');
+      return res.status(200).json({ success: true });
+    });
   });
 });
 
-app.post('/auth/logout', (req, res) => {
-  req.logout((logoutErr) => {
-    if (logoutErr) {
-      return res.status(500).json({
-        success: false,
-        error: 'Erro ao fazer logout',
-      });
-    }
+/**
+ * ROTA DE DEBUG - FORÇA BRUTA (Ignora erros de tipo do VS Code)
+ */
+app.get('/api/debug-reprocess/:id', async (req: any, res: any) => {
+  try {
+    const callId = req.params.id;
+    console.log(`[DEBUG] Reprocessando call: ${callId}`);
 
-    req.session.destroy((sessionErr) => {
-      if (sessionErr) {
-        return res.status(500).json({
-          success: false,
-          error: 'Erro ao destruir sessão',
-        });
-      }
+    // @ts-ignore
+    const result = await processCall(callId);
 
-      res.clearCookie('sdr.sid');
-      return res.status(200).json({
-        success: true,
-      });
+    res.json({
+      message: "Processamento concluído com sucesso!",
+      result
     });
-  });
+  } catch (error: any) {
+    console.error(`[DEBUG] Falha:`, error.message);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 app.use('/api', router);
 
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('[ERROR]', new Date().toISOString(), err.message);
+  console.error('[ERROR]', err.message);
   res.status(500).json({ success: false, error: err.message });
 });
 
