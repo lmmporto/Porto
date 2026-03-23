@@ -10,21 +10,42 @@ import {
 } from "./hubspot.js";
 import { transcribeRecordingFromHubSpot, analyzeCallWithGemini } from "./analysis.service.js";
 
+// 1. Definição de quem entra no Dashboard
 const ALLOWED_TEAMS = [
   "Time William",
   "Equipe Alex",
   "Time Lucas",
-  "Time Amanda"
+  "Time Amanda",
+  "SDR",    // Adicionei palavras-chave genéricas para facilitar
+  
 ];
+
+// 2. Definição de quem NUNCA entra (CX/Suporte)
+const BLOCKED_KEYWORDS = ["CX", "Suporte", "Atendimento", "Customer Success"];
 
 export async function processCall(callId: string): Promise<any> {
   if (!callId) throw new Error("callId não informado.");
 
   console.log(`[PROCESS] Iniciando processamento da Call ${callId}...`);
 
+  // Buscamos a call e o dono (quem fez a ligação)
   let call = await fetchCall(callId);
   const owner: OwnerDetails = await fetchOwnerDetails(call.ownerId || null);
+  const teamName = owner.teamName || "Sem equipe";
 
+  // --- FILTRO DE SEGURANÇA (O "Porta de Cadeia") ---
+  
+  const isAllowed = ALLOWED_TEAMS.some(t => teamName.toLowerCase().includes(t.toLowerCase()));
+  const isBlocked = BLOCKED_KEYWORDS.some(t => teamName.toLowerCase().includes(t.toLowerCase()));
+
+  // Se for CX ou não estiver na lista de vendas, a gente ignora COMPLETAMENTE
+  if (isBlocked || !isAllowed) {
+    console.log(`[IGNORE] Call ${callId} descartada. Equipe: ${teamName} (Não monitorada).`);
+    // IMPORTANTE: Retornamos sem fazer db.set(). O Firebase nem fica sabendo dessa call.
+    return { success: true, reason: "TEAM_NOT_MONITORED_SILENT_IGNORE" };
+  }
+
+  // Se chegou aqui, é SDR/Vendas. Preparamos o registro.
   const basePayload = {
     callId: String(call.id),
     title: call.title || "Ligação sem título",
@@ -32,7 +53,7 @@ export async function processCall(callId: string): Promise<any> {
     ownerName: owner.ownerName || "Owner não identificado",
     ownerUserId: owner.userId || null,
     teamId: owner.teamId || null,
-    teamName: owner.teamName || "Sem equipe",
+    teamName: teamName,
     outcome: call.disposition || "Sem resultado", 
     wasConnected: call.wasConnected, 
     durationMs: Number(call.durationMs || 0),
@@ -40,25 +61,17 @@ export async function processCall(callId: string): Promise<any> {
     updatedAt: FieldValue.serverTimestamp(),
   };
 
-  const isAllowedTeam = ALLOWED_TEAMS.some(team => 
-    owner.teamName?.toLowerCase().includes(team.toLowerCase())
-  );
-
-  if (!isAllowedTeam) {
-    await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).set({
-      ...basePayload,
-      processingStatus: "SKIPPED_TEAM",
-    }, { merge: true });
-    return { success: true, reason: "TEAM_NOT_MONITORED" };
-  }
-
+  // --- FILTRO DE DURAÇÃO (Só para economizar IA em ligações de 10 segundos) ---
   if (call.durationMs && call.durationMs < CONFIG.MIN_DURATION_MS) {
+    console.log(`[LOG] Call ${callId} curta registrada como tentativa.`);
     await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).set({
       ...basePayload,
       processingStatus: "SHORT_CALL",
     }, { merge: true });
     return { success: true, reason: "CALL_TOO_SHORT" };
   }
+
+  // --- FLUXO DE ANÁLISE (Só para chamadas longas de SDRs) ---
 
   for (let attempt = 1; attempt <= CONFIG.REFETCH_ATTEMPTS && !call.recordingUrl; attempt++) {
     await sleep(CONFIG.REFETCH_WAIT_MS);
