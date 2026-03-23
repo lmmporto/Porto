@@ -9,6 +9,8 @@ import { CONFIG } from '../config.js';
 import { sanitizeText, safeJsonParse, detectAudioExtension } from '../utils.js';
 import type { CallData, OwnerDetails } from './hubspot.js';
 
+// --- SCHEMAS E INTERFACES ---
+
 const ANALYSIS_RESPONSE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -42,6 +44,14 @@ export interface AnalysisResult {
   maior_dificuldade: string;
   pontos_fortes: string[];
 }
+
+export interface AnalysisWithDebug {
+  analysis: AnalysisResult;
+  rawPrompt: string;
+  rawResponse: string;
+}
+
+// --- FUNÇÕES ---
 
 export async function transcribeRecordingFromHubSpot(call: CallData): Promise<string> {
   if (!gemini) throw new Error('GEMINI_API_KEY não configurada.');
@@ -92,7 +102,8 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
       },
     });
 
-    return sanitizeText((safeJsonParse(response?.text)?.transcript as string) || '');
+    const textResponse = response?.text || '';
+    return sanitizeText((safeJsonParse(textResponse)?.transcript as string) || '');
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     throw new Error(`TRANSCRIPTION_FAILED: ${msg}`);
@@ -102,15 +113,26 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
   }
 }
 
-export async function analyzeCallWithGemini(call: CallData, ownerDetails: OwnerDetails): Promise<AnalysisResult> {
+export async function analyzeCallWithGemini(call: CallData, ownerDetails: OwnerDetails): Promise<AnalysisWithDebug> {
   if (!gemini) throw new Error('GEMINI_API_KEY não configurada.');
 
   const prompt = `
-Você é um avaliador sênior de ligações de Vendas (SDR).
-Seu papel é analisar a qualidade da conversa com base na metodologia SPIN Selling e melhores práticas de vendas.
+Você é um Coach de Vendas de alta performance. Sua análise deve ser construtiva, direta e focada em transformar o SDR em um consultor.
 
-Avalie a ligação e retorne ESTRITAMENTE o formato JSON solicitado.
-Identifique alertas, a maior dificuldade enfrentada, o ponto principal de atenção e destaque os pontos fortes da abordagem do SDR.
+--- FOCO DA ANÁLISE ---
+1. OPORTUNIDADES PERDIDAS: Identifique momentos em que o cliente deu uma "deixa" (dor ou informação valiosa) e o SDR não explorou ou mudou de assunto.
+2. CONEXÃO DOR-SOLUÇÃO: Avalie se o SDR soube usar as palavras do cliente para apresentar a nossa solução. Ele fez "pontes" ou apenas seguiu o script?
+3. EXECUÇÃO: Analise a fluidez. Ele soube ouvir ou estava apenas esperando a vez de falar?
+
+--- ESTRUTURA DO CAMPO "RESUMO" (Obrigatória) ---
+- Comece com uma frase sobre a temperatura da call.
+- Crie um tópico chamado "Oportunidades Passadas": Descreva ganchos que o cliente deu e o SDR ignorou.
+- Crie um tópico chamado "Análise de Execução": Pontos positivos e negativos da condução (ex: tom de voz, timing das perguntas, escuta ativa).
+*Não gaste tempo confirmando se o SLA foi cumprido no resumo.*
+
+--- REGRA DE NOTA (SLA + PERFORMANCE) ---
+- SLA (4.0 pts): 1 pergunta de Situação + 1 de Problema.
+- CONEXÃO (6.0 pts): Capacidade de usar o que o cliente disse para conectar à solução.
 
 Metadados:
 - SDR/Owner: ${ownerDetails.ownerName}
@@ -131,7 +153,16 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
     },
   });
 
-  const parsed = safeJsonParse(response?.text);
-  if (!parsed) throw new Error('Gemini retornou um formato JSON inválido.');
-  return parsed as unknown as AnalysisResult;
+  const rawResponse = response?.text || '';
+  const parsed = safeJsonParse(rawResponse);
+  
+  if (!parsed) {
+    throw new Error(`Gemini retornou um formato JSON inválido. Resposta bruta: ${rawResponse}`);
+  }
+
+  return {
+    analysis: parsed as unknown as AnalysisResult,
+    rawPrompt: prompt,
+    rawResponse: rawResponse
+  };
 }
