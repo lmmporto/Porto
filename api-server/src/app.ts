@@ -6,7 +6,6 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy, type Profile } from 'passport-google-oauth20';
 import router from './routes/index.js';
 import { CONFIG } from './config.js';
-// Importação da função de processamento (ajustada para ESM)
 import { processCall } from './services/processCall.js';
 
 type AuthUser = {
@@ -36,46 +35,30 @@ app.use(
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Log de requisições
 app.use((req: Request, _res: Response, next: NextFunction) => {
   console.log(`[HTTP] ${new Date().toISOString()} ${req.method} ${req.originalUrl}`);
   next();
 });
 
-if (!CONFIG.SESSION_SECRET) {
-  throw new Error('SESSION_SECRET environment variable is required.');
+// Verificação de variáveis de ambiente (mantido conforme seu original)
+if (!CONFIG.SESSION_SECRET || !CONFIG.GOOGLE_CLIENT_ID || !CONFIG.GOOGLE_CLIENT_SECRET || !CONFIG.GOOGLE_CALLBACK_URL || !CONFIG.ALLOWED_EMAIL_DOMAIN || !CONFIG.FRONTEND_URL) {
+  throw new Error('Variáveis de ambiente de configuração (Auth/URL) faltando.');
 }
 
-if (!CONFIG.GOOGLE_CLIENT_ID) {
-  throw new Error('GOOGLE_CLIENT_ID environment variable is required.');
-}
-
-if (!CONFIG.GOOGLE_CLIENT_SECRET) {
-  throw new Error('GOOGLE_CLIENT_SECRET environment variable is required.');
-}
-
-if (!CONFIG.GOOGLE_CALLBACK_URL) {
-  throw new Error('GOOGLE_CALLBACK_URL environment variable is required.');
-}
-
-if (!CONFIG.ALLOWED_EMAIL_DOMAIN) {
-  throw new Error('ALLOWED_EMAIL_DOMAIN environment variable is required.');
-}
-
-if (!CONFIG.FRONTEND_URL) {
-  throw new Error('FRONTEND_URL environment variable is required.');
-}
-
+// --- CONFIGURAÇÃO DE SESSÃO OTIMIZADA ---
 app.use(
   session({
     name: 'sdr.sid',
     secret: CONFIG.SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
+    resave: true,               // Força a sessão a ser salva de volta no store (ajuda a manter logado)
+    saveUninitialized: false,   // Não cria sessão para quem não está logado
+    rolling: true,              // Renova o cookie a cada interação do usuário
     cookie: {
       httpOnly: true,
       secure: CONFIG.NODE_ENV === 'production',
       sameSite: CONFIG.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 1000 * 60 * 60 * 24 * 7,
+      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 dias de duração
     },
   })
 );
@@ -101,16 +84,7 @@ passport.use(
     async (_accessToken: string, _refreshToken: string, profile: Profile, done) => {
       try {
         const email = profile.emails?.[0]?.value?.toLowerCase();
-
-        console.log('[GOOGLE AUTH] profile recebido', {
-          id: profile.id,
-          displayName: profile.displayName,
-          email,
-        });
-
-        if (!email) {
-          return done(new Error('Google não retornou e-mail.'));
-        }
+        if (!email) return done(new Error('Google não retornou e-mail.'));
 
         const emailDomain = email.split('@')[1]?.toLowerCase();
         const allowedDomain = CONFIG.ALLOWED_EMAIL_DOMAIN.toLowerCase();
@@ -134,35 +108,14 @@ passport.use(
   )
 );
 
-app.use('/auth', (_req: Request, res: Response, next: NextFunction) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  res.setHeader('Surrogate-Control', 'no-store');
-  next();
-});
-
-function healthHandler(_req: Request, res: Response) {
-  res.json({
-    status: 'ok',
-    version: 'MONOLITHIC-DEBUG-V1',
-    timestamp: new Date().toISOString(),
-  });
-}
-
-app.get('/', (_req, res) => {
-  res.status(200).send('ok');
-});
-
-app.get('/health', healthHandler);
-app.get('/api/healthz', healthHandler);
+// --- ROTAS DE AUTENTICAÇÃO ---
 
 app.get(
   '/auth/google',
   passport.authenticate('google', {
     scope: ['profile', 'email'],
     session: true,
-    prompt: 'select_account',
+    // prompt: 'select_account' REMOVIDO para permitir login automático
     hd: CONFIG.ALLOWED_EMAIL_DOMAIN,
   })
 );
@@ -198,23 +151,16 @@ app.post('/auth/logout', (req: any, res: Response) => {
   });
 });
 
-/**
- * ROTA DE DEBUG - FORÇA BRUTA (Ignora erros de tipo do VS Code)
- */
+// --- RESTO DAS ROTAS (Health, API, Debug) ---
+
+app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+
 app.get('/api/debug-reprocess/:id', async (req: any, res: any) => {
   try {
     const callId = req.params.id;
-    console.log(`[DEBUG] Reprocessando call: ${callId}`);
-
-    // @ts-ignore
     const result = await processCall(callId);
-
-    res.json({
-      message: "Processamento concluído com sucesso!",
-      result
-    });
+    res.json({ message: "Re-processamento concluído!", result });
   } catch (error: any) {
-    console.error(`[DEBUG] Falha:`, error.message);
     res.status(500).json({ error: error.message });
   }
 });
