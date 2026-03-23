@@ -147,6 +147,15 @@ passport.use(
   )
 );
 
+// Impede cache em todas as rotas de autenticação
+app.use('/auth', (_req: Request, res: Response, next: NextFunction) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  next();
+});
+
 function healthHandler(_req: Request, res: Response) {
   res.json({
     status: 'ok',
