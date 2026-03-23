@@ -69,9 +69,7 @@ export async function processCall(callId: string): Promise<ProcessResult> {
     attempt <= CONFIG.REFETCH_ATTEMPTS && !call.recordingUrl;
     attempt++
   ) {
-    console.log(
-      `[PROCESS] Aguardando URL da gravação (${attempt}/${CONFIG.REFETCH_ATTEMPTS})...`,
-    );
+    console.log(`[PROCESS] Aguardando URL da gravação (${attempt}/${CONFIG.REFETCH_ATTEMPTS})...`);
     await sleep(CONFIG.REFETCH_WAIT_MS);
     call = await fetchCall(callId);
   }
@@ -93,26 +91,15 @@ export async function processCall(callId: string): Promise<ProcessResult> {
       recordingUrl: call.recordingUrl || null,
       transcriptionError: msg,
     });
-    return {
-      success: true,
-      skipped: true,
-      reason: "TRANSCRIPTION_FAILED",
-      callId,
-      error: msg,
-    };
+    return { success: true, skipped: true, reason: "TRANSCRIPTION_FAILED", callId, error: msg };
   }
 
   call.transcript = transcript;
-  call.transcriptSourceType = transcript
-    ? "AUDIO_TRANSCRIPTION_GEMINI"
-    : "FAILED";
+  call.transcriptSourceType = transcript ? "AUDIO_TRANSCRIPTION_GEMINI" : "FAILED";
   call.transcriptLength = transcript.length;
 
   if (!transcript) {
-    await markSkippedCall(call, "EMPTY_TRANSCRIPT", {
-      ...ownerExtra,
-      recordingUrl: call.recordingUrl || null,
-    });
+    await markSkippedCall(call, "EMPTY_TRANSCRIPT", { ...ownerExtra, recordingUrl: call.recordingUrl || null });
     return { success: true, skipped: true, reason: "EMPTY_TRANSCRIPT", callId };
   }
 
@@ -122,18 +109,19 @@ export async function processCall(callId: string): Promise<ProcessResult> {
       recordingUrl: call.recordingUrl || null,
       transcriptLength: call.transcriptLength,
     });
-    return {
-      success: true,
-      skipped: true,
-      reason: "TRANSCRIPT_TOO_SHORT",
-      callId,
-      transcriptLength: call.transcriptLength,
-    };
+    return { success: true, skipped: true, reason: "TRANSCRIPT_TOO_SHORT", callId, transcriptLength: call.transcriptLength };
   }
 
   console.log("[PROCESS] Analisando call com IA...");
-  const analysis = await analyzeCallWithGemini(call, owner);
+  
+  // 1. Recebe a análise e os dados brutos
+  const { analysis, rawPrompt, rawResponse } = await analyzeCallWithGemini(call, owner);
 
+  // 2. LOGS PARA O RENDER (Confirmação visual no painel)
+  console.log("DEBUG - Prompt capturado:", rawPrompt ? "SIM (Tamanho: " + rawPrompt.length + ")" : "NÃO (vazio)");
+  console.log("DEBUG - Resposta bruta capturada:", rawResponse ? "SIM" : "NÃO");
+
+  // 3. Monta o payload ÚNICO para o banco
   const payload = {
     callId: call.id,
     title: call.title || "Ligação sem título",
@@ -147,24 +135,27 @@ export async function processCall(callId: string): Promise<ProcessResult> {
     processingStatus: "DONE",
     analyzedAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
+    
+    // CAMPOS DE DEBUG (O que faltava no seu Firebase)
+    rawPrompt: rawPrompt || "Erro: Prompt não capturado",
+    rawResponse: rawResponse || "Erro: Resposta não capturada",
+
+    // RESULTADOS DA ANÁLISE
     status_final: analysis.status_final,
     nota_spin: Number(analysis.nota_spin || 0),
     resumo: analysis.resumo || "Sem resumo disponível",
     alertas: Array.isArray(analysis.alertas) ? analysis.alertas : [],
     ponto_atencao: analysis.ponto_atencao || "",
     maior_dificuldade: analysis.maior_dificuldade || "",
-    pontos_fortes: Array.isArray(analysis.pontos_fortes)
-      ? analysis.pontos_fortes
-      : [],
+    pontos_fortes: Array.isArray(analysis.pontos_fortes) ? analysis.pontos_fortes : [],
   };
 
   await db
     .collection(CONFIG.CALLS_COLLECTION)
     .doc(String(call.id))
     .set(payload, { merge: true });
-  console.log(
-    `[PROCESS] Call ${callId} finalizada com sucesso. Status: ${analysis.status_final}`,
-  );
+
+  console.log(`[PROCESS] Call ${callId} finalizada com sucesso. Status: ${analysis.status_final}`);
 
   return {
     success: true,
