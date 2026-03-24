@@ -83,37 +83,41 @@ router.get(
         .limit(limit)
         .get();
 
-      const calls = snapshot.docs.map((doc) => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          callId: data.callId || doc.id,
-          title: data.title || "Ligação sem título",
-          ownerId: data.ownerId || null,
-          ownerName: data.ownerName || "Owner não identificado",
-          ownerUserId: data.ownerUserId || null,
-          teamId: data.teamId || null,
-          teamName: data.teamName || "Sem equipe",
-          durationMs: Number(data.durationMs || 0),
-          recordingUrl: data.recordingUrl || null,
-          processingStatus: data.processingStatus || "UNKNOWN",
-          
-          // 🚩 GARANTIA: Se não tiver data, coloca um valor base para a ordenação não quebrar
-          updatedAt: data.updatedAt || data.analyzedAt || { _seconds: 0 },
-          
-          analyzedAt: data.analyzedAt ? data.analyzedAt.toDate().toISOString() : null,
-          status_final: data.status_final || "NAO_IDENTIFICADO",
-          
-          // 🚩 NOTA 0: Agora aceita 0 como nota válida (importante para Amaranta)
-          nota_spin: data.nota_spin !== undefined ? Number(data.nota_spin) : null,
-          
-          resumo: data.resumo || "Sem resumo disponível",
-          alertas: Array.isArray(data.alertas) ? data.alertas : [],
-          ponto_atencao: data.ponto_atencao || "",
-          maior_dificuldade: data.maior_dificuldade || "",
-          pontos_fortes: Array.isArray(data.pontos_fortes) ? data.pontos_fortes : [],
-        };
-      });
+      // 🚩 NO SEU src/routes/calls.ts (Procure o bloco do snapshot.docs.map)
+
+const calls = snapshot.docs.map((doc) => {
+  const data = doc.data();
+  
+  // 🚩 MARCAÇÃO: Pegamos a melhor data disponível para não vir nulo
+  const timestamp = data.updatedAt || data.analyzedAt || data.createdAt;
+  const isoDate = timestamp && typeof timestamp.toDate === 'function' 
+    ? timestamp.toDate().toISOString() 
+    : new Date().toISOString(); // Fallback para hoje se tudo falhar
+
+  return {
+    id: doc.id,
+    callId: data.callId || doc.id,
+    title: data.title || "Ligação sem título",
+    ownerName: data.ownerName || "Owner não identificado",
+    processingStatus: data.processingStatus || "UNKNOWN",
+    
+    // 🚩 MARCAÇÃO: updatedAt nunca pode ser 0 para não sumir do filtro de "Mês atual"
+    updatedAt: data.updatedAt || data.analyzedAt || data.createdAt || { _seconds: Math.floor(Date.now() / 1000) },
+    
+    // 🚩 MARCAÇÃO: analisadoAt agora tem um fallback para não vir NULL
+    analyzedAt: isoDate, 
+    
+    status_final: data.status_final || "NAO_IDENTIFICADO",
+    nota_spin: data.nota_spin !== undefined ? Number(data.nota_spin) : 0,
+    
+    // Garantindo que o resto não venha undefined
+    resumo: data.resumo || "Sem análise detalhada disponível.",
+    alertas: Array.isArray(data.alertas) ? data.alertas : [],
+    ponto_atencao: data.ponto_atencao || "N/A",
+    maior_dificuldade: data.maior_dificuldade || "N/A",
+    pontos_fortes: Array.isArray(data.pontos_fortes) ? data.pontos_fortes : [],
+  };
+});
 
       // 🚩 ORDENAÇÃO MANUAL: Fazemos no código para garantir que os mais recentes 
       // fiquem no topo sem precisar de index restrito no Firestore.
