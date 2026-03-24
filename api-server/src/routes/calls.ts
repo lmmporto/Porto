@@ -195,5 +195,38 @@ router.post("/test-call-ids", async (req, res, next) => {
 router.post("/hubspot-webhook", requireWebhookSecret, hubspotWebhookHandler);
 router.post("/analyze-call", requireAuth, analyzeCallHandler);
 router.post("/analyze-calls-search", requireAuth, analyzeCallsSearchHandler);
+// 🔍 ROTA DE AUDITORIA: Acesse /api/debug/sdr-stats para validar os números
+router.get("/debug/sdr-stats", async (req: Request, res: Response) => {
+  try {
+    const snapshot = await db.collection(CONFIG.CALLS_COLLECTION).get();
+    const stats: Record<string, any> = {};
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 
+    snapshot.docs.forEach(doc => {
+      const data = doc.data();
+      const name = data.ownerName || "SDR_DESCONHECIDO";
+      
+      const ts = data.updatedAt?._seconds || data.analyzedAt?._seconds || data.createdAt?._seconds || 0;
+      const callTimeMs = ts * 1000;
+      const isToday = callTimeMs >= startOfToday;
+
+      if (!stats[name]) {
+        stats[name] = { total_geral_no_banco: 0, tentativas_hoje: 0, analises_com_sucesso: 0, analises_puladas: 0 };
+      }
+
+      stats[name].total_geral_no_banco += 1;
+      if (isToday) stats[name].tentativas_hoje += 1;
+      if (data.processingStatus === "DONE") stats[name].analises_com_sucesso += 1;
+      else if (data.processingStatus === "SKIPPED_FOR_AUDIT") stats[name].analises_puladas += 1;
+    });
+
+    res.json({
+      timestamp_consulta: now.toLocaleString('pt-BR'),
+      sdr_metrics: stats
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Falha na auditoria", details: String(error) });
+  }
+});
 export default router;
