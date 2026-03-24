@@ -12,7 +12,7 @@ import { searchCallsInHubSpot } from "../services/hubspot.js";
 
 const router: IRouter = Router();
 
-// --- MIDDLEWARES (Mantive exatamente como os seus) ---
+// --- MIDDLEWARES ---
 function requireWebhookSecret(req: Request, res: Response, next: NextFunction) {
   const headerSecret = req.headers["x-webhook-secret"];
   const querySecret = req.query.secret;
@@ -74,12 +74,12 @@ router.get(
   "/calls",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      // 🚩 Aumentamos o limite para 200 para garantir que todos os SDRs apareçam
       const limit = Math.min(Number(req.query.limit || 200), 500);
 
+      // 🚩 PONTO DE ALTERAÇÃO: Removido o .orderBy do banco. 
+      // Isso impede que documentos sem o campo 'updatedAt' sumam da lista.
       const snapshot = await db
         .collection(CONFIG.CALLS_COLLECTION)
-        .orderBy("updatedAt", "desc") // 🚩 Ordenado por data para ver os recentes no topo
         .limit(limit)
         .get();
 
@@ -96,16 +96,16 @@ router.get(
           teamName: data.teamName || "Sem equipe",
           durationMs: Number(data.durationMs || 0),
           recordingUrl: data.recordingUrl || null,
-          
-          // 🚩 CAMPOS ADICIONADOS (NÃO CORTADOS):
           processingStatus: data.processingStatus || "UNKNOWN",
-          updatedAt: data.updatedAt || data.analyzedAt || null,
+          
+          // 🚩 GARANTIA: Se não tiver data, coloca um valor base para a ordenação não quebrar
+          updatedAt: data.updatedAt || data.analyzedAt || { _seconds: 0 },
           
           analyzedAt: data.analyzedAt ? data.analyzedAt.toDate().toISOString() : null,
           status_final: data.status_final || "NAO_IDENTIFICADO",
           
-          // 🚩 AJUSTE PARA NOTA 0: Agora aceita 0 como nota válida real
-          nota_spin: data.nota_spin !== undefined ? Number(data.nota_spin) : 0,
+          // 🚩 NOTA 0: Agora aceita 0 como nota válida (importante para Amaranta)
+          nota_spin: data.nota_spin !== undefined ? Number(data.nota_spin) : null,
           
           resumo: data.resumo || "Sem resumo disponível",
           alertas: Array.isArray(data.alertas) ? data.alertas : [],
@@ -113,6 +113,14 @@ router.get(
           maior_dificuldade: data.maior_dificuldade || "",
           pontos_fortes: Array.isArray(data.pontos_fortes) ? data.pontos_fortes : [],
         };
+      });
+
+      // 🚩 ORDENAÇÃO MANUAL: Fazemos no código para garantir que os mais recentes 
+      // fiquem no topo sem precisar de index restrito no Firestore.
+      calls.sort((a, b) => {
+        const secA = a.updatedAt?._seconds || 0;
+        const secB = b.updatedAt?._seconds || 0;
+        return secB - secA;
       });
 
       res.json(calls);
