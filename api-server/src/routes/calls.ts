@@ -107,7 +107,7 @@ router.get(
   "/calls",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const limit = Math.min(Number(req.query.limit || 200), 500);
+      const limit = Math.min(Number(req.query.limit || 3000), 5000);
 
       // 🚩 PONTO DE ATENÇÃO: Sem .orderBy no banco para evitar que documentos incompletos sumam
       const snapshot = await db
