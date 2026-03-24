@@ -10,42 +10,39 @@ import {
 } from "./hubspot.js";
 import { transcribeRecordingFromHubSpot, analyzeCallWithGemini } from "./analysis.service.js";
 
-// 1. Definição de quem entra no Dashboard
+// 1. Definição de quem entra no Dashboard (Vendas/SDR)
 const ALLOWED_TEAMS = [
   "Time William",
   "Equipe Alex",
   "Time Lucas",
   "Time Amanda",
-  "SDR",    // Adicionei palavras-chave genéricas para facilitar
-  
+  "SDR", 
+  "Vendas"
 ];
 
-// 2. Definição de quem NUNCA entra (CX/Suporte)
-const BLOCKED_KEYWORDS = ["CX", "Suporte", "Atendimento", "Customer Success"];
+// 2. Definição de quem NUNCA entra (CX/Suporte/Financeiro)
+const BLOCKED_KEYWORDS = ["CX", "Suporte", "Atendimento", "Customer Success", "Financeiro"];
 
 export async function processCall(callId: string): Promise<any> {
   if (!callId) throw new Error("callId não informado.");
 
   console.log(`[PROCESS] Iniciando processamento da Call ${callId}...`);
 
-  // Buscamos a call e o dono (quem fez a ligação)
+  // Buscamos os dados da chamada e do proprietário no HubSpot
   let call = await fetchCall(callId);
   const owner: OwnerDetails = await fetchOwnerDetails(call.ownerId || null);
   const teamName = owner.teamName || "Sem equipe";
 
-  // --- FILTRO DE SEGURANÇA (O "Porta de Cadeia") ---
-  
+  // --- FILTRO 1: SEGURANÇA DE EQUIPE (Porta de Cadeia) ---
   const isAllowed = ALLOWED_TEAMS.some(t => teamName.toLowerCase().includes(t.toLowerCase()));
   const isBlocked = BLOCKED_KEYWORDS.some(t => teamName.toLowerCase().includes(t.toLowerCase()));
 
-  // Se for CX ou não estiver na lista de vendas, a gente ignora COMPLETAMENTE
   if (isBlocked || !isAllowed) {
     console.log(`[IGNORE] Call ${callId} descartada. Equipe: ${teamName} (Não monitorada).`);
-    // IMPORTANTE: Retornamos sem fazer db.set(). O Firebase nem fica sabendo dessa call.
     return { success: true, reason: "TEAM_NOT_MONITORED_SILENT_IGNORE" };
   }
 
-  // Se chegou aqui, é SDR/Vendas. Preparamos o registro.
+  // Se chegou aqui, preparamos o registro base para o Firebase
   const basePayload = {
     callId: String(call.id),
     title: call.title || "Ligação sem título",
@@ -61,18 +58,33 @@ export async function processCall(callId: string): Promise<any> {
     updatedAt: FieldValue.serverTimestamp(),
   };
 
-  // --- FILTRO DE DURAÇÃO (Só para economizar IA em ligações de 10 segundos) ---
+  // --- FILTRO 2: TRAVA ANTI-CAIXA POSTAL (Nova!) ---
+  // Se call.wasConnected for false, a ligação não teve conversa real (Douglas De Paula Finger case).
+  // Registramos apenas como tentativa no Dashboard, sem nota SPIN.
+  if (!call.wasConnected) {
+    console.log(`[LOG] Call ${callId} não conectada (Caixa Postal ou < 20s). Salvando apenas como tentativa.`);
+    await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).set({
+      ...basePayload,
+      processingStatus: "NOT_CONNECTED", // Evita que a IA analise e dê nota 0.0
+    }, { merge: true });
+    
+    return { success: true, reason: "CALL_NOT_CONNECTED_SKIPPED_AI" };
+  }
+
+  // --- FILTRO 3: DURAÇÃO MÍNIMA PARA IA ---
+  // Se conectou, mas foi muito rápida (ex: "Alô? Não posso falar"), registramos mas não analisamos.
   if (call.durationMs && call.durationMs < CONFIG.MIN_DURATION_MS) {
-    console.log(`[LOG] Call ${callId} curta registrada como tentativa.`);
+    console.log(`[LOG] Call ${callId} muito curta para análise profunda.`);
     await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).set({
       ...basePayload,
       processingStatus: "SHORT_CALL",
     }, { merge: true });
-    return { success: true, reason: "CALL_TOO_SHORT" };
+    return { success: true, reason: "CALL_TOO_SHORT_FOR_AI" };
   }
 
-  // --- FLUXO DE ANÁLISE (Só para chamadas longas de SDRs) ---
+  // --- FLUXO DE ANÁLISE PROFUNDA (Só para chamadas reais e longas) ---
 
+  // Polling para aguardar o HubSpot liberar a URL do áudio
   for (let attempt = 1; attempt <= CONFIG.REFETCH_ATTEMPTS && !call.recordingUrl; attempt++) {
     await sleep(CONFIG.REFETCH_WAIT_MS);
     call = await fetchCall(callId);
@@ -87,6 +99,7 @@ export async function processCall(callId: string): Promise<any> {
   }
 
   try {
+    // 1. Transcrição (Gemini 1.5 Flash)
     const transcript = await transcribeRecordingFromHubSpot(call);
     
     if (!transcript) {
@@ -97,9 +110,11 @@ export async function processCall(callId: string): Promise<any> {
       return { success: true, reason: "EMPTY_TRANSCRIPT" };
     }
 
+    // 2. Análise de SPIN Selling (Gemini 2.5 Coach)
     call.transcript = transcript;
     const { analysis, rawPrompt, rawResponse } = await analyzeCallWithGemini(call, owner);
 
+    // 3. Salvamento Final com Nota e Insights
     await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).set({
       ...basePayload,
       processingStatus: "DONE",
@@ -120,6 +135,7 @@ export async function processCall(callId: string): Promise<any> {
     return { success: true, status: "ANALYZED" };
 
   } catch (error: any) {
+    console.error(`[ERROR] Falha na IA da Call ${callId}:`, error.message);
     await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).set({
       ...basePayload,
       processingStatus: "FAILED_ANALYSIS",
