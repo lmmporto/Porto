@@ -93,6 +93,15 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
     }
 
     const buffer = Buffer.from(audioResponse.data as ArrayBuffer);
+    
+    // 🚩 TRAVA 1: PESO DO ARQUIVO (Anti-Gasto)
+    // Se o áudio tiver menos de 100KB (aprox 10-15s em baixa qualidade), ignoramos.
+    // Isso evita processar lixo técnico ou cliques acidentais.
+    if (buffer.byteLength < 100000) {
+      console.log(`[SKIP] Áudio da Call ${call.id} muito pequeno (${(buffer.byteLength / 1024).toFixed(1)}KB). Ignorando.`);
+      return '';
+    }
+
     if (!buffer || buffer.byteLength === 0) {
       throw new Error('Arquivo de áudio vazio.');
     }
@@ -117,7 +126,17 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
       },
     });
 
-    return sanitizeText((safeJsonParse(response?.text)?.transcript as string) || '');
+    const transcript = sanitizeText((safeJsonParse(response?.text)?.transcript as string) || '');
+
+    // 🚩 TRAVA 2: VOLUME DE CONVERSA (Anti-Gasto)
+    // Se a transcrição tiver menos de 25 palavras, não é uma reunião produtiva.
+    // Abortamos para não gastar com a análise de coach.
+    if (transcript.split(/\s+/).length < 25) {
+      console.log(`[SKIP] Conteúdo insuficiente na Call ${call.id}. Palavras: ${transcript.split(/\s+/).length}`);
+      return '';
+    }
+
+    return transcript;
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     throw new Error(`TRANSCRIPTION_FAILED: ${msg}`);

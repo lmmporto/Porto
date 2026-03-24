@@ -10,8 +10,6 @@ import {
 } from "./hubspot.js";
 import { transcribeRecordingFromHubSpot, analyzeCallWithGemini } from "./analysis.service.js";
 
-// IMPORTANTE: Ajuste o caminho abaixo para onde está o seu arquivo de types
-// Se o arquivo está em src/types/index.ts, e este em src/services/processCall.ts, o caminho é ../types
 import type { SDRCall } from "../types.js";
 
 const ALLOWED_TEAMS = ["Time William", "Equipe Alex", "Time Lucas", "Time Amanda", "SDR", "Vendas"];
@@ -35,7 +33,7 @@ export async function processCall(callId: string): Promise<any> {
     return { success: true, reason: "TEAM_NOT_MONITORED" };
   }
 
-  // Payload Base (Dados comuns a todas as chamadas)
+  // Payload Base
   const basePayload = {
     callId: String(call.id),
     title: call.title || "Ligação sem título",
@@ -46,31 +44,36 @@ export async function processCall(callId: string): Promise<any> {
     updatedAt: FieldValue.serverTimestamp(),
   };
 
-  // --- FILTRO 2: AUDITORIA (O "Lixo" que você quer manter no banco) ---
+  // --- FILTRO 2: AUDITORIA INTELIGENTE (Não confia apenas no durationMs) ---
   const DURATION_LIMIT = 120000; // 2 minutos
+  
+  // 🚩 Se tiver gravação, ignoramos o erro de 0ms do HubSpot e tentamos processar.
+  // Só vai para SKIPPED_FOR_AUDIT se realmente NÃO tiver áudio E for curta.
+  const hasRecordingUrl = !!call.recordingUrl;
+  const isShortOrDisconnected = !call.wasConnected || (Number(call.durationMs || 0)) < DURATION_LIMIT;
 
-  if (!call.wasConnected || (call.durationMs || 0) < DURATION_LIMIT) {
-    console.log(`[AUDIT] Registrando tentativa de ${owner.ownerName} para volume.`);
+  if (!hasRecordingUrl && isShortOrDisconnected) {
+    console.log(`[AUDIT] Registrando tentativa de ${owner.ownerName} para volume (Sem áudio/Curta).`);
     
-    // SALVAMOS NO FIREBASE, mas com o status que o Front vai ignorar nas notas
     await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).set({
       ...basePayload,
-      processingStatus: "SKIPPED_FOR_AUDIT", // Marcar como rastro
+      processingStatus: "SKIPPED_FOR_AUDIT",
       nota_spin: 0, 
     }, { merge: true });
 
     return { success: true, reason: "SAVED_AS_ATTEMPT_ONLY" };
   }
 
-  // --- SE PASSOU PELO FILTRO: ANÁLISE PROFUNDA ---
+  // --- SE PASSOU PELO FILTRO: BUSCA DE ÁUDIO ---
   
-  // Aguardar áudio
+  // Tenta buscar a URL do áudio (caso o HubSpot demore a liberar)
   for (let attempt = 1; attempt <= CONFIG.REFETCH_ATTEMPTS && !call.recordingUrl; attempt++) {
     await sleep(CONFIG.REFETCH_WAIT_MS);
     call = await fetchCall(callId);
   }
 
   if (!call.recordingUrl) {
+    // Se após as tentativas ainda não houver URL, registramos como erro de áudio
     await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).set({
       ...basePayload,
       processingStatus: "NO_AUDIO",
@@ -80,18 +83,20 @@ export async function processCall(callId: string): Promise<any> {
 
   try {
     const transcript = await transcribeRecordingFromHubSpot(call);
+    
+    // Se a trava de bytes ou palavras no analysis.service retornar vazio:
     if (!transcript) {
       await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).set({
         ...basePayload,
         processingStatus: "EMPTY_TRANSCRIPT",
       }, { merge: true });
-      return { success: true, reason: "EMPTY_TRANSCRIPT" };
+      return { success: true, reason: "EMPTY_TRANSCRIPT_OR_SHORT_AUDIO" };
     }
 
     call.transcript = transcript;
     const { analysis, rawPrompt, rawResponse } = await analyzeCallWithGemini(call, owner);
 
-    // SALVAMENTO FINAL (Status DONE = Contabiliza nota no Dashboard)
+    // SALVAMENTO FINAL (Status DONE)
     await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).set({
       ...basePayload,
       processingStatus: "DONE",
