@@ -152,14 +152,43 @@ router.get(
         };
       });
 
-      // 🚩 ORDENAÇÃO MANUAL: Garantia de recentes no topo
-      calls.sort((a, b) => {
+      // 🚩 1. FILTRO DE DATA NO BACK-END (Recebe os limites do Front-end)
+      const startDateParam = req.query.startDate as string;
+      const endDateParam = req.query.endDate as string;
+
+      let processedCalls = calls;
+
+      if (startDateParam && endDateParam) {
+        // Converte as datas exatas (ex: "2026-03-24") para milissegundos matemáticos
+        const start = new Date(startDateParam).getTime();
+        const end = new Date(endDateParam).getTime();
+        
+        processedCalls = calls.filter(call => {
+          const sec = call.updatedAt?._seconds || call.updatedAt?.seconds || (typeof call.updatedAt === 'number' ? call.updatedAt / 1000 : 0);
+          const callTimeMs = sec * 1000;
+          
+          // Mantém na caixa apenas o que o usuário pediu para ver
+          return callTimeMs >= start && callTimeMs <= end;
+        });
+      }
+
+      // 🚩 2. NOVA ORDENAÇÃO PREDOMINANTE: Maior Nota primeiro (Melhor para a Pior)
+      processedCalls.sort((a, b) => {
+        const notaA = Number(a.nota_spin) || 0;
+        const notaB = Number(b.nota_spin) || 0;
+        
+        // Se as notas forem diferentes, o maior ganha
+        if (notaB !== notaA) {
+          return notaB - notaA; 
+        }
+        
+        // Critério de desempate (mesma nota): A mais recente fica em cima
         const secA = a.updatedAt?._seconds || a.updatedAt?.seconds || 0;
         const secB = b.updatedAt?._seconds || b.updatedAt?.seconds || 0;
         return secB - secA;
       });
 
-      res.json(calls);
+      res.json(processedCalls);
     } catch (error) {
       console.error("Erro na API /calls:", error);
       next(error);
