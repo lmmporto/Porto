@@ -12,8 +12,8 @@ import { transcribeRecordingFromHubSpot, analyzeCallWithGemini } from "./analysi
 
 import type { SDRCall } from "../types.js";
 
-const ALLOWED_TEAMS = ["Time William", "Equipe Alex", "Time Lucas", "Time Amanda", "SDR", "Vendas"];
-const BLOCKED_KEYWORDS = ["CX", "Suporte", "Atendimento", "Customer Success", "Financeiro", "GF"];
+const ALLOWED_TEAMS = ["Time William", "Equipe Alex", "Time Lucas", "Time Amanda", "SDR"];
+const BLOCKED_KEYWORDS = ["CX", "Suporte", "Atendimento", "Customer Success", "Financeiro", "GF", "VENDAS", "Jonathan", "Simone"];
 
 export async function processCall(callId: string): Promise<any> {
   if (!callId) throw new Error("callId não informado.");
