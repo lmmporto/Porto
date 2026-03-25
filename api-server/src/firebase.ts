@@ -1,11 +1,12 @@
 import { initializeApp as initializeAdminApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
-const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT;
+// Aceita tanto o nome antigo quanto o novo com _JSON
+const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT || process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
 
 if (!getApps().length) {
   if (!serviceAccountRaw) {
-    throw new Error("❌ CRÍTICO: Variável FIREBASE_SERVICE_ACCOUNT ausente no Render!");
+    throw new Error("❌ CRÍTICO: Variável de credenciais do Firebase ausente no Render!");
   }
 
   try {
