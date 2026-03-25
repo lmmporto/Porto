@@ -12,8 +12,8 @@ import { transcribeRecordingFromHubSpot, analyzeCallWithGemini } from "./analysi
 
 import type { SDRCall } from "../types.js";
 
-const ALLOWED_TEAMS = ["Time William", "Equipe Alex", "Time Lucas", "Time Amanda", "SDR"];
-const BLOCKED_KEYWORDS = ["CX", "Suporte", "Atendimento", "Customer Success", "Financeiro", "GF", "VENDAS", "Jonathan", "Simone"];
+const ALLOWED_TEAMS = ["Time William", "Equipe Alex", "Time Lucas", "Time Amanda", "SDR", "Pré-Venda"];
+const BLOCKED_KEYWORDS = ["CX", "Suporte", "Atendimento", "Customer Success", "Financeiro", "GF"];
 
 export async function processCall(callId: string): Promise<any> {
   if (!callId) throw new Error("callId não informado.");
@@ -28,54 +28,40 @@ export async function processCall(callId: string): Promise<any> {
   const isAllowed = ALLOWED_TEAMS.some(t => teamName.toLowerCase().includes(t.toLowerCase()));
   const isBlocked = BLOCKED_KEYWORDS.some(t => teamName.toLowerCase().includes(t.toLowerCase()));
 
-  if (isBlocked || !isAllowed) {
-    console.log(`[IGNORE] Equipe ${teamName} não monitorada.`);
+  if (isBlocked && !teamName.toUpperCase().includes("SDR")) { 
+    return { success: true, reason: "TEAM_BLOCKED" };
+  }
+
+  if (!isAllowed) {
     return { success: true, reason: "TEAM_NOT_MONITORED" };
   }
 
-  // Payload Base
+  // --- FILTRO 2: TEMPO MÍNIMO (1 MINUTO) ---
+  const DURATION_LIMIT = 60000; // 🚩 Alterado para 1 minuto conforme solicitado
+  const duration = Number(call.durationMs || 0);
+
   const basePayload = {
     callId: String(call.id),
     title: call.title || "Ligação sem título",
     ownerName: owner.ownerName || "Não identificado",
     teamName: teamName,
-    durationMs: Number(call.durationMs || 0),
+    durationMs: duration,
     wasConnected: call.wasConnected,
     updatedAt: FieldValue.serverTimestamp(),
   };
 
-  // --- FILTRO 2: TEMPO DO HUBSPOT (Custo: $0.00) ---
-  const DURATION_LIMIT = 120000; // 2 minutos
-  const duration = Number(call.durationMs || 0);
-  const hasRecordingUrl = !!call.recordingUrl;
-
-  // REGRA A: Se o HubSpot registrou o tempo e é menor que 2 min, é lixo. Corta aqui.
+  // Se o HubSpot já reporta menos de 1 minuto, descartamos imediatamente para poupar processamento
   if (duration > 0 && duration < DURATION_LIMIT) {
-    console.log(`[SKIP] 🛑 Call ${callId} curta no HubSpot (${duration}ms). Ignorando antes de baixar.`);
-    
+    console.log(`[SKIP] 🛑 Call ${callId} muito curta (${duration/1000}s).`);
     await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).set({
       ...basePayload,
-      processingStatus: "SKIPPED_FOR_AUDIT",
-      nota_spin: 0, 
+      processingStatus: "SKIPPED_SHORT_CALL",
+      nota_spin: 0
     }, { merge: true });
-
-    return { success: true, reason: "SHORT_CALL_HUBSPOT" };
+    return { success: true, reason: "CALL_TOO_SHORT" };
   }
 
-  // REGRA B: Tentativa sem sucesso. Não tem áudio e o tempo é 0.
-  if (!hasRecordingUrl && duration === 0) {
-    console.log(`[AUDIT] Registrando tentativa de ${owner.ownerName} para volume (Sem áudio/Não atendeu).`);
-    
-    await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).set({
-      ...basePayload,
-      processingStatus: "SKIPPED_FOR_AUDIT",
-      nota_spin: 0, 
-    }, { merge: true });
-
-    return { success: true, reason: "SAVED_AS_ATTEMPT_ONLY" };
-  }
-
-  // --- BUSCA DE ÁUDIO (Se chegou aqui, ou tem > 2 min ou é o bug do 0ms) ---
+  // --- BUSCA DE ÁUDIO ---
   for (let attempt = 1; attempt <= CONFIG.REFETCH_ATTEMPTS && !call.recordingUrl; attempt++) {
     await sleep(CONFIG.REFETCH_WAIT_MS);
     call = await fetchCall(callId);
@@ -84,34 +70,29 @@ export async function processCall(callId: string): Promise<any> {
   if (!call.recordingUrl) {
     await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).set({
       ...basePayload,
-      processingStatus: "NO_AUDIO",
+      processingStatus: "SKIPPED_FOR_AUDIT",
     }, { merge: true });
-    return { success: true, reason: "NO_RECORDING" };
+    return { success: true, reason: "NO_AUDIO_AVAILABLE" };
   }
 
+  // --- ANÁLISE ---
   try {
-    // 🚩 Transcrição do áudio
     const transcript = await transcribeRecordingFromHubSpot(call);
     
-    // Se voltar vazio, é porque barrou no Peso ou nas Palavras
-    if (!transcript) {
+    if (!transcript || transcript.length < 100) {
       await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).set({
         ...basePayload,
         processingStatus: "EMPTY_TRANSCRIPT",
       }, { merge: true });
-      return { success: true, reason: "EMPTY_TRANSCRIPT_OR_SHORT_AUDIO" };
+      return { success: true, reason: "INSUFFICIENT_CONTENT" };
     }
-
-    const wordCount = transcript.split(/\s+/).length;
-    console.log(`[INFO] Conteúdo aprovado para análise: ${wordCount} palavras reais.`);
 
     call.transcript = transcript;
     const { analysis, rawPrompt, rawResponse } = await analyzeCallWithGemini(call, owner);
 
-    // SALVAMENTO FINAL (Status DONE)
     await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).set({
       ...basePayload,
-      transcript: transcript, // IMPORTANTE: Salvando o texto bruto para consultas futuras
+      transcript: transcript,
       processingStatus: "DONE",
       analyzedAt: FieldValue.serverTimestamp(),
       status_final: analysis.status_final,
@@ -121,17 +102,15 @@ export async function processCall(callId: string): Promise<any> {
       ponto_atencao: analysis.ponto_atencao,
       maior_dificuldade: analysis.maior_dificuldade,
       pontos_fortes: analysis.pontos_fortes,
-      perguntas_sugeridas: analysis.perguntas_sugeridas || [],
-      analise_escuta: analysis.analise_escuta || "",
       rawPrompt,
       rawResponse
     }, { merge: true });
 
-    console.log(`[SUCCESS] 🎉 Call ${callId} analisada e salva com nota ${analysis.nota_spin}.`);
+    console.log(`[SUCCESS] 🎉 Call ${callId} finalizada.`);
     return { success: true, status: "ANALYZED" };
 
   } catch (error: any) {
-    console.error(`[ERROR] Falha técnica na Call ${callId}:`, error.message);
+    console.error(`[ERROR] ${callId}:`, error.message);
     await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).set({
       ...basePayload,
       processingStatus: "FAILED_ANALYSIS",
