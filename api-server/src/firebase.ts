@@ -2,7 +2,7 @@ import { initializeApp as initializeAdminApp, getApps, cert } from 'firebase-adm
 import { getFirestore } from 'firebase-admin/firestore';
 import { createRequire } from 'node:module';
 
-const require = createRequire(import.meta.url);
+const require = createRequire(import.meta.url || `file://${process.cwd()}/`);
 
 // 🚩 O nome que você me passou
 const serviceAccount = require('./chave-firebase.json'); 
