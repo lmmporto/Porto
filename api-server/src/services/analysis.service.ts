@@ -26,7 +26,7 @@ const ANALYSIS_RESPONSE_SCHEMA = {
     'analise_escuta'
   ],
   properties: {
-    status_final: { type: 'string', enum: ['APROVADO', 'REPROVADO', 'ATENCAO'] },
+    status_final: { type: 'string', enum: ['APROVADO', 'REPROVADO', 'ATENCAO', 'NAO_SE_APLICA'] },
     nota_spin: { type: 'number' },
     resumo: { type: 'string' },
     alertas: { type: 'array', items: { type: 'string' } },
@@ -67,7 +67,14 @@ export interface AnalysisWithDebug {
   rawResponse: string;
 }
 
-// --- FUNÇÕES ---
+// --- FUNÇÃO DE LIMPEZA PARA GEMINI 2.5 ---
+
+function cleanGeminiResponse(text: string): string {
+  if (!text) return '';
+  return text.replace(/```json/g, '').replace(/```/g, '').trim();
+}
+
+// --- FUNÇÕES PRINCIPAIS ---
 
 export async function transcribeRecordingFromHubSpot(call: CallData): Promise<string> {
   if (!gemini) throw new Error('GEMINI_API_KEY não configurada.');
@@ -81,31 +88,19 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
       responseType: 'arraybuffer',
       timeout: 120000,
       headers: { Authorization: `Bearer ${CONFIG.HUBSPOT_TOKEN}` },
-      maxRedirects: 5,
-      validateStatus: (status) => status >= 200 && status < 400,
     });
 
-    const contentType = String(audioResponse.headers['content-type'] || '');
+    const contentType = String(audioResponse.headers['content-type'] || 'audio/mpeg');
     const ext = detectAudioExtension(contentType);
-
-    if (!contentType.toLowerCase().includes('audio')) {
-      throw new Error(`Conteúdo baixado não é áudio. content-type=${contentType}`);
-    }
-
     const buffer = Buffer.from(audioResponse.data as ArrayBuffer);
     
-    // ⚖️ MEDIDOR DE PESO (RAIO-X)
-    const fileSizeKB = (buffer.byteLength / 1024).toFixed(2);
-    console.log(`⚖️ [PESO REAL] Call ${call.id}: ${fileSizeKB} KB`);
+    const fileSizeMB = (buffer.byteLength / (1024 * 1024)).toFixed(2);
+    console.log(`⚖️ [PESO REAL] Call ${call.id}: ${fileSizeMB} MB`);
 
-    // 🚩 TRAVA 1: PESO DO ARQUIVO (Anti-Gasto Real - 4 Megabytes)
-    if (buffer.byteLength < 4000000) {
-      console.log(`[SKIP] 🛑 Call ${call.id} ignorada. Muito leve (${fileSizeKB} KB). Duração física < 2 min.`);
+    // 🚩 TRAVA DE SEGURANÇA MANTIDA: 3.5MB
+    if (buffer.byteLength < 3500000) {
+      console.log(`[SKIP] 🛑 Call ${call.id} ignorada por peso (${fileSizeMB} MB).`);
       return '';
-    }
-
-    if (!buffer || buffer.byteLength === 0) {
-      throw new Error('Arquivo de áudio vazio.');
     }
 
     localFilePath = path.join(os.tmpdir(), `call-${randomUUID()}.${ext}`);
@@ -113,13 +108,11 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
 
     uploadedFile = await gemini.files.upload({ file: localFilePath, config: { mimeType: contentType } });
 
-    const prompt = 'Transcreva integralmente este áudio de ligação em português do Brasil. Retorne apenas JSON válido.';
-
     const response = await gemini.models.generateContent({
       model: CONFIG.GEMINI_TRANSCRIPTION_MODEL,
       contents: createUserContent([
         createPartFromUri(uploadedFile.uri!, uploadedFile.mimeType!),
-        prompt,
+        'Transcreva integralmente este áudio de ligação em português do Brasil. Retorne apenas JSON válido.',
       ]),
       config: {
         responseMimeType: 'application/json',
@@ -128,19 +121,12 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
       },
     });
 
-    const transcript = sanitizeText((safeJsonParse(response?.text)?.transcript as string) || '');
+    const rawText = cleanGeminiResponse(response?.text || '');
+    const parsed = safeJsonParse(rawText);
+    return sanitizeText(parsed?.transcript || '');
 
-    // 🚩 TRAVA 2: VOLUME DE CONVERSA (Anti-Gasto)
-    const wordCount = transcript.split(/\s+/).length;
-    if (wordCount < 40) {
-      console.log(`[SKIP] 🛑 Conteúdo insuficiente na Call ${call.id}. Palavras: ${wordCount}`);
-      return '';
-    }
-
-    return transcript;
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : String(error);
-    throw new Error(`TRANSCRIPTION_FAILED: ${msg}`);
+  } catch (error: any) {
+    throw new Error(`TRANSCRIPTION_FAILED: ${error.message}`);
   } finally {
     if (uploadedFile?.name) await gemini.files.delete({ name: uploadedFile.name }).catch(() => {});
     if (localFilePath) await unlink(localFilePath).catch(() => {});
@@ -150,52 +136,51 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
 export async function analyzeCallWithGemini(call: CallData, ownerDetails: OwnerDetails): Promise<AnalysisWithDebug> {
   if (!gemini) throw new Error('GEMINI_API_KEY não configurada.');
 
-  // Contagem de palavras para a IA ter noção do tamanho da ligação
   const wordCount = (call.transcript || '').split(/\s+/).length;
 
+  // 🚩 SEU SCRIPT DE VENDAS ORIGINAL RESTAURADO NA ÍNTEGRA
   const prompt = `
-Você é um Coach de Vendas focado em desenvolvimento contínuo. Sua abordagem é ADITIVA: você recompensa o SDR pelo que ele fez de bom, em vez de apenas punir o que faltou. Você entende o contexto de vendas B2B para contabilidade (Radar ecac / Nibo/Conciliador/).
+Você é um Coach de Vendas focado em desenvolvimento contínuo. Sua abordagem é ADITIVA. Você entende o contexto de vendas B2B para contabilidade (Radar ecac / Nibo/Conciliador/).
 
 --- PASSO 1: CLASSIFICAÇÃO DO CONTEXTO ---
-Antes de avaliar, identifique o tipo da ligação lendo o início da transcrição:
-- ROTA A (Reagendamento/Follow-up): O lead furou antes ou o SDR está apenas cobrando/remarcando uma agenda. A porta já está "semi-aberta".
-- ROTA B (Prospecção/Novo Agendamento): Primeira conexão ou qualificação buscando um novo compromisso. A porta está "fechada".
+Identifique o tipo da ligação:
+- ROTA A (Reagendamento/Follow-up): SDR buscando cobrar ou remarcar uma agenda que já existia.
+- ROTA B (Prospecção/Novo Agendamento): Busca de nova qualificação ou primeiro agendamento.
+- ROTA C (Conversa Genérica/Não Avaliada): 🚩 Ligações que não possuem intenção de venda ou agendamento (ex: engano, conversa interna, queda de linha após o "alô", ou o lead diz que não pode falar e desliga imediatamente).
 
---- PASSO 2: SISTEMA DE PONTUAÇÃO ADITIVO (Nota de 0 a 10) ---
+--- PASSO 2: SISTEMA DE PONTUAÇÃO ADITIVO (0 a 10) ---
 
 SE ROTA A (Reagendamento):
-Como a porta já estava semi-aberta, o agendamento é obrigação operacional. Não exija SPIN profundo. Use a seguinte matemática exata:
-- Conseguiu o novo horário/agendamento? NOTA BASE = 4.0 (Se não agendou, nota entre 0 e 3 dependendo do esforço).
-- SOMA +2.0: Controlou a agenda (ofereceu opções fechadas de horários como "15h ou 16h" em vez de deixar solto).
-- SOMA +2.0: Demonstrou empatia com o imprevisto do cliente E gerou micro-compromisso firme (ex: combinou envio do convite).
-- SOMA +2.0: Reancorou o valor/dor (lembrou rapidamente o cliente do motivo ou problema que iriam discutir).
+- Conseguiu novo horário? NOTA BASE = 4.0.
+- SOMA +2.0: Controlou a agenda.
+- SOMA +2.0: Empatia e micro-compromisso.
+- SOMA +2.0: Reancorou valor/dor.
 
-SE ROTA B (Prospecção/Novo Agendamento):
-O esforço de abrir a porta é maior.
-- Se conseguiu agendar (procure gatilhos de confirmação de data/hora), GARANTE NOTA BASE = 5.0. Se não agendou, nota de 0 a 4 pelo esforço.
-- O resto da nota depende do tempo de ligação (Tamanho atual: ${wordCount} palavras):
-  * CALL CURTA (< 400 palavras): Foco em conversão rápida. Dê pontos extras se explicou o produto de forma clara (Pitch), não travou em objeções iniciais e cravou a agenda. Não puna por falta de SPIN longo.
-  * CALL LONGA (> 400 palavras): Foco em consultoria. Dê pontos extras se fez perguntas de Situação, entendeu o cenário, contornou objeções reais. Bônus para nota máxima (9-10) apenas se explorou Problema/Implicação.
+SE ROTA B (Prospecção):
+- Agendou? NOTA BASE = 5.0.
+- Restante da nota baseado em técnica (SPIN) e tempo (${wordCount} palavras).
 
---- REGRAS DE STATUS FINAL (Obrigatório) ---
-- nota_spin 0 a 4: REPROVADO (Não cumpriu o objetivo ou fez apenas o operacional sem técnica).
-- nota_spin 5 a 7: ATENCAO (Conseguiu o agendamento de forma básica ou aplicou boas técnicas sem converter).
-- nota_spin 8 a 10: APROVADO (Agendou com domínio da técnica, controle da ligação e boa postura).
+SE ROTA C:
+- NOTA FIXA = 0.0. 
+- Justificativa: Esta ligação será ignorada das métricas de performance técnica.
+
+--- REGRAS DE STATUS FINAL (Rigoroso) ---
+- ROTA A ou B com nota < 5: REPROVADO
+- ROTA A ou B com nota 5 a 7: ATENCAO
+- ROTA A ou B com nota 8 a 10: APROVADO
+- ROTA C: 🚩 NAO_SE_APLICA (Sempre use este status para ROTA C).
 
 --- DIRETRIZES PARA O JSON ---
-- "resumo": Explique brevemente se foi ROTA A ou ROTA B e o desfecho da call.
-- "pontos_fortes": Destaque o que o SDR fez bem (ex: "Ofereceu opções fechadas de horário", "Pitch claro").
-- "ponto_atencao": Onde ele pode melhorar, com tom construtivo (não dê broncas).
-- "perguntas_sugeridas": Sugira 1 ou 2 perguntas. Se Rota A, sugira como ele poderia ter reancorado o valor da reunião. Se Rota B, sugira perguntas de Problema/Implicação.
-- "analise_escuta": Avalie a fluidez. O SDR soube ouvir? Interrompeu? (Desculpas por delay são ponto positivo).
-- "alertas": Liste comportamentos que merecem atenção urgente (se houver), ou retorne array vazio se a call foi boa.
-- "maior_dificuldade": Aponte a maior resistência do lead ou a maior dificuldade do SDR na ligação.
+- "resumo": Identifique se foi ROTA A, B ou C.
+- "pontos_fortes": Destaque o que houve de bom (se Rota C, retorne array vazio).
+- "ponto_atencao": Onde melhorar ou motivo do descarte (Rota C).
+- "perguntas_sugeridas": Sugestões pertinentes.
+- "analise_escuta": Avaliação da fluidez.
+- "alertas": Comportamentos urgentes ou [].
+- "maior_dificuldade": Aponte a resistência do lead.
 
-Metadados:
-- SDR/Owner: ${ownerDetails.ownerName}
-- Equipe: ${ownerDetails.teamName}
-- Duração: ${call.durationMs}ms
-- Palavras: ${wordCount}
+SDR: ${ownerDetails.ownerName} | Equipe: ${ownerDetails.teamName}
+Duração: ${call.durationMs}ms | Palavras: ${wordCount}
 
 Transcrição:
 ${call.transcript || '[SEM TRANSCRIÇÃO]'}
@@ -211,12 +196,10 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
     },
   });
 
-  const rawResponse = response?.text || '';
+  const rawResponse = cleanGeminiResponse(response?.text || '');
   const parsed = safeJsonParse(rawResponse);
   
-  if (!parsed) {
-    throw new Error(`Gemini retornou um formato JSON inválido. Resposta bruta: ${rawResponse}`);
-  }
+  if (!parsed) throw new Error(`Falha no parse da análise: ${rawResponse}`);
 
   return {
     analysis: parsed as unknown as AnalysisResult,

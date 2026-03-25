@@ -26,8 +26,8 @@ export const CONFIG = {
   ALLOWED_EMAIL_DOMAIN: process.env.ALLOWED_EMAIL_DOMAIN || 'nibo.com.br',
   FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:3000',
 
-  GEMINI_ANALYSIS_MODEL: process.env.GEMINI_ANALYSIS_MODEL || 'gemini-1.5-flash',
-  GEMINI_TRANSCRIPTION_MODEL: process.env.GEMINI_TRANSCRIPTION_MODEL || 'gemini-1.5-flash',
+  GEMINI_ANALYSIS_MODEL: process.env.GEMINI_ANALYSIS_MODEL || 'gemini-2.5-flash',
+  GEMINI_TRANSCRIPTION_MODEL: process.env.GEMINI_TRANSCRIPTION_MODEL || 'gemini-2.5-flash',
 
   CALLS_COLLECTION: process.env.CALLS_COLLECTION || 'calls_analysis',
   MIN_DURATION_MS: Number(process.env.MIN_DURATION_MS || 120000),
