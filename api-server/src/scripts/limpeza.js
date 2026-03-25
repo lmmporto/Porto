@@ -1,4 +1,4 @@
-import { db } from "./src/firebase.js"; // Caminho ajustado para dentro de api-server
+import { db } from "../firebase.js"; // Caminho ajustado para dentro de api-server
 import { Timestamp } from "firebase-admin/firestore";
 
 async function faxinaGeralHistorica() {

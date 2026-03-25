@@ -1,4 +1,4 @@
-import { db } from "./src/firebase.js";
+import { db } from "../firebase.js";
 
 async function espiarSDR() {
   const nomeSDR = "Ana Julia Cecchin"; // Nome exato
