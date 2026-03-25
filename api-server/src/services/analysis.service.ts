@@ -154,7 +154,7 @@ export async function analyzeCallWithGemini(call: CallData, ownerDetails: OwnerD
   const wordCount = (call.transcript || '').split(/\s+/).length;
 
   const prompt = `
-Você é um Coach de Vendas focado em desenvolvimento contínuo. Sua abordagem é ADITIVA: você recompensa o SDR pelo que ele fez de bom, em vez de apenas punir o que faltou. Você entende o contexto de vendas B2B (Radar Ica / Nibo).
+Você é um Coach de Vendas focado em desenvolvimento contínuo. Sua abordagem é ADITIVA: você recompensa o SDR pelo que ele fez de bom, em vez de apenas punir o que faltou. Você entende o contexto de vendas B2B para contabilidade (Radar ecac / Nibo/Conciliador/).
 
 --- PASSO 1: CLASSIFICAÇÃO DO CONTEXTO ---
 Antes de avaliar, identifique o tipo da ligação lendo o início da transcrição:
