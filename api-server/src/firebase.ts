@@ -1,17 +1,20 @@
 import { initializeApp as initializeAdminApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { createRequire } from 'node:module';
 
-const require = createRequire(import.meta.url || `file://${process.cwd()}/`);
-
-// 🚩 O nome que você me passou
-const serviceAccount = require('./chave-firebase.json'); 
+// 🛑 AQUI ESTÁ O PULO DO GATO:
+// Pegamos a Secret que você já cadastrou no Render. 
+// Certifique-se de que o nome da variável no Render é exatamente FIREBASE_SERVICE_ACCOUNT
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || '{}');
 
 if (!getApps().length) {
-  initializeAdminApp({
-    credential: cert(serviceAccount)
-  });
-  console.log('✅ Conexão LOCAL ativada para o Resgate.');
+  if (!serviceAccount.project_id) {
+    console.error("❌ Erro: Variável FIREBASE_SERVICE_ACCOUNT não encontrada ou vazia!");
+  } else {
+    initializeAdminApp({
+      credential: cert(serviceAccount)
+    });
+    console.log('✅ Conexão com Firebase via Secret ativada!');
+  }
 }
 
 export const db = getFirestore();
