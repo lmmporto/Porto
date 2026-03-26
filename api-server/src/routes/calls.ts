@@ -139,11 +139,15 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const limit = Math.min(Number(req.query.limit || 3000), 5000);
+      const ownerNameParam = req.query.ownerName as string;
 
-      const snapshot = await db
-        .collection(CONFIG.CALLS_COLLECTION)
-        .limit(limit)
-        .get();
+      let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
+
+      if (ownerNameParam) {
+        query = query.where("ownerName", "==", ownerNameParam);
+      }
+
+      const snapshot = await query.limit(limit).get();
 
       const calls = snapshot.docs.map((doc) => {
         const data = doc.data();
