@@ -9,6 +9,10 @@ import { CONFIG } from '../config.js';
 import { sanitizeText, safeJsonParse, detectAudioExtension } from '../utils.js';
 import type { CallData, OwnerDetails } from './hubspot.js';
 
+// 🚩 ADICIONADO: Necessário para o Cofre de Saldos
+import { db } from '../firebase.js';
+import { FieldValue } from 'firebase-admin/firestore';
+
 // --- SCHEMAS ---
 
 const ANALYSIS_RESPONSE_SCHEMA = {
@@ -248,5 +252,40 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
       console.error('🚨 ALERTA: Cota esgotada na etapa de Análise IA!');
     }
     throw error;
+  }
+}
+
+/**
+ * 🚩 FUNÇÃO DO COFRE DE SALDOS
+ * Computa as métricas diárias e ranking de SDRs
+ */
+export async function updateDailyStats(callData: any, analysis: any) {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const statsRef = db.collection('dashboard_stats').doc(today);
+
+    const isRotaC = analysis.status_final === 'NAO_SE_APLICA';
+    const nota = Number(analysis.nota_spin || 0);
+    const sdrName = callData.ownerName || "Desconhecido";
+
+    await statsRef.set({
+      date: today,
+      updatedAt: FieldValue.serverTimestamp(),
+      total_calls: FieldValue.increment(1),
+      valid_calls: isRotaC ? FieldValue.increment(0) : FieldValue.increment(1),
+      sum_notes: isRotaC ? FieldValue.increment(0) : FieldValue.increment(nota),
+      count_aprovado: analysis.status_final === 'APROVADO' ? FieldValue.increment(1) : FieldValue.increment(0),
+      count_atencao: analysis.status_final === 'ATENCAO' ? FieldValue.increment(1) : FieldValue.increment(0),
+      count_reprovado: analysis.status_final === 'REPROVADO' ? FieldValue.increment(1) : FieldValue.increment(0),
+      
+      // Ranking por SDR
+      [`sdr_ranking.${sdrName}.total`]: FieldValue.increment(1),
+      [`sdr_ranking.${sdrName}.sum_notes`]: isRotaC ? FieldValue.increment(0) : FieldValue.increment(nota),
+      [`sdr_ranking.${sdrName}.valid_count`]: isRotaC ? FieldValue.increment(0) : FieldValue.increment(1),
+    }, { merge: true });
+
+    console.log(`📊 [COFRE] Saldo atualizado para ${sdrName}.`);
+  } catch (error) {
+    console.error("❌ [COFRE ERROR]:", error);
   }
 }

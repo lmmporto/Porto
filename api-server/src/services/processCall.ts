@@ -8,7 +8,11 @@ import {
   type CallData,
   type OwnerDetails,
 } from "./hubspot.js";
-import { transcribeRecordingFromHubSpot, analyzeCallWithGemini } from "./analysis.service.js";
+import { 
+  transcribeRecordingFromHubSpot, 
+  analyzeCallWithGemini,
+  updateDailyStats // ✅ Agora importado corretamente do arquivo de análise
+} from "./analysis.service.js";
 
 import type { SDRCall } from "../types.js";
 
@@ -37,7 +41,7 @@ export async function processCall(callId: string): Promise<any> {
   }
 
   // --- FILTRO 2: TEMPO MÍNIMO (1 MINUTO) ---
-  const DURATION_LIMIT = 60000; // 🚩 Alterado para 1 minuto conforme solicitado
+  const DURATION_LIMIT = 60000; 
   const duration = Number(call.durationMs || 0);
 
   const basePayload = {
@@ -50,7 +54,6 @@ export async function processCall(callId: string): Promise<any> {
     updatedAt: FieldValue.serverTimestamp(),
   };
 
-  // Se o HubSpot já reporta menos de 1 minuto, descartamos imediatamente para poupar processamento
   if (duration > 0 && duration < DURATION_LIMIT) {
     console.log(`[SKIP] 🛑 Call ${callId} muito curta (${duration/1000}s).`);
     await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).set({
@@ -89,6 +92,9 @@ export async function processCall(callId: string): Promise<any> {
 
     call.transcript = transcript;
     const { analysis, rawPrompt, rawResponse } = await analyzeCallWithGemini(call, owner);
+
+    // 🚩 COFRE DE SALDOS: Chama a função que você colocou no analysis.service
+    await updateDailyStats(basePayload, analysis);
 
     await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).set({
       ...basePayload,
