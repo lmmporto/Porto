@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { db } from '../firebase.js';
+import { firestore } from 'firebase-admin'; // <-- Adicionado aqui
 
 const router = Router();
 
@@ -18,10 +19,10 @@ router.get('/stats/summary', async (req, res) => {
     const end = endDate ? String(endDate).split('T')[0] : today;
 
     // 2. Busca no banco TODOS os documentos (dias) que estão dentro do período escolhido
-    // '__name__' é a forma do Firebase pesquisar pelo ID do documento (ex: "2026-03-26")
+    // Utilizando o FieldPath.documentId() de forma segura para o Firebase Admin
     const snapshot = await db.collection('dashboard_stats')
-      .where('__name__', '>=', start)
-      .where('__name__', '<=', end)
+      .where(firestore.FieldPath.documentId(), '>=', start) // <-- Alterado aqui
+      .where(firestore.FieldPath.documentId(), '<=', end)   // <-- Alterado aqui
       .get();
 
     // 3. Se não houver nenhum dado no período, retorna zerado para não quebrar a tela
@@ -95,5 +96,3 @@ router.get('/stats/summary', async (req, res) => {
 });
 
 export default router;
-//
-//
