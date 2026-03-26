@@ -101,13 +101,11 @@ async function hubspotWebhookHandler(req: Request, res: Response) {
   }
 }
 
-// --- ROTA DE DETALHE ÚNICO (GET /api/calls/:id) ---
-// 🚩 Adicionado /api para bater com a Vercel e corrigido erro de sintaxe
-router.get("/api/calls/:id", async (req: Request, res: Response, next: NextFunction) => {
+// --- ROTA DE DETALHE ÚNICO ---
+router.get("/calls/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params; 
     
-    // Garantimos que id existe para o TypeScript não reclamar
     if (!id) return res.status(400).json({ error: "ID ausente" });
 
     const doc = await db.collection(CONFIG.CALLS_COLLECTION).doc(String(id)).get();
@@ -135,10 +133,9 @@ router.get("/api/calls/:id", async (req: Request, res: Response, next: NextFunct
   }
 });
 
-// --- ROTA DE LISTAGEM (GET /api/calls) ---
-// 🚩 Adicionado /api para sincronia total
+// --- ROTA DE LISTAGEM ---
 router.get(
-  "/api/calls",
+  "/calls",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const limit = Math.min(Number(req.query.limit || 3000), 5000);
@@ -211,7 +208,7 @@ router.get(
   },
 );
 
-router.post("/api/test-call-ids", async (req, res, next) => {
+router.post("/test-call-ids", async (req, res, next) => {
   try {
     const ids = req.body?.ids;
     if (!Array.isArray(ids) || ids.length === 0) {
@@ -236,8 +233,8 @@ router.post("/api/test-call-ids", async (req, res, next) => {
   }
 });
 
-router.post("/api/hubspot-webhook", requireWebhookSecret, hubspotWebhookHandler);
-router.post("/api/analyze-call", requireAuth, analyzeCallHandler);
-router.post("/api/analyze-calls-search", requireAuth, analyzeCallsSearchHandler);
+router.post("/hubspot-webhook", requireWebhookSecret, hubspotWebhookHandler);
+router.post("/analyze-call", requireAuth, analyzeCallHandler);
+router.post("/analyze-calls-search", requireAuth, analyzeCallsSearchHandler);
 
 export default router;
