@@ -168,20 +168,11 @@ app.get('/api/debug-reprocess/:id', async (req: any, res: any) => {
 app.use('/api', router);
 
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
-  // LOG CRÍTICO: Isso fará o erro aparecer no painel do Render
   console.error('💥 [GLOBAL ERROR HANDLER]:', {
     message: err.message,
-    stack: err.stack,
     path: req.originalUrl,
-    method: req.method,
-    body: req.body
   });
-
-  res.status(500).json({ 
-    success: false, 
-    error: err.message,
-    path: req.originalUrl 
-  });
+  res.status(500).json({ success: false, error: err.message });
 });
 
 export default app;

@@ -5,7 +5,6 @@ import {
   type Response,
   type NextFunction,
 } from "express";
-import { firestore } from "firebase-admin"; // <-- Importação necessária para o Timestamp
 import { db } from "../firebase.js";
 import { CONFIG } from "../config.js";
 import { processCall } from "../services/processCall.js";
@@ -134,41 +133,24 @@ router.get("/calls/:id", async (req: Request, res: Response, next: NextFunction)
   }
 });
 
-// --- ROTA DE LISTAGEM OTIMIZADA ---
+// --- ROTA DE LISTAGEM ---
 router.get(
   "/calls",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      // 🚩 AJUSTE CRÍTICO DE MEMÓRIA (Reduzido para 50)
       const limit = Math.min(Number(req.query.limit || 50), 100); 
-      console.log(`[CALLS] Solicitando ${limit} chamadas do Firestore...`);
-      
       const ownerNameParam = req.query.ownerName as string;
-      const startDateParam = req.query.startDate as string;
-      const endDateParam = req.query.endDate as string;
+
+      console.log(`📞 [CALLS] Buscando ${limit} chamadas...`);
 
       let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
 
-      // Filtro de Owner
       if (ownerNameParam) {
         query = query.where("ownerName", "==", ownerNameParam);
       }
 
-      // Filtro de Data e Ordenação na BD
-      if (startDateParam && endDateParam) {
-        const startTimestamp = firestore.Timestamp.fromDate(new Date(startDateParam));
-        const endTimestamp = firestore.Timestamp.fromDate(new Date(endDateParam));
-        
-        query = query
-          .where("analyzedAt", ">=", startTimestamp)
-          .where("analyzedAt", "<=", endTimestamp);
-      }
-
-      // IMPORTANTE: Se fizermos um range filter (>=, <=) em "analyzedAt", 
-      // o Firestore exige que a primeira ordenação seja no mesmo campo.
-      query = query.orderBy("analyzedAt", "desc").limit(limit);
-
-      const snapshot = await query.get();
-      console.log(`[CALLS] ${snapshot.size} documentos recuperados. Iniciando mapeamento...`);
+      const snapshot = await query.limit(limit).get();
 
       const calls = snapshot.docs.map((doc) => {
         const data = doc.data();
@@ -201,20 +183,35 @@ router.get(
         };
       });
 
-      // (Opcional) Mantemos um sort em memória APENAS nos documentos retornados
-      // para garantir que as melhores notas apareçam primeiro no topo dessa página específica.
-      calls.sort((a, b) => {
+      const startDateParam = req.query.startDate as string;
+      const endDateParam = req.query.endDate as string;
+
+      let processedCalls = calls;
+
+      if (startDateParam && endDateParam) {
+        const start = new Date(startDateParam).getTime();
+        const end = new Date(endDateParam).getTime();
+        
+        processedCalls = calls.filter(call => {
+          const sec = call.updatedAt?._seconds || call.updatedAt?.seconds || (typeof call.updatedAt === 'number' ? call.updatedAt / 1000 : 0);
+          const callTimeMs = sec * 1000;
+          return callTimeMs >= start && callTimeMs <= end;
+        });
+      }
+
+      processedCalls.sort((a, b) => {
         const notaA = Number(a.nota_spin) || 0;
         const notaB = Number(b.nota_spin) || 0;
         if (notaB !== notaA) return notaB - notaA; 
-        return new Date(b.analyzedAt).getTime() - new Date(a.analyzedAt).getTime();
+        const secA = a.updatedAt?._seconds || a.updatedAt?.seconds || 0;
+        const secB = b.updatedAt?._seconds || b.updatedAt?.seconds || 0;
+        return secB - secA;
       });
 
-      console.log(`[CALLS] Envio de dados concluído com sucesso.`);
-      res.json(calls);
-    } catch (error: any) {
-      console.error("❌ [CRITICAL CALLS ERROR]:", error);
-      res.status(500).json({ error: error.message });
+      res.json(processedCalls);
+    } catch (error) {
+      console.error("❌ [CALLS LIST ERROR]:", error);
+      next(error);
     }
   },
 );
