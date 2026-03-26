@@ -67,23 +67,31 @@ export interface AnalysisWithDebug {
   rawResponse: string;
 }
 
-// --- FUNÇÃO DE LIMPEZA PARA GEMINI 2.5 ---
+// --- FUNÇÃO DE LIMPEZA PARA MODELOS MODERNOS (Gemini 2.5/3) ---
 
 function cleanGeminiResponse(text: string): string {
   if (!text) return '';
-  return text.replace(/```json/g, '').replace(/```/g, '').trim();
+  const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
+  return cleaned;
 }
 
 // --- FUNÇÕES PRINCIPAIS ---
 
 export async function transcribeRecordingFromHubSpot(call: CallData): Promise<string> {
-  if (!gemini) throw new Error('GEMINI_API_KEY não configurada.');
-  if (!call?.recordingUrl) return '';
+  if (!gemini) throw new Error('GEMINI_API_KEY não configurada no cliente.');
+  if (!call?.recordingUrl) {
+    console.warn(`[TRANSCRIPTION] Call ${call.id} sem URL de gravação.`);
+    return '';
+  }
+
+  console.log(`\n--- 🎙️ INICIANDO TRANSCRIÇÃO (Call: ${call.id}) ---`);
+  console.log(`[MODELO] Usando: ${CONFIG.GEMINI_TRANSCRIPTION_MODEL}`);
 
   let localFilePath = '';
   let uploadedFile: { name?: string; uri?: string; mimeType?: string } | null = null;
 
   try {
+    console.log(`[STEP 1] Baixando áudio do HubSpot...`);
     const audioResponse = await axios.get(call.recordingUrl, {
       responseType: 'arraybuffer',
       timeout: 120000,
@@ -95,19 +103,26 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
     const buffer = Buffer.from(audioResponse.data as ArrayBuffer);
     
     const fileSizeMB = (buffer.byteLength / (1024 * 1024)).toFixed(2);
-    console.log(`⚖️ [PESO REAL] Call ${call.id}: ${fileSizeMB} MB`);
+    console.log(`[STEP 2] Peso do arquivo: ${fileSizeMB} MB`);
 
-    // 🚩 TRAVA DE SEGURANÇA MANTIDA: 3.5MB
+    // 🚩 TRAVA DE SEGURANÇA: 3.5MB
     if (buffer.byteLength < 3500000) {
-      console.log(`[SKIP] 🛑 Call ${call.id} ignorada por peso (${fileSizeMB} MB).`);
+      console.log(`[SKIP] 🛑 Call ${call.id} ignorada: Abaixo do limite de 3.5MB.`);
       return '';
     }
 
     localFilePath = path.join(os.tmpdir(), `call-${randomUUID()}.${ext}`);
     await writeFile(localFilePath, buffer);
+    console.log(`[STEP 3] Arquivo temporário criado: ${localFilePath}`);
 
-    uploadedFile = await gemini.files.upload({ file: localFilePath, config: { mimeType: contentType } });
+    console.log(`[STEP 4] Fazendo upload para Google Media Service...`);
+    uploadedFile = await gemini.files.upload({ 
+      file: localFilePath, 
+      config: { mimeType: contentType } 
+    });
+    console.log(`[STEP 4 - OK] File URI: ${uploadedFile.uri}`);
 
+    console.log(`[STEP 5] Chamando Gemini para transcrição...`);
     const response = await gemini.models.generateContent({
       model: CONFIG.GEMINI_TRANSCRIPTION_MODEL,
       contents: createUserContent([
@@ -123,22 +138,37 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
 
     const rawText = cleanGeminiResponse(response?.text || '');
     const parsed = safeJsonParse(rawText);
-    return sanitizeText(parsed?.transcript || '');
+    const transcript = sanitizeText(parsed?.transcript || '');
+
+    console.log(`[STEP 5 - OK] Transcrição concluída. Palavras: ${transcript.split(/\s+/).length}`);
+    return transcript;
 
   } catch (error: any) {
-    throw new Error(`TRANSCRIPTION_FAILED: ${error.message}`);
+    console.error(`[TRANSCRIPTION ERROR] Falha na Call ${call.id}:`, error.message);
+    if (error.message.includes('8 RESOURCE_EXHAUSTED')) {
+      console.error('🚨 ALERTA: Cota do Google esgotada nesta etapa (Transcrição)!');
+    }
+    throw error;
   } finally {
-    if (uploadedFile?.name) await gemini.files.delete({ name: uploadedFile.name }).catch(() => {});
-    if (localFilePath) await unlink(localFilePath).catch(() => {});
+    if (uploadedFile?.name) {
+      await gemini.files.delete({ name: uploadedFile.name }).catch(() => {});
+      console.log(`[CLEANUP] Arquivo deletado do Google Media.`);
+    }
+    if (localFilePath) {
+      await unlink(localFilePath).catch(() => {});
+      console.log(`[CLEANUP] Arquivo temporário local removido.`);
+    }
   }
 }
 
 export async function analyzeCallWithGemini(call: CallData, ownerDetails: OwnerDetails): Promise<AnalysisWithDebug> {
   if (!gemini) throw new Error('GEMINI_API_KEY não configurada.');
 
+  console.log(`\n--- 🧠 INICIANDO ANÁLISE IA (Call: ${call.id}) ---`);
+  console.log(`[MODELO] Usando: ${CONFIG.GEMINI_ANALYSIS_MODEL}`);
+
   const wordCount = (call.transcript || '').split(/\s+/).length;
 
-  // 🚩 SEU SCRIPT DE VENDAS ORIGINAL RESTAURADO NA ÍNTEGRA
   const prompt = `
 Você é um Coach de Vendas focado em desenvolvimento contínuo. Sua abordagem é ADITIVA. Você entende o contexto de vendas B2B para contabilidade (Radar ecac / Nibo/Conciliador/).
 
@@ -186,24 +216,37 @@ Transcrição:
 ${call.transcript || '[SEM TRANSCRIÇÃO]'}
   `.trim();
 
-  const response = await gemini.models.generateContent({
-    model: CONFIG.GEMINI_ANALYSIS_MODEL,
-    contents: prompt,
-    config: {
-      responseMimeType: 'application/json',
-      responseJsonSchema: ANALYSIS_RESPONSE_SCHEMA,
-      temperature: 0.3, 
-    },
-  });
+  try {
+    console.log(`[STEP 1] Enviando Prompt para o Gemini (${wordCount} palavras)...`);
+    const response = await gemini.models.generateContent({
+      model: CONFIG.GEMINI_ANALYSIS_MODEL,
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseJsonSchema: ANALYSIS_RESPONSE_SCHEMA,
+        temperature: 0.3, 
+      },
+    });
 
-  const rawResponse = cleanGeminiResponse(response?.text || '');
-  const parsed = safeJsonParse(rawResponse);
-  
-  if (!parsed) throw new Error(`Falha no parse da análise: ${rawResponse}`);
+    const rawResponse = cleanGeminiResponse(response?.text || '');
+    console.log(`[STEP 2] Resposta bruta recebida da IA.`);
+    
+    const parsed = safeJsonParse(rawResponse);
+    if (!parsed) throw new Error(`Falha crítica no parse JSON: ${rawResponse}`);
 
-  return {
-    analysis: parsed as unknown as AnalysisResult,
-    rawPrompt: prompt,
-    rawResponse: rawResponse
-  };
+    console.log(`[STEP 3] Análise finalizada. Status: ${parsed.status_final}`);
+
+    return {
+      analysis: parsed as unknown as AnalysisResult,
+      rawPrompt: prompt,
+      rawResponse: rawResponse
+    };
+
+  } catch (error: any) {
+    console.error(`[ANALYSIS ERROR] Falha na Call ${call.id}:`, error.message);
+    if (error.message.includes('8 RESOURCE_EXHAUSTED')) {
+      console.error('🚨 ALERTA: Cota esgotada na etapa de Análise IA!');
+    }
+    throw error;
+  }
 }
