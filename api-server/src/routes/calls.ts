@@ -101,15 +101,48 @@ async function hubspotWebhookHandler(req: Request, res: Response) {
   }
 }
 
-// --- ROTA PRINCIPAL (GET /calls) ---
+// --- ROTA DE DETALHE ÚNICO (GET /api/calls/:id) ---
+// 🚩 Adicionado /api para bater com a Vercel e corrigido erro de sintaxe
+router.get("/api/calls/:id", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params; 
+    
+    // Garantimos que id existe para o TypeScript não reclamar
+    if (!id) return res.status(400).json({ error: "ID ausente" });
 
+    const doc = await db.collection(CONFIG.CALLS_COLLECTION).doc(String(id)).get();
+
+    if (!doc.exists) {
+      return res.status(404).json({ success: false, error: "Análise não encontrada no banco" });
+    }
+
+    const data = doc.data() || {};
+    const timestamp = data.updatedAt || data.analyzedAt || data.createdAt;
+    const isoDate = timestamp && typeof timestamp.toDate === 'function' 
+      ? timestamp.toDate().toISOString() 
+      : new Date().toISOString();
+
+    res.json({
+      id: doc.id,
+      ...data,
+      updatedAt: data.updatedAt || data.analyzedAt || data.createdAt || { _seconds: Math.floor(Date.now() / 1000) },
+      analyzedAt: isoDate,
+      nota_spin: data.nota_spin !== undefined ? Number(data.nota_spin) : 0,
+      status_final: data.status_final || "NAO_IDENTIFICADO"
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// --- ROTA DE LISTAGEM (GET /api/calls) ---
+// 🚩 Adicionado /api para sincronia total
 router.get(
-  "/calls",
+  "/api/calls",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const limit = Math.min(Number(req.query.limit || 3000), 5000);
 
-      // 🚩 PONTO DE ATENÇÃO: Sem .orderBy no banco para evitar que documentos incompletos sumam
       const snapshot = await db
         .collection(CONFIG.CALLS_COLLECTION)
         .limit(limit)
@@ -117,8 +150,6 @@ router.get(
 
       const calls = snapshot.docs.map((doc) => {
         const data = doc.data();
-        
-        // 🚩 LÓGICA DE DATA: Fallback em cascata para garantir que sempre haja um timestamp
         const timestamp = data.updatedAt || data.analyzedAt || data.createdAt;
         const isoDate = timestamp && typeof timestamp.toDate === 'function' 
           ? timestamp.toDate().toISOString() 
@@ -136,14 +167,10 @@ router.get(
           durationMs: Number(data.durationMs || 0),
           recordingUrl: data.recordingUrl || null,
           processingStatus: data.processingStatus || "UNKNOWN",
-          
-          // 🚩 Fallback para o filtro de tempo do Front-end (evita 1970/sumiço)
           updatedAt: data.updatedAt || data.analyzedAt || data.createdAt || { _seconds: Math.floor(Date.now() / 1000) },
-          
           analyzedAt: isoDate, 
           status_final: data.status_final || "NAO_IDENTIFICADO",
           nota_spin: data.nota_spin !== undefined ? Number(data.nota_spin) : 0,
-          
           resumo: data.resumo || "Sem análise detalhada disponível.",
           alertas: Array.isArray(data.alertas) ? data.alertas : [],
           ponto_atencao: data.ponto_atencao || "N/A",
@@ -152,37 +179,26 @@ router.get(
         };
       });
 
-      // 🚩 1. FILTRO DE DATA NO BACK-END (Recebe os limites do Front-end)
       const startDateParam = req.query.startDate as string;
       const endDateParam = req.query.endDate as string;
 
       let processedCalls = calls;
 
       if (startDateParam && endDateParam) {
-        // Converte as datas exatas (ex: "2026-03-24") para milissegundos matemáticos
         const start = new Date(startDateParam).getTime();
         const end = new Date(endDateParam).getTime();
         
         processedCalls = calls.filter(call => {
           const sec = call.updatedAt?._seconds || call.updatedAt?.seconds || (typeof call.updatedAt === 'number' ? call.updatedAt / 1000 : 0);
           const callTimeMs = sec * 1000;
-          
-          // Mantém na caixa apenas o que o usuário pediu para ver
           return callTimeMs >= start && callTimeMs <= end;
         });
       }
 
-      // 🚩 2. NOVA ORDENAÇÃO PREDOMINANTE: Maior Nota primeiro (Melhor para a Pior)
       processedCalls.sort((a, b) => {
         const notaA = Number(a.nota_spin) || 0;
         const notaB = Number(b.nota_spin) || 0;
-        
-        // Se as notas forem diferentes, o maior ganha
-        if (notaB !== notaA) {
-          return notaB - notaA; 
-        }
-        
-        // Critério de desempate (mesma nota): A mais recente fica em cima
+        if (notaB !== notaA) return notaB - notaA; 
         const secA = a.updatedAt?._seconds || a.updatedAt?.seconds || 0;
         const secB = b.updatedAt?._seconds || b.updatedAt?.seconds || 0;
         return secB - secA;
@@ -190,13 +206,12 @@ router.get(
 
       res.json(processedCalls);
     } catch (error) {
-      console.error("Erro na API /calls:", error);
       next(error);
     }
   },
 );
 
-router.post("/test-call-ids", async (req, res, next) => {
+router.post("/api/test-call-ids", async (req, res, next) => {
   try {
     const ids = req.body?.ids;
     if (!Array.isArray(ids) || ids.length === 0) {
@@ -221,41 +236,8 @@ router.post("/test-call-ids", async (req, res, next) => {
   }
 });
 
-router.post("/hubspot-webhook", requireWebhookSecret, hubspotWebhookHandler);
-router.post("/analyze-call", requireAuth, analyzeCallHandler);
-router.post("/analyze-calls-search", requireAuth, analyzeCallsSearchHandler);
-// 🔍 ROTA DE AUDITORIA: Acesse /api/debug/sdr-stats para validar os números
-router.get("/debug/sdr-stats", async (req: Request, res: Response) => {
-  try {
-    const snapshot = await db.collection(CONFIG.CALLS_COLLECTION).get();
-    const stats: Record<string, any> = {};
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+router.post("/api/hubspot-webhook", requireWebhookSecret, hubspotWebhookHandler);
+router.post("/api/analyze-call", requireAuth, analyzeCallHandler);
+router.post("/api/analyze-calls-search", requireAuth, analyzeCallsSearchHandler);
 
-    snapshot.docs.forEach(doc => {
-      const data = doc.data();
-      const name = data.ownerName || "SDR_DESCONHECIDO";
-      
-      const ts = data.updatedAt?._seconds || data.analyzedAt?._seconds || data.createdAt?._seconds || 0;
-      const callTimeMs = ts * 1000;
-      const isToday = callTimeMs >= startOfToday;
-
-      if (!stats[name]) {
-        stats[name] = { total_geral_no_banco: 0, tentativas_hoje: 0, analises_com_sucesso: 0, analises_puladas: 0 };
-      }
-
-      stats[name].total_geral_no_banco += 1;
-      if (isToday) stats[name].tentativas_hoje += 1;
-      if (data.processingStatus === "DONE") stats[name].analises_com_sucesso += 1;
-      else if (data.processingStatus === "SKIPPED_FOR_AUDIT") stats[name].analises_puladas += 1;
-    });
-
-    res.json({
-      timestamp_consulta: now.toLocaleString('pt-BR'),
-      sdr_metrics: stats
-    });
-  } catch (error) {
-    res.status(500).json({ error: "Falha na auditoria", details: String(error) });
-  }
-});
 export default router;
