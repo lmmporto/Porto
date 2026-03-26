@@ -139,8 +139,9 @@ router.get(
   "/calls",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      // 🚩 Limite reduzido para 50 (máximo 100)
       const limit = Math.min(Number(req.query.limit || 50), 100); 
+      console.log(`[CALLS] Solicitando ${limit} chamadas do Firestore...`);
+      
       const ownerNameParam = req.query.ownerName as string;
       const startDateParam = req.query.startDate as string;
       const endDateParam = req.query.endDate as string;
@@ -167,6 +168,7 @@ router.get(
       query = query.orderBy("analyzedAt", "desc").limit(limit);
 
       const snapshot = await query.get();
+      console.log(`[CALLS] ${snapshot.size} documentos recuperados. Iniciando mapeamento...`);
 
       const calls = snapshot.docs.map((doc) => {
         const data = doc.data();
@@ -208,11 +210,11 @@ router.get(
         return new Date(b.analyzedAt).getTime() - new Date(a.analyzedAt).getTime();
       });
 
+      console.log(`[CALLS] Envio de dados concluído com sucesso.`);
       res.json(calls);
-    } catch (error) {
-      // 🚩 Log explícito adicionado aqui para capturar o erro no Render
-      console.error("❌ [CALLS LIST ERROR]:", error);
-      next(error);
+    } catch (error: any) {
+      console.error("❌ [CRITICAL CALLS ERROR]:", error);
+      res.status(500).json({ error: error.message });
     }
   },
 );

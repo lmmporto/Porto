@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { db } from '../firebase.js';
-import { FieldPath } from 'firebase-admin/firestore'; // 🚩 Nova importação direta
+import { FieldPath } from 'firebase-admin/firestore'; // Importação necessária
 
 const router = Router();
 
@@ -17,12 +17,16 @@ router.get('/stats/summary', async (req, res) => {
     const start = startDate ? String(startDate).split('T')[0] : today;
     const end = endDate ? String(endDate).split('T')[0] : today;
 
+    console.log(`[STATS] Iniciando busca: ${start} até ${end}`);
+
     // 2. Busca no banco TODOS os documentos (dias) que estão dentro do período escolhido
-    // 🚩 Usando a nova importação do FieldPath
+    // Uso do FieldPath.documentId() para evitar erro de sintaxe no Node.js
     const snapshot = await db.collection('dashboard_stats')
       .where(FieldPath.documentId(), '>=', start)
       .where(FieldPath.documentId(), '<=', end)
       .get();
+
+    console.log(`[STATS] Documentos encontrados: ${snapshot.size}`);
 
     // 3. Se não houver nenhum dado no período, retorna zerado para não quebrar a tela
     if (snapshot.empty) {
@@ -86,12 +90,8 @@ router.get('/stats/summary', async (req, res) => {
     });
 
   } catch (error: any) {
-    // 🚩 ISSO FARÁ O ERRO INTEIRO APARECER NOS LOGS DO RENDER, NÃO APENAS A MENSAGEM
-    console.error("❌ [STATS ERROR]:", error); 
-    return res.status(500).json({ 
-      error: "Erro interno ao buscar resumo das métricas",
-      details: error.message || String(error)
-    });
+    console.error("❌ [CRITICAL STATS ERROR]:", error); // Log detalhado para o Render
+    return res.status(500).json({ error: error.message, stack: error.stack });
   }
 });
 

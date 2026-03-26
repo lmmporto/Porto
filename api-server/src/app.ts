@@ -41,7 +41,7 @@ app.use((req: Request, _res: Response, next: NextFunction) => {
   next();
 });
 
-// Verificação de variáveis de ambiente (mantido conforme seu original)
+// Verificação de variáveis de ambiente
 if (!CONFIG.SESSION_SECRET || !CONFIG.GOOGLE_CLIENT_ID || !CONFIG.GOOGLE_CLIENT_SECRET || !CONFIG.GOOGLE_CALLBACK_URL || !CONFIG.ALLOWED_EMAIL_DOMAIN || !CONFIG.FRONTEND_URL) {
   throw new Error('Variáveis de ambiente de configuração (Auth/URL) faltando.');
 }
@@ -167,9 +167,21 @@ app.get('/api/debug-reprocess/:id', async (req: any, res: any) => {
 
 app.use('/api', router);
 
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('[ERROR]', err.message);
-  res.status(500).json({ success: false, error: err.message });
+app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
+  // LOG CRÍTICO: Isso fará o erro aparecer no painel do Render
+  console.error('💥 [GLOBAL ERROR HANDLER]:', {
+    message: err.message,
+    stack: err.stack,
+    path: req.originalUrl,
+    method: req.method,
+    body: req.body
+  });
+
+  res.status(500).json({ 
+    success: false, 
+    error: err.message,
+    path: req.originalUrl 
+  });
 });
 
 export default app;
