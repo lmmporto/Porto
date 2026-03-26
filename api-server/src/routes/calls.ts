@@ -139,8 +139,8 @@ router.get(
   "/calls",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      // Limite sensato para paginação/feed (ex: 100)
-      const limit = Math.min(Number(req.query.limit || 100), 100); 
+      // 🚩 Limite reduzido para 50 (máximo 100)
+      const limit = Math.min(Number(req.query.limit || 50), 100); 
       const ownerNameParam = req.query.ownerName as string;
       const startDateParam = req.query.startDate as string;
       const endDateParam = req.query.endDate as string;
@@ -199,7 +199,7 @@ router.get(
         };
       });
 
-      // (Opcional) Mantemos um sort em memória APENAS nos 100 documentos retornados
+      // (Opcional) Mantemos um sort em memória APENAS nos documentos retornados
       // para garantir que as melhores notas apareçam primeiro no topo dessa página específica.
       calls.sort((a, b) => {
         const notaA = Number(a.nota_spin) || 0;
@@ -210,6 +210,8 @@ router.get(
 
       res.json(calls);
     } catch (error) {
+      // 🚩 Log explícito adicionado aqui para capturar o erro no Render
+      console.error("❌ [CALLS LIST ERROR]:", error);
       next(error);
     }
   },

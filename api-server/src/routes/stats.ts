@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { db } from '../firebase.js';
-import { firestore } from 'firebase-admin'; // <-- Adicionado aqui
+import { FieldPath } from 'firebase-admin/firestore'; // 🚩 Nova importação direta
 
 const router = Router();
 
@@ -13,16 +13,15 @@ router.get('/stats/summary', async (req, res) => {
     const { startDate, endDate } = req.query;
 
     // 1. Define as datas. Se o Front não enviar nada, o padrão é "hoje".
-    // Extraímos apenas a parte "YYYY-MM-DD" para bater com o ID do seu Firestore
     const today = new Date().toISOString().split('T')[0];
     const start = startDate ? String(startDate).split('T')[0] : today;
     const end = endDate ? String(endDate).split('T')[0] : today;
 
     // 2. Busca no banco TODOS os documentos (dias) que estão dentro do período escolhido
-    // Utilizando o FieldPath.documentId() de forma segura para o Firebase Admin
+    // 🚩 Usando a nova importação do FieldPath
     const snapshot = await db.collection('dashboard_stats')
-      .where(firestore.FieldPath.documentId(), '>=', start) // <-- Alterado aqui
-      .where(firestore.FieldPath.documentId(), '<=', end)   // <-- Alterado aqui
+      .where(FieldPath.documentId(), '>=', start)
+      .where(FieldPath.documentId(), '<=', end)
       .get();
 
     // 3. Se não houver nenhum dado no período, retorna zerado para não quebrar a tela
@@ -52,7 +51,7 @@ router.get('/stats/summary', async (req, res) => {
       valid_calls += Number(data.valid_calls || 0);
       sum_notes += Number(data.sum_notes || 0);
 
-      // Agrega os dados do Ranking de SDRs (Soma os resultados de cada um)
+      // Agrega os dados do Ranking de SDRs
       if (data.sdr_ranking) {
         for (const [sdrName, stats] of Object.entries(data.sdr_ranking)) {
           if (!sdr_ranking[sdrName]) {
@@ -77,7 +76,7 @@ router.get('/stats/summary', async (req, res) => {
     // 6. Calcula a média geral da operação para o período
     const mediaGeral = valid_calls > 0 ? (sum_notes / valid_calls) : 0;
 
-    // 7. Retorna o resumão final pronto para o Dashboard
+    // 7. Retorna o resumão final
     return res.json({
       total_calls,
       valid_calls,
@@ -87,10 +86,11 @@ router.get('/stats/summary', async (req, res) => {
     });
 
   } catch (error: any) {
-    console.error("❌ [STATS ERROR]:", error.message);
+    // 🚩 ISSO FARÁ O ERRO INTEIRO APARECER NOS LOGS DO RENDER, NÃO APENAS A MENSAGEM
+    console.error("❌ [STATS ERROR]:", error); 
     return res.status(500).json({ 
       error: "Erro interno ao buscar resumo das métricas",
-      details: error.message 
+      details: error.message || String(error)
     });
   }
 });
