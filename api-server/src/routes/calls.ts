@@ -12,6 +12,7 @@ import { processCall } from "../services/processCall.js";
 import { searchCallsInHubSpot } from "../services/hubspot.js";
 
 const router: IRouter = Router();
+const BRAZIL_TIMEZONE = "America/Sao_Paulo";
 
 function requireWebhookSecret(req: Request, res: Response, next: NextFunction) {
   const headerSecret = req.headers["x-webhook-secret"];
@@ -111,7 +112,6 @@ router.get("/calls", async (req: Request, res: Response, next: NextFunction) => 
         query = query.where("ownerName", "==", ownerNameParam);
       }
 
-      // Ajuste de Data conforme sugerido
       if (startDateParam && endDateParam) {
         const start = new Date(startDateParam);
         const end = new Date(endDateParam);
@@ -126,7 +126,6 @@ router.get("/calls", async (req: Request, res: Response, next: NextFunction) => 
             .where("updatedAt", "<=", admin.firestore.Timestamp.fromDate(end));
       }
 
-      // Ordenação no Banco (Exige índice composto se houver filtros where simultâneos)
       query = query.orderBy("updatedAt", "desc");
 
       const snapshot = await query.limit(limit).get();
@@ -167,6 +166,32 @@ router.get("/calls", async (req: Request, res: Response, next: NextFunction) => 
     }
   }
 );
+
+router.get('/stats/summary', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { startDate, endDate } = req.query;
+
+    const nowInBrazil = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: BRAZIL_TIMEZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+
+    const brDate = nowInBrazil.split('/').reverse().join('-');
+
+    console.log(`[DEBUG - STATS_SUMMARY] brDate calculado: ${brDate}`);
+
+    const start = startDate ? String(startDate).split('T')[0] : brDate;
+    const end = endDate ? String(endDate).split('T')[0] : brDate;
+
+    console.log(`[DEBUG - STATS_SUMMARY] Querying from Firestore: start=${start}, end=${end}`);
+    
+    res.json({ success: true, period: { start, end } });
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.post("/test-call-ids", async (req, res, next) => {
   res.json({ success: true, processed: [] });
