@@ -9,7 +9,7 @@ import { CONFIG } from '../config.js';
 import { sanitizeText, safeJsonParse, detectAudioExtension } from '../utils.js';
 import type { CallData, OwnerDetails } from './hubspot.js';
 
-// 🚩 ADICIONADO: Necessário para o Cofre de Saldos
+// Necessário para o Cofre de Saldos
 import { db } from '../firebase.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
@@ -31,7 +31,7 @@ const ANALYSIS_RESPONSE_SCHEMA = {
   ],
   properties: {
     status_final: { type: 'string', enum: ['APROVADO', 'REPROVADO', 'ATENCAO', 'NAO_SE_APLICA'] },
-    nota_spin: { type: 'number' },
+    nota_spin: { type: ['number', 'null'] }, 
     resumo: { type: 'string' },
     alertas: { type: 'array', items: { type: 'string' } },
     ponto_atencao: { type: 'string' },
@@ -55,7 +55,7 @@ const TRANSCRIPTION_RESPONSE_SCHEMA = {
 
 export interface AnalysisResult {
   status_final: string;
-  nota_spin: number;
+  nota_spin: number | null;
   resumo: string;
   alertas: string[];
   ponto_atencao: string;
@@ -109,9 +109,9 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
     const fileSizeMB = (buffer.byteLength / (1024 * 1024)).toFixed(2);
     console.log(`[STEP 2] Peso do arquivo: ${fileSizeMB} MB`);
 
-    // 🚩 TRAVA DE SEGURANÇA: 3.5MB
+    // TRAVA DE SEGURANÇA: 3.5MB
     if (buffer.byteLength < 3500000) {
-      console.log(`[SKIP] 🛑 Call ${call.id} ignorada: Abaixo do limite de 3.5MB.`);
+      console.log(`[SKIP] 🛑 Call ${call.id} ignorada: Abaixo do limite mínimo de 3.5MB.`);
       return '';
     }
 
@@ -173,6 +173,7 @@ export async function analyzeCallWithGemini(call: CallData, ownerDetails: OwnerD
 
   const wordCount = (call.transcript || '').split(/\s+/).length;
 
+  // 🚩 CORREÇÃO DE SINTAXE NO PROMPT: Sem o uso da palavra reservada null com crases.
   const prompt = `
 Você é um Coach de Vendas focado em desenvolvimento contínuo. Sua abordagem é ADITIVA. Você entende o contexto de vendas B2B para contabilidade (Radar ecac / Nibo/Conciliador/).
 
@@ -195,8 +196,8 @@ SE ROTA B (Prospecção):
 - Restante da nota baseado em técnica (SPIN) e tempo (${wordCount} palavras).
 
 SE ROTA C:
-- NOTA FIXA = 0.0. 
-- Justificativa: Esta ligação será ignorada das métricas de performance técnica.
+- NOTA TÉCNICA = 0.
+- Justificativa: Esta ligação é um descarte operacional e não deve compor a média de performance do SDR.
 
 --- REGRAS DE STATUS FINAL (Rigoroso) ---
 - ROTA A ou B com nota < 5: REPROVADO
@@ -238,6 +239,11 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
     const parsed = safeJsonParse(rawResponse);
     if (!parsed) throw new Error(`Falha crítica no parse JSON: ${rawResponse}`);
 
+    // 🚩 LÓGICA SÊNIOR DE LIMPEZA: Garante que Rota C vá para o banco como nulo
+    if (parsed.status_final === 'NAO_SE_APLICA') {
+      parsed.nota_spin = null;
+    }
+
     console.log(`[STEP 3] Análise finalizada. Status: ${parsed.status_final}`);
 
     return {
@@ -256,35 +262,42 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
 }
 
 /**
- * 🚩 FUNÇÃO DO COFRE DE SALDOS
- * Computa as métricas diárias e ranking de SDRs
+ * FUNÇÃO DO COFRE DE SALDOS REVISADA
+ * Computa as métricas diárias e ranking de SDRs, filtrando chamadas descartadas.
  */
-export async function updateDailyStats(callData: any, analysis: any) {
+export async function updateDailyStats(callData: any, analysis: AnalysisResult) {
   try {
     const today = new Date().toISOString().split('T')[0];
     const statsRef = db.collection('dashboard_stats').doc(today);
 
-    const isRotaC = analysis.status_final === 'NAO_SE_APLICA';
-    const nota = Number(analysis.nota_spin || 0);
+    // Só é válida para média se não for descarte e a nota existir (>0)
+    const notaNumerica = typeof analysis.nota_spin === 'number' ? analysis.nota_spin : 0;
+    const isValidaParaMedia = analysis.status_final !== 'NAO_SE_APLICA' && notaNumerica > 0;
+    
+    const notaParaSoma = isValidaParaMedia ? notaNumerica : 0;
     const sdrName = callData.ownerName || "Desconhecido";
 
-    await statsRef.set({
+    const updatePayload: any = {
       date: today,
       updatedAt: FieldValue.serverTimestamp(),
-      total_calls: FieldValue.increment(1),
-      valid_calls: isRotaC ? FieldValue.increment(0) : FieldValue.increment(1),
-      sum_notes: isRotaC ? FieldValue.increment(0) : FieldValue.increment(nota),
+      total_calls: FieldValue.increment(1), 
+      
+      valid_calls: isValidaParaMedia ? FieldValue.increment(1) : FieldValue.increment(0),
+      sum_notes: isValidaParaMedia ? FieldValue.increment(notaParaSoma) : FieldValue.increment(0),
+      
       count_aprovado: analysis.status_final === 'APROVADO' ? FieldValue.increment(1) : FieldValue.increment(0),
       count_atencao: analysis.status_final === 'ATENCAO' ? FieldValue.increment(1) : FieldValue.increment(0),
       count_reprovado: analysis.status_final === 'REPROVADO' ? FieldValue.increment(1) : FieldValue.increment(0),
-      
-      // Ranking por SDR
-      [`sdr_ranking.${sdrName}.total`]: FieldValue.increment(1),
-      [`sdr_ranking.${sdrName}.sum_notes`]: isRotaC ? FieldValue.increment(0) : FieldValue.increment(nota),
-      [`sdr_ranking.${sdrName}.valid_count`]: isRotaC ? FieldValue.increment(0) : FieldValue.increment(1),
-    }, { merge: true });
+    };
 
-    console.log(`📊 [COFRE] Saldo atualizado para ${sdrName}.`);
+    // Ranking por SDR
+    updatePayload[`sdr_ranking.${sdrName}.total`] = FieldValue.increment(1); 
+    updatePayload[`sdr_ranking.${sdrName}.sum_notes`] = isValidaParaMedia ? FieldValue.increment(notaParaSoma) : FieldValue.increment(0);
+    updatePayload[`sdr_ranking.${sdrName}.valid_count`] = isValidaParaMedia ? FieldValue.increment(1) : FieldValue.increment(0);
+
+    await statsRef.set(updatePayload, { merge: true });
+
+    console.log(`📊 [COFRE] Saldo atualizado para ${sdrName}. Válida para Média: ${isValidaParaMedia} | Nota: ${notaParaSoma}`);
   } catch (error) {
     console.error("❌ [COFRE ERROR]:", error);
   }

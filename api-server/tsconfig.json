@@ -11,5 +11,5 @@
     "skipLibCheck": true,
     "resolveJsonModule": true
   },
-  "include": ["src", "scriptgenerico.js"]
+  "include": ["src", "scriptgenerico.js", "limpeza.js"]
 }
