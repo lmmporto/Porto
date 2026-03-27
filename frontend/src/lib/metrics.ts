@@ -51,26 +51,19 @@ export function isWithinPeriod(dateInput: any, period: string | { start: Date | 
 
 /**
  * 🛠️ FILTRO DE SEGURANÇA PARA CÁLCULO DE MÉDIA
- * Uma chamada entra para a média se:
- * 1. O status for "DONE".
- * 2. Tiver nota numérica.
- * 3. NÃO for "NAO_SE_APLICA" (Rota C - Conversas genéricas não contam para média técnica).
- * 4. NÃO for "SKIPPED_FOR_AUDIT" ou "SKIPPED_SHORT_CALL".
+ * Utilizado por calculateAverageSpin para garantir consistência técnica.
  */
 const filterValidCalls = (calls: SDRCall[]) => calls.filter(c => {
     const hasNumericScore = typeof c.nota_spin === 'number' && !isNaN(c.nota_spin);
     const isSkipped = c.processingStatus === "SKIPPED_FOR_AUDIT" || c.processingStatus === "SKIPPED_SHORT_CALL";
     const isRotaC = c.status_final === "NAO_SE_APLICA";
     
-    // Se for pulada ou Rota C, não entra no cálculo da média de performance
     if (isSkipped || isRotaC) return false;
 
-    // Condição padrão: Processamento concluído com nota
     if (c.processingStatus === "DONE" && hasNumericScore) {
         return true;
     }
     
-    // Fallback para casos legados com nota mas sem status explicitado
     if (hasNumericScore && c.nota_spin > 0) {
         return true;
     }
@@ -108,7 +101,7 @@ export function getStatusCounts(calls: SDRCall[]) {
 }
 
 /**
- * 🏆 RANKING DE SDRS (Fallback para listas filtradas)
+ * 🏆 RANKING DE SDRS
  * Divide o volume em 'count' (tentativas totais) e 'analyzedCount' (sucesso técnico).
  */
 export function getSDRRanking(calls: SDRCall[]) {
@@ -121,11 +114,15 @@ export function getSDRRanking(calls: SDRCall[]) {
       acc[name] = { name, calls: [], totalSpin: 0, doneCount: 0 };
     }
 
+    // 🚩 VOLUME: Registra absolutamente TUDO que chegou no banco para esse SDR
     acc[name].calls.push(call);
 
-    const isValidForMedia = filterValidCalls([call]).length > 0;
+    // 🚩 ANALISADAS: Só conta se tiver status DONE e nota numérica
+    const isAnalyzed = call.processingStatus === "DONE" && 
+                       typeof call.nota_spin === 'number' && 
+                       !isNaN(call.nota_spin);
 
-    if (isValidForMedia) {
+    if (isAnalyzed) {
       acc[name].totalSpin += Number(call.nota_spin || 0);
       acc[name].doneCount += 1;
     }
@@ -136,9 +133,10 @@ export function getSDRRanking(calls: SDRCall[]) {
   return Object.values(grouped)
     .map(sdr => ({
       name: sdr.name,
+      // Média baseada apenas nas analisadas
       avgSpin: sdr.doneCount > 0 ? parseFloat((sdr.totalSpin / sdr.doneCount).toFixed(1)) : 0,
-      count: sdr.calls.length,
-      analyzedCount: sdr.doneCount
+      count: sdr.calls.length,       // Volume total (Tentativas + Sucessos)
+      analyzedCount: sdr.doneCount   // Apenas o que a IA de fato avaliou
     }))
     .sort((a, b) => b.avgSpin - a.avgSpin);
 }

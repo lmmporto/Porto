@@ -20,7 +20,6 @@ import type { SDRCall, DashboardSummary } from '@/types';
 
 type SortOrder = 'date_desc' | 'score_desc' | 'score_asc';
 
-// 🚩 Renomeado para Content (Padrão Next.js com Suspense)
 function SDRDetailContent() {
   const { name } = useParams(); 
   const router = useRouter();
@@ -58,7 +57,6 @@ function SDRDetailContent() {
     router.replace(`?${params.toString()}`, { scroll: false });
   }, [searchParams, router]);
 
-  // 🚩 O MOTOR DE DATAS RESTAURADO: É ele quem traduz "7d" para datas exatas!
   const getDateRange = useCallback(() => {
     const now = new Date();
     let startIso = '';
@@ -99,12 +97,11 @@ function SDRDetailContent() {
     setIsLoading(true);
     try {
       const timestamp = Date.now();
-      const { startIso, endIso } = getDateRange(); // 🚩 Pega as datas calculadas
+      const { startIso, endIso } = getDateRange();
       
       let summaryUrl = `/api/stats/summary?t=${timestamp}`;
       let callsUrl = `/api/calls?ownerName=${encodeURIComponent(decodedName)}&limit=50&t=${timestamp}`;
 
-      // 🚩 Passa AS DATAS (startDate e endDate) para o Backend entender
       if (timeFilter !== 'all' && startIso && endIso) {
         const dateParams = `&startDate=${encodeURIComponent(startIso)}&endDate=${encodeURIComponent(endIso)}`;
         summaryUrl += dateParams;
@@ -157,7 +154,6 @@ function SDRDetailContent() {
       return { total: 0, avg: 0, validos: 0 };
     }
 
-    // 🚩 Lendo estritamente o que o Backend mastigado envia (e o que o types.ts aprova)
     return {
       total: Number(stats.calls || 0),
       validos: Number(stats.valid_calls || 0),
@@ -176,6 +172,9 @@ function SDRDetailContent() {
     });
   }, [calls, sortOrder]);
 
+  // 🚩 LÓGICA DE VOLUME DO PERÍODO ATUALIZADA
+  const totalVolume = calls.length; 
+  const analyzedCalls = calls.filter(c => c.processingStatus === 'DONE').length;
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20 px-4 md:px-0">
@@ -212,9 +211,10 @@ function SDRDetailContent() {
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
                 <PhoneCall className="w-3 h-3 text-emerald-500" /> Analisadas
               </span>
+              {/* 🚩 EXIBIÇÃO DO VOLUME DO PERÍODO ATUALIZADA */}
               <div className="flex items-baseline gap-1.5 mt-1">
-                <span className="text-2xl font-headline font-bold text-slate-900">{sdrStats.validos}</span>
-                <span className="text-xs font-bold text-slate-400">/{sdrStats.total}</span>
+                <span className="text-2xl font-headline font-bold text-slate-900">{analyzedCalls}</span>
+                <span className="text-xs font-bold text-slate-300">/{totalVolume}</span>
               </div>
             </div>
           </div>
@@ -309,7 +309,7 @@ function SDRDetailContent() {
           <p className="text-xs font-bold text-amber-800 uppercase tracking-tight">Barreira de Performance Ativa</p>
           <p className="text-[11px] text-amber-700 mt-0.5">
             Para economizar cota, exibimos até as 50 chamadas mais recentes da busca. 
-            O volume de <strong>{sdrStats.total}</strong> chamadas continua contabilizado nos cards.
+            O volume total do período continua contabilizado nos cards acima.
           </p>
         </div>
       </div>
@@ -335,7 +335,6 @@ function SDRDetailContent() {
   );
 }
 
-// 🚩 WRAPPER OBRIGATÓRIO NO NEXT.JS PARA PÁGINAS COM USE_SEARCH_PARAMS
 export default function SDRDetailPage() {
   return (
     <Suspense fallback={
