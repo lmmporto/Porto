@@ -52,6 +52,7 @@ export async function processCall(callId: string): Promise<any> {
 
     const basePayload = {
       callId: String(call.id),
+      portalId: String(call.portalId), // 🚩 Agora o Firebase terá essa info
       title: call.title || "Ligação sem título",
       ownerName: owner.ownerName || "Não identificado",
       teamName: teamName,

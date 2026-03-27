@@ -12,9 +12,9 @@ export interface OwnerDetails {
   userId: string | null;
 }
 
-// AQUI ESTAVA O ERRO: Adicionamos disposition e wasConnected
 export interface CallData {
   id: string;
+  portalId: string; // 🚩 Adicionado conforme solicitado
   title: string;
   ownerId: string;
   durationMs: number;
@@ -60,15 +60,16 @@ export async function fetchOwnerDetails(ownerId: string | null): Promise<OwnerDe
 }
 
 export async function fetchCall(callId: string): Promise<CallData> {
+  // 🚩 Ajustado para incluir 'hs_portal_id'
   const propertiesToFetch = [
-    ...new Set([...Object.values(CONFIG.PROPS).flat(), 'hs_call_disposition'])
+    ...new Set([...Object.values(CONFIG.PROPS).flat(), 'hs_call_disposition', 'hs_portal_id'])
   ];
 
   const { data } = await hubspot.get(`/crm/v3/objects/calls/${callId}`, {
     params: { properties: propertiesToFetch.join(","), archived: false },
   });
 
-  const props: Record<string, unknown> = data?.properties || {};
+  const props: Record<string, any> = data?.properties || {};
   const ownerId = firstFilled(props, CONFIG.PROPS.OWNER);
   const duration = Number(firstFilled(props, CONFIG.PROPS.DURATION) || 0);
   const dispId = String(props.hs_call_disposition || "");
@@ -79,6 +80,7 @@ export async function fetchCall(callId: string): Promise<CallData> {
 
   return {
     id: data.id,
+    portalId: String(props.hs_portal_id || ""), // 🚩 Captura o ID da conta
     title: firstFilled(props, CONFIG.PROPS.TITLE) || `Call ${callId}`,
     ownerId: ownerId ? String(ownerId) : "",
     durationMs: duration,
@@ -94,7 +96,8 @@ export async function fetchCall(callId: string): Promise<CallData> {
 }
 
 export async function searchCallsInHubSpot({ limit = 100 }: { limit?: number }) {
-  const properties = [...new Set([...Object.values(CONFIG.PROPS).flat(), 'hs_call_disposition'])];
+  // 🚩 Ajustado para incluir 'hs_portal_id' na busca também
+  const properties = [...new Set([...Object.values(CONFIG.PROPS).flat(), 'hs_call_disposition', 'hs_portal_id'])];
   
   const body = {
     limit: Math.min(Number(limit) || CONFIG.TEST_CALLS_DEFAULT_LIMIT, CONFIG.TEST_CALLS_MAX_LIMIT),
