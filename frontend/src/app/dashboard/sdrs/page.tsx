@@ -28,7 +28,7 @@ function SDRRankingContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [dateFilter, setDateFilter] = useState(searchParams.get('filter') || 'today'); // 🚩 Começa no Hoje
+  const [dateFilter, setDateFilter] = useState(searchParams.get('filter') || 'today');
   const [customStartDate, setCustomStartDate] = useState(searchParams.get('start') || '');
   const [customEndDate, setCustomEndDate] = useState(searchParams.get('end') || '');
 
@@ -45,33 +45,37 @@ function SDRRankingContent() {
     updateUrlParams(newFilter, customStartDate, customEndDate);
   };
 
+  // 🚩 FUNÇÃO REESCRITA CONFORME AJUSTE SUGERIDO
   const getDateRange = useCallback(() => {
     const now = new Date();
+    
+    // Função que gera EXATAMENTE o mesmo formato do seu Backend
+    const getBackendFormat = (date: Date) => {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
     let startIso = '';
     let endIso = '';
 
-    const toLocalISO = (date: Date) => {
-      const offset = date.getTimezoneOffset() * 60000;
-      return new Date(date.getTime() - offset).toISOString().split('T')[0];
-    };
-
     if (dateFilter === 'today') {
-      const today = toLocalISO(now);
-      startIso = `${today}T00:00:00.000Z`;
-      endIso = `${today}T23:59:59.999Z`;
+      const todayStr = getBackendFormat(now);
+      startIso = todayStr;
+      endIso = todayStr;
     } else if (dateFilter === '7d' || dateFilter === '7days') {
       const past = new Date();
       past.setDate(now.getDate() - 7);
-      startIso = `${toLocalISO(past)}T00:00:00.000Z`;
-      endIso = `${toLocalISO(now)}T23:59:59.999Z`;
+      startIso = getBackendFormat(past);
+      endIso = getBackendFormat(now);
     } else if (dateFilter === 'month') {
-      const monthStr = String(now.getMonth() + 1).padStart(2, '0');
-      startIso = `${now.getFullYear()}-${monthStr}-01T00:00:00.000Z`;
-      endIso = `${toLocalISO(now)}T23:59:59.999Z`;
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      startIso = getBackendFormat(firstDay);
+      endIso = getBackendFormat(now);
     } else if (dateFilter === 'custom' && customStartDate && customEndDate) {
-      if (customStartDate > customEndDate) return { startIso: '', endIso: '' };
-      startIso = `${customStartDate}T00:00:00.000Z`;
-      endIso = `${customEndDate}T23:59:59.999Z`;
+      startIso = customStartDate;
+      endIso = customEndDate;
     }
 
     return { startIso, endIso };
@@ -84,11 +88,12 @@ function SDRRankingContent() {
     setError(null);
 
     try {
+      // 🚩 AJUSTE NA CONSTRUÇÃO DA URL CONFORME SUGERIDO
       const { startIso, endIso } = getDateRange();
       let summaryUrl = `/api/stats/summary?t=${Date.now()}`;
       
       if (dateFilter !== 'all' && startIso && endIso) {
-        summaryUrl += `&startDate=${encodeURIComponent(startIso)}&endDate=${encodeURIComponent(endIso)}`;
+        summaryUrl += `&startDate=${startIso}&endDate=${endIso}`;
       }
 
       const res = await fetch(summaryUrl);
@@ -131,7 +136,6 @@ function SDRRankingContent() {
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   };
 
-  // 🚩 Função que constrói o link com os parâmetros de data
   const getSDRLink = (sdrName: string) => {
     const params = new URLSearchParams();
     params.set('filter', dateFilter);
@@ -221,7 +225,6 @@ function SDRRankingContent() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {ranking.map((sdr, index) => (
-            // 🚩 LINK ATIVADO E CLICÁVEL AQUI
             <Link 
               href={getSDRLink(sdr.name)} 
               key={index}
