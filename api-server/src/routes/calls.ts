@@ -167,31 +167,7 @@ router.get("/calls", async (req: Request, res: Response, next: NextFunction) => 
   }
 );
 
-router.get('/stats/summary', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { startDate, endDate } = req.query;
 
-    const nowInBrazil = new Intl.DateTimeFormat('pt-BR', {
-      timeZone: BRAZIL_TIMEZONE,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(new Date());
-
-    const brDate = nowInBrazil.split('/').reverse().join('-');
-
-    console.log(`[DEBUG - STATS_SUMMARY] brDate calculado: ${brDate}`);
-
-    const start = startDate ? String(startDate).split('T')[0] : brDate;
-    const end = endDate ? String(endDate).split('T')[0] : brDate;
-
-    console.log(`[DEBUG - STATS_SUMMARY] Querying from Firestore: start=${start}, end=${end}`);
-    
-    res.json({ success: true, period: { start, end } });
-  } catch (error) {
-    next(error);
-  }
-});
 
 router.post("/test-call-ids", async (req, res, next) => {
   res.json({ success: true, processed: [] });
