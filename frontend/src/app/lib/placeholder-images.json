@@ -1,0 +1,17 @@
+
+{
+  "placeholderImages": [
+    {
+      "id": "hero-bg",
+      "description": "Abstract corporate blue background",
+      "imageUrl": "https://picsum.photos/seed/sdr-hero/1200/400",
+      "imageHint": "corporate abstract"
+    },
+    {
+      "id": "user-avatar",
+      "description": "Professional user profile",
+      "imageUrl": "https://picsum.photos/seed/sdr-user/150/150",
+      "imageHint": "professional person"
+    }
+  ]
+}
