@@ -104,9 +104,14 @@ router.get("/calls", async (req: Request, res: Response, next: NextFunction) => 
       console.log(`📞 [CALLS] Buscando ${limit} chamadas recentes...`);
 
       let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
-      if (ownerNameParam) query = query.where("ownerName", "==", ownerNameParam);
+      
+      if (ownerNameParam) {
+        query = query.where("ownerName", "==", ownerNameParam);
+      } else {
+        // 🚩 Devolvemos a ordenação! Agora puxa os 50 MAIS RECENTES.
+        query = query.orderBy("updatedAt", "desc");
+      }
 
-      // 🚩 Removi a ordenação no banco para evitar Erro de Índice no Firebase
       const snapshot = await query.limit(limit).get();
       
       console.log(`📞 [CALLS] Retornadas ${snapshot.size} chamadas do banco.`);

@@ -34,7 +34,10 @@ router.get('/stats/summary', async (req, res) => {
     snapshot.forEach(doc => {
       const data = doc.data();
       total_calls += Number(data.total_calls || 0);
-      valid_calls += Number(data.valid_calls || 0);
+      
+      // 🚩 Agora ele lê a coluna antiga também, corrigindo a média bizarra!
+      valid_calls += Number(data.valid_calls || data.valid_calls_for_media || data.analyzed_calls || 0);
+      
       sum_notes += Number(data.sum_notes || 0);
 
       if (data.sdr_ranking) {
