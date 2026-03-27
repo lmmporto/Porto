@@ -39,7 +39,8 @@ router.get('/stats/summary', async (req, res) => {
       return res.json({ 
         message: "Nenhum dado encontrado para este período", 
         total_calls: 0, valid_calls: 0, sum_notes: 0, media_geral: 0,
-        sdr_ranking: {}, empty: true 
+        sdr_ranking: {}, empty: true ,
+        _debug_version: "FINAL_V1_BR_TIMEZONE_AGREGATED_04042024" // 🚩 ADICIONE ISSO
       });
     }
 
