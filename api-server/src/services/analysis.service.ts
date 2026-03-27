@@ -70,7 +70,7 @@ export interface AnalysisWithDebug {
   rawResponse: string;
 }
 
-// --- FUNÇÃO DE LIMPEZA PARA MODELOS MODERNOS (Gemini 2.5/3) ---
+// --- FUNÇÃO DE LIMPEZA PARA MODELOS MODERNOS ---
 function cleanGeminiResponse(text: string): string {
   if (!text) return '';
   const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -170,44 +170,24 @@ export async function analyzeCallWithGemini(call: CallData, ownerDetails: OwnerD
   const wordCount = (call.transcript || '').split(/\s+/).length;
 
   const prompt = `
-Você é um Coach de Vendas focado em desenvolvimento contínuo. Sua abordagem é ADITIVA. Você entende o contexto de vendas B2B para contabilidade (Radar ecac / Nibo/Conciliador/).
+Você é um Coach de Vendas focado em desenvolvimento contínuo. Sua abordagem é ADITIVA. Você entende o contexto de vendas B2B para contabilidade.
 
 --- PASSO 1: CLASSIFICAÇÃO DO CONTEXTO ---
 Identifique o tipo da ligação:
-- ROTA A (Reagendamento/Follow-up): SDR buscando cobrar ou remarcar uma agenda que já existia.
-- ROTA B (Prospecção/Novo Agendamento): Busca de nova qualificação ou primeiro agendamento.
-- ROTA C (Conversa Genérica/Não Avaliada): 🚩 Ligações que não possuem intenção de venda ou agendamento (ex: engano, conversa interna, queda de linha após o "alô", ou o lead diz que não pode falar e desliga imediatamente).
+- ROTA A (Reagendamento/Follow-up)
+- ROTA B (Prospecção/Novo Agendamento)
+- ROTA C (Conversa Genérica/Não Avaliada)
 
 --- PASSO 2: SISTEMA DE PONTUAÇÃO ADITIVO (0 a 10) ---
 
-SE ROTA A (Reagendamento):
-- Conseguiu novo horário? NOTA BASE = 4.0.
-- SOMA +2.0: Controlou a agenda.
-- SOMA +2.0: Empatia e micro-compromisso.
-- SOMA +2.0: Reancorou valor/dor.
-
-SE ROTA B (Prospecção):
-- Agendou? NOTA BASE = 5.0.
-- Restante da nota baseado em técnica (SPIN) e tempo (${wordCount} palavras).
-
-SE ROTA C:
-- NOTA TÉCNICA = null. 🚩 ALTERAÇÃO: A IA agora deve retornar \`null\` para Rota C, não 0.0.
-- Justificativa: Esta ligação é um descarte operacional e não deve compor a média de performance do SDR.
+SE ROTA A ou B: Baseado em técnica (SPIN).
+SE ROTA C: NOTA TÉCNICA = null.
 
 --- REGRAS DE STATUS FINAL (Rigoroso) ---
 - ROTA A ou B com nota < 5: REPROVADO
 - ROTA A ou B com nota 5 a 7: ATENCAO
 - ROTA A ou B com nota 8 a 10: APROVADO
-- ROTA C: 🚩 NAO_SE_APLICA (Sempre use este status para ROTA C).
-
---- DIRETRIZES PARA O JSON ---
-- "resumo": Identifique se foi ROTA A, B ou C.
-- "pontos_fortes": Destaque o que houve de bom (se Rota C, retorne array vazio).
-- "ponto_atencao": Onde melhorar ou motivo do descarte (Rota C).
-- "perguntas_sugeridas": Sugestões pertinentes.
-- "analise_escuta": Avaliação da fluidez.
-- "alertas": Comportamentos urgentes ou [].
-- "maior_dificuldade": Aponte a resistência do lead.
+- ROTA C: NAO_SE_APLICA.
 
 SDR: ${ownerDetails.ownerName} | Equipe: ${ownerDetails.teamName}
 Duração: ${call.durationMs}ms | Palavras: ${wordCount}
@@ -217,7 +197,6 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
   `.trim();
 
   try {
-    console.log(`[STEP 1] Enviando Prompt para o Gemini (${wordCount} palavras)...`);
     const response = await gemini.models.generateContent({
       model: CONFIG.GEMINI_ANALYSIS_MODEL,
       contents: prompt,
@@ -229,12 +208,8 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
     });
 
     const rawResponse = cleanGeminiResponse(response?.text || '');
-    console.log(`[STEP 2] Resposta bruta recebida da IA.`);
-    
     const parsed = safeJsonParse(rawResponse);
     if (!parsed) throw new Error(`Falha crítica no parse JSON: ${rawResponse}`);
-
-    console.log(`[STEP 3] Análise finalizada. Status: ${parsed.status_final}`);
 
     return {
       analysis: parsed as unknown as AnalysisResult,
@@ -244,61 +219,52 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
 
   } catch (error: any) {
     console.error(`[ANALYSIS ERROR] Falha na Call ${call.id}:`, error.message);
-    if (error.message.includes('8 RESOURCE_EXHAUSTED')) {
-      console.error('🚨 ALERTA: Cota esgotada na etapa de Análise IA!');
-    }
     throw error;
   }
 }
 
-// 🚩 CONSTANTE: Fuso horário de Brasília para reuso e clareza
-const BRAZIL_TIMEZONE = 'America/Sao_Paulo'; 
-
 /**
- * 🚩 ALTERAÇÃO: FUNÇÃO DO COFRE DE SALDOS REVISADA
- * Ajustada para usar o fuso horário de Brasília para criar os IDs dos documentos diários.
+ * 📊 ATUALIZAÇÃO DO COFRE DE SALDOS
+ * @param isUpdate - Se for true, não incrementa o total_calls (apenas atualiza notas/status)
  */
-export async function updateDailyStats(callData: any, analysis: AnalysisResult) {
+export async function updateDailyStats(callData: any, analysis: any, isUpdate: boolean = false) {
   try {
-    // 🚩 ALTERAÇÃO CRÍTICA: Ajustar o "today" para usar o fuso horário de Brasília consistentemente
-    const nowInBrazil = new Intl.DateTimeFormat('pt-BR', {
-      timeZone: BRAZIL_TIMEZONE,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).format(new Date()); 
-    
-    const todayBrazilString = nowInBrazil.split('/').reverse().join('-'); 
+    const today = new Date().toISOString().split('T')[0];
+    const statsRef = db.collection('dashboard_stats').doc(today);
 
-    // 🚩 ALTERAÇÃO PRINCIPAL: Usar o ID do documento baseado na data de Brasília
-    const statsRef = db.collection('dashboard_stats').doc(todayBrazilString);
-
-    const notaNumerica = typeof analysis.nota_spin === 'number' ? analysis.nota_spin : 0;
-    const isValidaParaMedia = analysis.status_final !== 'NAO_SE_APLICA' && notaNumerica > 0;
+    const isValida = analysis.status_final !== 'NAO_SE_APLICA' && 
+                     analysis.status_final !== 'NAO_IDENTIFICADO' && 
+                     analysis.nota_spin !== null && 
+                     Number(analysis.nota_spin) > 0;
     
-    const notaParaSoma = isValidaParaMedia ? notaNumerica : 0;
+    const nota = isValida ? Number(analysis.nota_spin) : 0;
     const sdrName = callData.ownerName || "Desconhecido";
 
+    // 🚩 LÓGICA SÊNIOR: Se for um update (IA terminou), o incremento de TOTAL é ZERO.
+    const totalIncrement = isUpdate ? 0 : 1;
+
     const updatePayload: any = {
-      date: todayBrazilString, 
+      date: today,
       updatedAt: FieldValue.serverTimestamp(),
-      total_calls: FieldValue.increment(1),
+      total_calls: FieldValue.increment(totalIncrement),
       
-      valid_calls: isValidaParaMedia ? FieldValue.increment(1) : FieldValue.increment(0),
-      sum_notes: isValidaParaMedia ? FieldValue.increment(notaParaSoma) : FieldValue.increment(0),
+      // Só incrementa o divisor da média se a call for útil
+      valid_calls: isValida ? FieldValue.increment(1) : FieldValue.increment(0),
+      sum_notes: isValida ? FieldValue.increment(nota) : FieldValue.increment(0),
       
       count_aprovado: analysis.status_final === 'APROVADO' ? FieldValue.increment(1) : FieldValue.increment(0),
       count_atencao: analysis.status_final === 'ATENCAO' ? FieldValue.increment(1) : FieldValue.increment(0),
       count_reprovado: analysis.status_final === 'REPROVADO' ? FieldValue.increment(1) : FieldValue.increment(0),
     };
 
-    updatePayload[`sdr_ranking.${sdrName}.total`] = FieldValue.increment(1);
-    updatePayload[`sdr_ranking.${sdrName}.sum_notes`] = isValidaParaMedia ? FieldValue.increment(notaParaSoma) : FieldValue.increment(0);
-    updatePayload[`sdr_ranking.${sdrName}.valid_count`] = isValidaParaMedia ? FieldValue.increment(1) : FieldValue.increment(0);
+    // Ranking por SDR
+    updatePayload[`sdr_ranking.${sdrName}.total`] = FieldValue.increment(totalIncrement);
+    updatePayload[`sdr_ranking.${sdrName}.sum_notes`] = isValida ? FieldValue.increment(nota) : FieldValue.increment(0);
+    updatePayload[`sdr_ranking.${sdrName}.valid_count`] = isValida ? FieldValue.increment(1) : FieldValue.increment(0);
 
     await statsRef.set(updatePayload, { merge: true });
 
-    console.log(`📊 [COFRE] Saldo atualizado para ${sdrName} no ID ${todayBrazilString}. Válida para Média: ${isValidaParaMedia} | Nota: ${notaParaSoma}`);
+    console.log(`📊 [COFRE] ${isUpdate ? 'UPDATE' : 'NOVO'}: ${sdrName} | Válida: ${isValida}`);
   } catch (error) {
     console.error("❌ [COFRE ERROR]:", error);
   }

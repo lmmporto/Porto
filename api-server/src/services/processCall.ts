@@ -40,19 +40,16 @@ export async function processCall(callId: string): Promise<any> {
     const owner: OwnerDetails = await fetchOwnerDetails(call.ownerId || null);
     const teamName = (owner.teamName || "Sem equipe").trim();
 
-    // Marcamos como "PROCESSING" para evitar que webhooks duplicados iniciem outro processo
-    await callRef.set({ 
-      processingStatus: "PROCESSING", 
-      updatedAt: FieldValue.serverTimestamp() 
-    }, { merge: true });
-
     // --- FILTRO 1: EQUIPE ---
     const isAllowed = ALLOWED_TEAMS.some(t => teamName.toLowerCase().includes(t.toLowerCase()));
     const isBlocked = BLOCKED_KEYWORDS.some(t => teamName.toLowerCase().includes(t.toLowerCase()));
 
+    // 🚩 LOG DE DEBUG PARA VER O FILTRO DE EQUIPE EM AÇÃO
+    console.log(`[DEBUG - TEAM_FILTER] Call ${callId} - Team: "${teamName}"`);
+
     const basePayload = {
       callId: String(call.id),
-      portalId: String(call.portalId), // 🚩 Agora o Firebase terá essa info
+      portalId: String(call.portalId), 
       title: call.title || "Ligação sem título",
       ownerName: owner.ownerName || "Não identificado",
       teamName: teamName,
@@ -60,6 +57,22 @@ export async function processCall(callId: string): Promise<any> {
       wasConnected: call.wasConnected,
       updatedAt: FieldValue.serverTimestamp(),
     };
+
+    // 🚩 ALTERAÇÃO SÊNIOR: Registro imediato do VOLUME no cofre
+    if (isAllowed && !isBlocked) {
+        const mockInitialAnalysis = {
+            status_final: 'NAO_IDENTIFICADO',
+            nota_spin: null
+        };
+        // Registra o total_calls e inicializa o ranking do SDR
+        await updateDailyStats(basePayload, mockInitialAnalysis);
+    }
+
+    // Marcamos como "PROCESSING" para evitar que webhooks duplicados iniciem outro processo
+    await callRef.set({ 
+      processingStatus: "PROCESSING", 
+      updatedAt: FieldValue.serverTimestamp() 
+    }, { merge: true });
 
     // Lógica de Bloqueio
     if (isBlocked && !teamName.toUpperCase().includes("SDR")) { 
@@ -119,8 +132,8 @@ export async function processCall(callId: string): Promise<any> {
     call.transcript = transcript;
     const { analysis, rawPrompt, rawResponse } = await analyzeCallWithGemini(call, owner);
 
-    // 🚩 COFRE DE SALDOS: Garante a atualização dos números do Ranking
-    await updateDailyStats(basePayload, analysis);
+    // 🚩 COFRE DE SALDOS: Atualiza nota e status sem incrementar o TOTAL de novo
+    await updateDailyStats(basePayload, analysis, true);
 
     await callRef.set({
       ...basePayload,
