@@ -10,20 +10,23 @@ const router = Router();
 const BRAZIL_TIMEZONE = 'America/Sao_Paulo';
 
 router.get('/stats/summary', async (req, res) => {
+  // 🚩 ADICIONAR ESTE LOG NO INÍCIO DO HANDLER
+  console.log('!!!!!!!!!!!! INICIANDO HANDLER /api/stats/summary (VERSÃO COM AGREGACAO)! !!!!!!!!!!!!'); 
+  
   try {
     const { startDate, endDate } = req.query;
 
-    // 🚩 ALTERAÇÃO: Forçar fuso horário de Brasília para o "Hoje" na leitura
     const nowInBrazil = new Intl.DateTimeFormat('pt-BR', {
       timeZone: BRAZIL_TIMEZONE,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
-    }).format(new Date()); // Ex: "27/03/2026"
+    }).format(new Date());
 
-    const brDate = nowInBrazil.split('/').reverse().join('-'); // Ex: "2026-03-27"
+    const brDate = nowInBrazil.split('/').reverse().join('-');
 
-    // Se o frontend mandou startDate, usamos ela. Se não, usamos a data do BR.
+    console.log(`[DEBUG - STATS_SUMMARY] brDate calculado: ${brDate}`);
+
     const start = startDate ? String(startDate).split('T')[0] : brDate;
     const end = endDate ? String(endDate).split('T')[0] : brDate;
 
@@ -39,8 +42,8 @@ router.get('/stats/summary', async (req, res) => {
       return res.json({ 
         message: "Nenhum dado encontrado para este período", 
         total_calls: 0, valid_calls: 0, sum_notes: 0, media_geral: 0,
-        sdr_ranking: {}, empty: true ,
-        _debug_version: "FINAL_V1_BR_TIMEZONE_AGREGATED_04042024" // 🚩 ADICIONE ISSO
+        sdr_ranking: {}, empty: true,
+        _debug_version: "FINAL_V1_BR_TIMEZONE_AGREGATED_04042024_EMPTY_SNAPSHOT" // 🚩 VERSÃO DO DEBUG
       });
     }
 
@@ -75,11 +78,22 @@ router.get('/stats/summary', async (req, res) => {
     
     console.log(`📊 [STATS] Resumo - Total: ${total_calls}, Válidas: ${valid_calls}, Média Geral: ${mediaGeral.toFixed(2)}`);
 
-    return res.json({ total_calls, valid_calls, sum_notes, media_geral: Number(mediaGeral.toFixed(2)), sdr_ranking });
+    return res.json({ 
+      total_calls, 
+      valid_calls, 
+      sum_notes, 
+      media_geral: Number(mediaGeral.toFixed(2)), 
+      sdr_ranking,
+      _debug_version: "FINAL_V1_BR_TIMEZONE_AGREGATED_04042024_WITH_DATA" // 🚩 VERSÃO DO DEBUG
+    });
 
   } catch (error: any) {
     console.error("❌ [STATS ERROR]:", error.message, error);
-    return res.status(500).json({ error: "Erro interno", details: error.message });
+    return res.status(500).json({ 
+      error: "Erro interno", 
+      details: error.message, 
+      _debug_version: "FINAL_V1_BR_TIMEZONE_AGREGATED_04042024_ERROR" // 🚩 VERSÃO DO DEBUG
+    });
   }
 });
 
