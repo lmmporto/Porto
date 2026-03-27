@@ -13,6 +13,9 @@ import type { CallData, OwnerDetails } from './hubspot.js';
 import { db } from '../firebase.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
+// 🚩 CONSTANTE: Fuso horário de Brasília para reuso e clareza
+const BRAZIL_TIMEZONE = 'America/Sao_Paulo'; 
+
 // --- SCHEMAS ---
 
 const ANALYSIS_RESPONSE_SCHEMA = {
@@ -71,7 +74,7 @@ export interface AnalysisWithDebug {
   rawResponse: string;
 }
 
-// --- FUNÇÃO DE LIMPEZA PARA MODELOS MODERNOS (Gemini 2.5/3) ---
+// --- FUNÇÃO DE LIMPEZA PARA MODELOS MODERNOS ---
 
 function cleanGeminiResponse(text: string): string {
   if (!text) return '';
@@ -109,7 +112,6 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
     const fileSizeMB = (buffer.byteLength / (1024 * 1024)).toFixed(2);
     console.log(`[STEP 2] Peso do arquivo: ${fileSizeMB} MB`);
 
-    // TRAVA DE SEGURANÇA: 3.5MB
     if (buffer.byteLength < 3500000) {
       console.log(`[SKIP] 🛑 Call ${call.id} ignorada: Abaixo do limite mínimo de 3.5MB.`);
       return '';
@@ -149,18 +151,13 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
 
   } catch (error: any) {
     console.error(`[TRANSCRIPTION ERROR] Falha na Call ${call.id}:`, error.message);
-    if (error.message.includes('8 RESOURCE_EXHAUSTED')) {
-      console.error('🚨 ALERTA: Cota do Google esgotada nesta etapa (Transcrição)!');
-    }
     throw error;
   } finally {
     if (uploadedFile?.name) {
       await gemini.files.delete({ name: uploadedFile.name }).catch(() => {});
-      console.log(`[CLEANUP] Arquivo deletado do Google Media.`);
     }
     if (localFilePath) {
       await unlink(localFilePath).catch(() => {});
-      console.log(`[CLEANUP] Arquivo temporário local removido.`);
     }
   }
 }
@@ -169,11 +166,8 @@ export async function analyzeCallWithGemini(call: CallData, ownerDetails: OwnerD
   if (!gemini) throw new Error('GEMINI_API_KEY não configurada.');
 
   console.log(`\n--- 🧠 INICIANDO ANÁLISE IA (Call: ${call.id}) ---`);
-  console.log(`[MODELO] Usando: ${CONFIG.GEMINI_ANALYSIS_MODEL}`);
-
   const wordCount = (call.transcript || '').split(/\s+/).length;
 
-  // 🚩 CORREÇÃO DE SINTAXE NO PROMPT: Sem o uso da palavra reservada null com crases.
   const prompt = `
 Você é um Coach de Vendas focado em desenvolvimento contínuo. Sua abordagem é ADITIVA. Você entende o contexto de vendas B2B para contabilidade (Radar ecac / Nibo/Conciliador/).
 
@@ -222,7 +216,6 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
   `.trim();
 
   try {
-    console.log(`[STEP 1] Enviando Prompt para o Gemini (${wordCount} palavras)...`);
     const response = await gemini.models.generateContent({
       model: CONFIG.GEMINI_ANALYSIS_MODEL,
       contents: prompt,
@@ -234,17 +227,12 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
     });
 
     const rawResponse = cleanGeminiResponse(response?.text || '');
-    console.log(`[STEP 2] Resposta bruta recebida da IA.`);
-    
     const parsed = safeJsonParse(rawResponse);
     if (!parsed) throw new Error(`Falha crítica no parse JSON: ${rawResponse}`);
 
-    // 🚩 LÓGICA SÊNIOR DE LIMPEZA: Garante que Rota C vá para o banco como nulo
     if (parsed.status_final === 'NAO_SE_APLICA') {
       parsed.nota_spin = null;
     }
-
-    console.log(`[STEP 3] Análise finalizada. Status: ${parsed.status_final}`);
 
     return {
       analysis: parsed as unknown as AnalysisResult,
@@ -254,23 +242,30 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
 
   } catch (error: any) {
     console.error(`[ANALYSIS ERROR] Falha na Call ${call.id}:`, error.message);
-    if (error.message.includes('8 RESOURCE_EXHAUSTED')) {
-      console.error('🚨 ALERTA: Cota esgotada na etapa de Análise IA!');
-    }
     throw error;
   }
 }
 
 /**
- * FUNÇÃO DO COFRE DE SALDOS REVISADA
- * Computa as métricas diárias e ranking de SDRs, filtrando chamadas descartadas.
+ * 🚩 ALTERAÇÃO: FUNÇÃO DO COFRE DE SALDOS REVISADA
+ * Ajustada para usar o fuso horário de Brasília para criar os IDs dos documentos diários.
  */
 export async function updateDailyStats(callData: any, analysis: AnalysisResult) {
   try {
-    const today = new Date().toISOString().split('T')[0];
-    const statsRef = db.collection('dashboard_stats').doc(today);
+    // 🚩 Ajustar o "today" para usar o fuso horário de Brasília consistentemente
+    const nowInBrazil = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: BRAZIL_TIMEZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date()); // Ex: "27/03/2026"
+    
+    // Transforma "DD/MM/YYYY" em "YYYY-MM-DD"
+    const todayBrazilString = nowInBrazil.split('/').reverse().join('-'); 
 
-    // Só é válida para média se não for descarte e a nota existir (>0)
+    // Usar o ID do documento baseado na data de Brasília
+    const statsRef = db.collection('dashboard_stats').doc(todayBrazilString);
+
     const notaNumerica = typeof analysis.nota_spin === 'number' ? analysis.nota_spin : 0;
     const isValidaParaMedia = analysis.status_final !== 'NAO_SE_APLICA' && notaNumerica > 0;
     
@@ -278,9 +273,9 @@ export async function updateDailyStats(callData: any, analysis: AnalysisResult) 
     const sdrName = callData.ownerName || "Desconhecido";
 
     const updatePayload: any = {
-      date: today,
+      date: todayBrazilString, // Garante que o campo 'date' reflita a data de Brasília
       updatedAt: FieldValue.serverTimestamp(),
-      total_calls: FieldValue.increment(1), 
+      total_calls: FieldValue.increment(1),
       
       valid_calls: isValidaParaMedia ? FieldValue.increment(1) : FieldValue.increment(0),
       sum_notes: isValidaParaMedia ? FieldValue.increment(notaParaSoma) : FieldValue.increment(0),
@@ -290,14 +285,13 @@ export async function updateDailyStats(callData: any, analysis: AnalysisResult) 
       count_reprovado: analysis.status_final === 'REPROVADO' ? FieldValue.increment(1) : FieldValue.increment(0),
     };
 
-    // Ranking por SDR
-    updatePayload[`sdr_ranking.${sdrName}.total`] = FieldValue.increment(1); 
+    updatePayload[`sdr_ranking.${sdrName}.total`] = FieldValue.increment(1);
     updatePayload[`sdr_ranking.${sdrName}.sum_notes`] = isValidaParaMedia ? FieldValue.increment(notaParaSoma) : FieldValue.increment(0);
     updatePayload[`sdr_ranking.${sdrName}.valid_count`] = isValidaParaMedia ? FieldValue.increment(1) : FieldValue.increment(0);
 
     await statsRef.set(updatePayload, { merge: true });
 
-    console.log(`📊 [COFRE] Saldo atualizado para ${sdrName}. Válida para Média: ${isValidaParaMedia} | Nota: ${notaParaSoma}`);
+    console.log(`📊 [COFRE] Saldo atualizado para ${sdrName} no ID ${todayBrazilString}. Válida para Média: ${isValidaParaMedia} | Nota: ${notaParaSoma}`);
   } catch (error) {
     console.error("❌ [COFRE ERROR]:", error);
   }
