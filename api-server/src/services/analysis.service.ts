@@ -1,3 +1,5 @@
+// src/services/analysis.service.ts
+
 import axios from 'axios';
 import { writeFile, unlink } from 'node:fs/promises';
 import os from 'node:os';
@@ -9,15 +11,10 @@ import { CONFIG } from '../config.js';
 import { sanitizeText, safeJsonParse, detectAudioExtension } from '../utils.js';
 import type { CallData, OwnerDetails } from './hubspot.js';
 
-// Necessário para o Cofre de Saldos
 import { db } from '../firebase.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
-// 🚩 CONSTANTE: Fuso horário de Brasília para reuso e clareza
-const BRAZIL_TIMEZONE = 'America/Sao_Paulo'; 
-
 // --- SCHEMAS ---
-
 const ANALYSIS_RESPONSE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -55,7 +52,6 @@ const TRANSCRIPTION_RESPONSE_SCHEMA = {
 };
 
 // --- INTERFACES ---
-
 export interface AnalysisResult {
   status_final: string;
   nota_spin: number | null;
@@ -74,8 +70,7 @@ export interface AnalysisWithDebug {
   rawResponse: string;
 }
 
-// --- FUNÇÃO DE LIMPEZA PARA MODELOS MODERNOS ---
-
+// --- FUNÇÃO DE LIMPEZA PARA MODELOS MODERNOS (Gemini 2.5/3) ---
 function cleanGeminiResponse(text: string): string {
   if (!text) return '';
   const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -83,7 +78,6 @@ function cleanGeminiResponse(text: string): string {
 }
 
 // --- FUNÇÕES PRINCIPAIS ---
-
 export async function transcribeRecordingFromHubSpot(call: CallData): Promise<string> {
   if (!gemini) throw new Error('GEMINI_API_KEY não configurada no cliente.');
   if (!call?.recordingUrl) {
@@ -151,13 +145,18 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
 
   } catch (error: any) {
     console.error(`[TRANSCRIPTION ERROR] Falha na Call ${call.id}:`, error.message);
+    if (error.message.includes('8 RESOURCE_EXHAUSTED')) {
+      console.error('🚨 ALERTA: Cota do Google esgotada nesta etapa (Transcrição)!');
+    }
     throw error;
   } finally {
     if (uploadedFile?.name) {
       await gemini.files.delete({ name: uploadedFile.name }).catch(() => {});
+      console.log(`[CLEANUP] Arquivo deletado do Google Media.`);
     }
     if (localFilePath) {
       await unlink(localFilePath).catch(() => {});
+      console.log(`[CLEANUP] Arquivo temporário local removido.`);
     }
   }
 }
@@ -166,6 +165,8 @@ export async function analyzeCallWithGemini(call: CallData, ownerDetails: OwnerD
   if (!gemini) throw new Error('GEMINI_API_KEY não configurada.');
 
   console.log(`\n--- 🧠 INICIANDO ANÁLISE IA (Call: ${call.id}) ---`);
+  console.log(`[MODELO] Usando: ${CONFIG.GEMINI_ANALYSIS_MODEL}`);
+
   const wordCount = (call.transcript || '').split(/\s+/).length;
 
   const prompt = `
@@ -190,7 +191,7 @@ SE ROTA B (Prospecção):
 - Restante da nota baseado em técnica (SPIN) e tempo (${wordCount} palavras).
 
 SE ROTA C:
-- NOTA TÉCNICA = 0.
+- NOTA TÉCNICA = null. 🚩 ALTERAÇÃO: A IA agora deve retornar \`null\` para Rota C, não 0.0.
 - Justificativa: Esta ligação é um descarte operacional e não deve compor a média de performance do SDR.
 
 --- REGRAS DE STATUS FINAL (Rigoroso) ---
@@ -216,6 +217,7 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
   `.trim();
 
   try {
+    console.log(`[STEP 1] Enviando Prompt para o Gemini (${wordCount} palavras)...`);
     const response = await gemini.models.generateContent({
       model: CONFIG.GEMINI_ANALYSIS_MODEL,
       contents: prompt,
@@ -227,12 +229,12 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
     });
 
     const rawResponse = cleanGeminiResponse(response?.text || '');
+    console.log(`[STEP 2] Resposta bruta recebida da IA.`);
+    
     const parsed = safeJsonParse(rawResponse);
     if (!parsed) throw new Error(`Falha crítica no parse JSON: ${rawResponse}`);
 
-    if (parsed.status_final === 'NAO_SE_APLICA') {
-      parsed.nota_spin = null;
-    }
+    console.log(`[STEP 3] Análise finalizada. Status: ${parsed.status_final}`);
 
     return {
       analysis: parsed as unknown as AnalysisResult,
@@ -242,9 +244,15 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
 
   } catch (error: any) {
     console.error(`[ANALYSIS ERROR] Falha na Call ${call.id}:`, error.message);
+    if (error.message.includes('8 RESOURCE_EXHAUSTED')) {
+      console.error('🚨 ALERTA: Cota esgotada na etapa de Análise IA!');
+    }
     throw error;
   }
 }
+
+// 🚩 CONSTANTE: Fuso horário de Brasília para reuso e clareza
+const BRAZIL_TIMEZONE = 'America/Sao_Paulo'; 
 
 /**
  * 🚩 ALTERAÇÃO: FUNÇÃO DO COFRE DE SALDOS REVISADA
@@ -252,18 +260,17 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
  */
 export async function updateDailyStats(callData: any, analysis: AnalysisResult) {
   try {
-    // 🚩 Ajustar o "today" para usar o fuso horário de Brasília consistentemente
+    // 🚩 ALTERAÇÃO CRÍTICA: Ajustar o "today" para usar o fuso horário de Brasília consistentemente
     const nowInBrazil = new Intl.DateTimeFormat('pt-BR', {
       timeZone: BRAZIL_TIMEZONE,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
-    }).format(new Date()); // Ex: "27/03/2026"
+    }).format(new Date()); 
     
-    // Transforma "DD/MM/YYYY" em "YYYY-MM-DD"
     const todayBrazilString = nowInBrazil.split('/').reverse().join('-'); 
 
-    // Usar o ID do documento baseado na data de Brasília
+    // 🚩 ALTERAÇÃO PRINCIPAL: Usar o ID do documento baseado na data de Brasília
     const statsRef = db.collection('dashboard_stats').doc(todayBrazilString);
 
     const notaNumerica = typeof analysis.nota_spin === 'number' ? analysis.nota_spin : 0;
@@ -273,7 +280,7 @@ export async function updateDailyStats(callData: any, analysis: AnalysisResult) 
     const sdrName = callData.ownerName || "Desconhecido";
 
     const updatePayload: any = {
-      date: todayBrazilString, // Garante que o campo 'date' reflita a data de Brasília
+      date: todayBrazilString, 
       updatedAt: FieldValue.serverTimestamp(),
       total_calls: FieldValue.increment(1),
       

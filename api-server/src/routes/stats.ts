@@ -1,3 +1,5 @@
+// src/routes/stats.ts (ou o arquivo que contém seu endpoint /stats/summary)
+
 import { Router } from 'express';
 import { db } from '../firebase.js';
 import admin from 'firebase-admin';
@@ -11,8 +13,7 @@ router.get('/stats/summary', async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
 
-    // 🚩 SOLUÇÃO SÊNIOR: Forçar fuso horário de Brasília para o "Hoje"
-    // Isso evita que às 21h UTC o servidor ache que já é amanhã no Brasil.
+    // 🚩 ALTERAÇÃO: Forçar fuso horário de Brasília para o "Hoje" na leitura
     const nowInBrazil = new Intl.DateTimeFormat('pt-BR', {
       timeZone: BRAZIL_TIMEZONE,
       year: 'numeric',
@@ -51,7 +52,6 @@ router.get('/stats/summary', async (req, res) => {
       const data = doc.data();
       total_calls += Number(data.total_calls || 0);
       
-      // 🚩 Mantido: Flexibilidade para ler colunas antigas ou a nova 'valid_calls'
       valid_calls += Number(data.valid_calls || data.valid_calls_for_media || data.analyzed_calls || 0);
       
       sum_notes += Number(data.sum_notes || 0);
@@ -61,7 +61,6 @@ router.get('/stats/summary', async (req, res) => {
           if (!sdr_ranking[sdrName]) sdr_ranking[sdrName] = { calls: 0, sum_notes: 0, valid_calls: 0, nota_media: 0 };
           const sdrStats = stats as any;
           sdr_ranking[sdrName].calls += Number(sdrStats.calls || sdrStats.total || 0);
-          // 🚩 Mantido: Flexibilidade para ler colunas antigas ou a nova 'valid_count'
           sdr_ranking[sdrName].valid_calls += Number(sdrStats.valid_calls || sdrStats.valid_count || 0);
           sdr_ranking[sdrName].sum_notes += Number(sdrStats.sum_notes || 0);
           if (sdr_ranking[sdrName].valid_calls > 0) {
@@ -73,13 +72,12 @@ router.get('/stats/summary', async (req, res) => {
 
     const mediaGeral = valid_calls > 0 ? (sum_notes / valid_calls) : 0;
     
-    // 🚩 Saída para depuração
     console.log(`📊 [STATS] Resumo - Total: ${total_calls}, Válidas: ${valid_calls}, Média Geral: ${mediaGeral.toFixed(2)}`);
 
     return res.json({ total_calls, valid_calls, sum_notes, media_geral: Number(mediaGeral.toFixed(2)), sdr_ranking });
 
   } catch (error: any) {
-    console.error("❌ [STATS ERROR]:", error.message, error); // 🚩 Loga mais detalhes do erro
+    console.error("❌ [STATS ERROR]:", error.message, error);
     return res.status(500).json({ error: "Erro interno", details: error.message });
   }
 });
