@@ -143,7 +143,7 @@ export default function DashboardPage() {
       // Usar uma data de fallback segura, como Date(0) para nulls.
       if (sortOrder === 'date_desc') {
         const dateA = a.analyzedAt || a.updatedAt || a.createdAt;
-        const dateB = b.analychedAt || b.updatedAt || b.createdAt;
+        const dateB = b.analyzedAt || b.updatedAt || b.createdAt;
         const timeA = dateA ? new Date(dateA as any).getTime() : 0;
         const timeB = dateB ? new Date(dateB as any).getTime() : 0;
         return timeB - timeA;
