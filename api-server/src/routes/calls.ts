@@ -5,6 +5,7 @@ import {
   type Response,
   type NextFunction,
 } from "express";
+import admin from "firebase-admin";
 import { db } from "../firebase.js";
 import { CONFIG } from "../config.js";
 import { processCall } from "../services/processCall.js";
@@ -97,20 +98,36 @@ router.get("/calls/:id", async (req: Request, res: Response, next: NextFunction)
 
 router.get("/calls", async (req: Request, res: Response, next: NextFunction) => {
     try {
-      // 🚩 Limite seguro para não estourar a RAM
       const limit = Math.min(Number(req.query.limit || 50), 100); 
       const ownerNameParam = req.query.ownerName as string;
+      const startDateParam = req.query.startDate as string;
+      const endDateParam = req.query.endDate as string;
 
-      console.log(`📞 [CALLS] Buscando ${limit} chamadas recentes...`);
+      console.log(`📞 [CALLS] Buscando chamadas...`);
 
       let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
       
       if (ownerNameParam) {
         query = query.where("ownerName", "==", ownerNameParam);
-      } else {
-        // 🚩 Devolvemos a ordenação! Agora puxa os 50 MAIS RECENTES.
-        query = query.orderBy("updatedAt", "desc");
       }
+
+      // Ajuste de Data conforme sugerido
+      if (startDateParam && endDateParam) {
+        const start = new Date(startDateParam);
+        const end = new Date(endDateParam);
+
+        if (startDateParam.length === 10) {
+            start.setUTCHours(0, 0, 0, 0);
+            end.setUTCHours(23, 59, 59, 999);
+        }
+
+        query = query
+            .where("updatedAt", ">=", admin.firestore.Timestamp.fromDate(start))
+            .where("updatedAt", "<=", admin.firestore.Timestamp.fromDate(end));
+      }
+
+      // Ordenação no Banco (Exige índice composto se houver filtros where simultâneos)
+      query = query.orderBy("updatedAt", "desc");
 
       const snapshot = await query.limit(limit).get();
       
@@ -143,30 +160,7 @@ router.get("/calls", async (req: Request, res: Response, next: NextFunction) => 
         };
       });
 
-      const startDateParam = req.query.startDate as string;
-      const endDateParam = req.query.endDate as string;
-      let processedCalls = calls;
-
-      if (startDateParam && endDateParam) {
-        const start = new Date(startDateParam).getTime();
-        const end = new Date(endDateParam).getTime();
-        processedCalls = calls.filter(call => {
-          const sec = call.updatedAt?._seconds || call.updatedAt?.seconds || (typeof call.updatedAt === 'number' ? call.updatedAt / 1000 : 0);
-          return (sec * 1000) >= start && (sec * 1000) <= end;
-        });
-      }
-
-      // 🚩 Ordenação feita na memória (Totalmente Seguro)
-      processedCalls.sort((a, b) => {
-        const notaA = Number(a.nota_spin) || 0;
-        const notaB = Number(b.nota_spin) || 0;
-        if (notaB !== notaA) return notaB - notaA; 
-        const secA = a.updatedAt?._seconds || a.updatedAt?.seconds || 0;
-        const secB = b.updatedAt?._seconds || b.updatedAt?.seconds || 0;
-        return secB - secA;
-      });
-
-      res.json(processedCalls);
+      res.json(calls);
     } catch (error) {
       console.error("❌ [CALLS LIST ERROR]:", error);
       next(error);
@@ -175,7 +169,6 @@ router.get("/calls", async (req: Request, res: Response, next: NextFunction) => 
 );
 
 router.post("/test-call-ids", async (req, res, next) => {
-  // ... mantido igual
   res.json({ success: true, processed: [] });
 });
 
