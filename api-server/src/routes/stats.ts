@@ -1,5 +1,3 @@
-// src/routes/stats.ts (ou o arquivo que contém seu endpoint /stats/summary)
-
 import { Router } from 'express';
 import { db } from '../firebase.js';
 import admin from 'firebase-admin';
@@ -50,33 +48,60 @@ router.get('/stats/summary', async (req, res) => {
     let total_calls = 0; 
     let valid_calls = 0; 
     let sum_notes = 0;
-    const sdr_ranking: Record<string, any> = {};
+    // 🚩 IMPORTANTE: Definir o tipo explicitamente para garantir que sdr_ranking seja um objeto
+    const sdr_ranking: Record<string, { calls: number; sum_notes: number; valid_calls: number; nota_media: number }> = {};
 
     snapshot.forEach(doc => {
       const data = doc.data();
+      // 🚩 ADICIONAR ESTE LOG TEMPORARIAMENTE para VER o formato exato dos dados
+      console.log(`[DEBUG - STATS_SUMMARY - RAW DATA] Document ID: ${doc.id}, Data:`, JSON.stringify(data, null, 2));
+
       total_calls += Number(data.total_calls || 0);
-      
       valid_calls += Number(data.valid_calls || data.valid_calls_for_media || data.analyzed_calls || 0);
-      
       sum_notes += Number(data.sum_notes || 0);
 
-      if (data.sdr_ranking) {
-        for (const [sdrName, stats] of Object.entries(data.sdr_ranking)) {
-          if (!sdr_ranking[sdrName]) sdr_ranking[sdrName] = { calls: 0, sum_notes: 0, valid_calls: 0, nota_media: 0 };
-          const sdrStats = stats as any;
-          sdr_ranking[sdrName].calls += Number(sdrStats.calls || sdrStats.total || 0);
-          sdr_ranking[sdrName].valid_calls += Number(sdrStats.valid_calls || sdrStats.valid_count || 0);
-          sdr_ranking[sdrName].sum_notes += Number(sdrStats.sum_notes || 0);
-          if (sdr_ranking[sdrName].valid_calls > 0) {
-            sdr_ranking[sdrName].nota_media = Number((sdr_ranking[sdrName].sum_notes / sdr_ranking[sdrName].valid_calls).toFixed(2));
+      // 🚩 ALTERAÇÃO CRÍTICA: Lógica para reconstruir sdr_ranking de campos planos
+      for (const key in data) {
+        if (key.startsWith('sdr_ranking.')) {
+          const parts = key.split('.'); // Ex: ['sdr_ranking', 'Abner Christófori', 'sum_notes']
+          if (parts.length === 3) {
+            const sdrName = parts[1];
+            const statType = parts[2]; // Ex: 'sum_notes', 'total', 'valid_count'
+
+            // Inicializa o objeto do SDR se ainda não existir no nosso sdr_ranking agregado
+            if (!sdr_ranking[sdrName]) {
+              sdr_ranking[sdrName] = { calls: 0, sum_notes: 0, valid_calls: 0, nota_media: 0 };
+            }
+
+            // Adiciona o valor ao campo correto
+            const value = Number(data[key] || 0);
+            if (statType === 'total') {
+              sdr_ranking[sdrName].calls += value;
+            } else if (statType === 'sum_notes') {
+              sdr_ranking[sdrName].sum_notes += value;
+            } else if (statType === 'valid_count') {
+              sdr_ranking[sdrName].valid_calls += value;
+            }
           }
         }
       }
-    });
+    }); // Fim do snapshot.forEach
 
+    // 🚩 CALCULAR nota_media PARA CADA SDR DEPOIS QUE TODAS AS AGREGACÕES ESTÃO FEITAS
+    for (const sdrName in sdr_ranking) {
+        const sdr = sdr_ranking[sdrName];
+        if (sdr.valid_calls > 0) {
+            sdr.nota_media = Number((sdr.sum_notes / sdr.valid_calls).toFixed(2));
+        } else {
+            sdr.nota_media = 0; // Garante 0 se não houver chamadas válidas para evitar NaN
+        }
+    }
+    
     const mediaGeral = valid_calls > 0 ? (sum_notes / valid_calls) : 0;
     
     console.log(`📊 [STATS] Resumo - Total: ${total_calls}, Válidas: ${valid_calls}, Média Geral: ${mediaGeral.toFixed(2)}`);
+    // 🚩 ADICIONE UM LOG TEMPORÁRIO AQUI TAMBÉM para ver o sdr_ranking final antes de enviar
+    console.log(`📊 [STATS] Ranking Final:`, JSON.stringify(sdr_ranking, null, 2));
 
     return res.json({ 
       total_calls, 
@@ -84,7 +109,7 @@ router.get('/stats/summary', async (req, res) => {
       sum_notes, 
       media_geral: Number(mediaGeral.toFixed(2)), 
       sdr_ranking,
-      _debug_version: "FINAL_V1_BR_TIMEZONE_AGREGATED_04042024_WITH_DATA" // 🚩 VERSÃO DO DEBUG
+      _debug_version: "FINAL_V2_SDR_RANKING_FLAT_FIX_04042024_WITH_DATA" // 🚩 NOVA VERSÃO DO DEBUG
     });
 
   } catch (error: any) {
