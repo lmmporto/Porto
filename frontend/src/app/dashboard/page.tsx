@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react'; // 🚩 ALTERAÇÃO: Adicionado useCallback
 import { 
   TrendingUp, 
   PhoneCall, 
@@ -20,11 +20,27 @@ import type { SDRCall, DashboardSummary } from '@/types';
 
 type SortOrder = 'date_desc' | 'score_desc' | 'score_asc';
 
+// 🚩 ALTERAÇÃO CRÍTICA: Constante para o fuso horário de Brasília, usada em todo o cálculo de datas
+const BRAZIL_TIMEZONE = 'America/Sao_Paulo';
+
+// 🚩 ALTERAÇÃO CRÍTICA: Função auxiliar para obter a data YYYY-MM-DD no fuso horário de Brasília
+const getBrazilDateString = (date: Date): string => {
+  // Usamos 'fr-CA' porque formata para YYYY-MM-DD naturalmente sem precisar de split/reverse/join
+  // Ex: new Date() no Brasil em 27/03/2026 => "2026-03-27"
+  const formatter = new Intl.DateTimeFormat('fr-CA', { 
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    timeZone: BRAZIL_TIMEZONE,
+  });
+  return formatter.format(date);
+};
+
 export default function DashboardPage() {
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [calls, setCalls] = useState<SDRCall[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null); // 🚩 Estado de erro restaurado
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   
   const [sortOrder, setSortOrder] = useState<SortOrder>('score_desc');
@@ -33,42 +49,49 @@ export default function DashboardPage() {
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
-  const fetchData = async () => {
+  // 🚩 ALTERAÇÃO CRÍTICA: Função fetchData envolvida em useCallback e com lógica de data revisada
+  const fetchData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
       const timestamp = Date.now();
       
-      // 🚩 1. Calcula as datas exatas no Frontend para forçar o Backend
-      let startIso = '';
-      let endIso = '';
-      const now = new Date();
+      let startPeriodStr = ''; // Formato: YYYY-MM-DD (fuso horário de Brasília)
+      let endPeriodStr = '';   // Formato: YYYY-MM-DD (fuso horário de Brasília)
       
+      const now = new Date(); // Objeto Date do JavaScript, representa a data/hora local
+
       if (dateFilter === 'today') {
-        const todayStr = now.toISOString().split('T')[0]; 
-        startIso = `${todayStr}T00:00:00.000Z`;
-        endIso = `${todayStr}T23:59:59.999Z`;
+        const todayBrazilStr = getBrazilDateString(now); // Ex: "2026-03-27"
+        startPeriodStr = todayBrazilStr;
+        endPeriodStr = todayBrazilStr;
       } else if (dateFilter === '7d') {
-        const past = new Date();
-        past.setDate(now.getDate() - 7);
-        startIso = `${past.toISOString().split('T')[0]}T00:00:00.000Z`;
-        endIso = `${now.toISOString().split('T')[0]}T23:59:59.999Z`;
+        const sevenDaysAgo = new Date(now); // Cria uma nova instância para não modificar 'now'
+        sevenDaysAgo.setDate(now.getDate() - 7); // Subtrai 7 dias
+        
+        startPeriodStr = getBrazilDateString(sevenDaysAgo);
+        endPeriodStr = getBrazilDateString(now); // Fim do dia "hoje" em Brasília
       } else if (dateFilter === 'month') {
-        const monthStr = String(now.getMonth() + 1).padStart(2, '0');
-        startIso = `${now.getFullYear()}-${monthStr}-01T00:00:00.000Z`;
-        endIso = `${now.toISOString().split('T')[0]}T23:59:59.999Z`;
+        // Primeiro dia do mês atual (no fuso horário de Brasília)
+        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        
+        startPeriodStr = getBrazilDateString(firstDayOfMonth);
+        endPeriodStr = getBrazilDateString(now); // Fim do dia "hoje" em Brasília
       } else if (dateFilter === 'custom' && customStartDate && customEndDate) {
-        startIso = `${customStartDate}T00:00:00.000Z`;
-        endIso = `${customEndDate}T23:59:59.999Z`;
+        // Para personalizado, customStartDate e customEndDate já são YYYY-MM-DD
+        // assumimos que são no fuso horário desejado, vindo do input type="date"
+        startPeriodStr = customStartDate;
+        endPeriodStr = customEndDate;
       }
 
-      // 🚩 2. Monta as URLs passando as datas exatas
+      // 🚩 ALTERAÇÃO CRÍTICA: Monta as URLs passando APENAS as strings YYYY-MM-DD
       let summaryUrl = `/api/stats/summary?t=${timestamp}`;
       let callsUrl = `/api/calls?limit=50&t=${timestamp}`; 
       
-      if (dateFilter !== 'all' && startIso && endIso) {
-        summaryUrl += `&startDate=${startIso}&endDate=${endIso}`;
-        callsUrl += `&startDate=${startIso}&endDate=${endIso}`;
+      // 🚩 CRÍTICO: SOMENTE ADICIONA startDate e endDate se o filtro NÃO for 'all' e se as datas foram calculadas
+      if (dateFilter !== 'all' && startPeriodStr && endPeriodStr) {
+        summaryUrl += `&startDate=${startPeriodStr}&endDate=${endPeriodStr}`;
+        callsUrl += `&startDate=${startPeriodStr}&endDate=${endPeriodStr}`;
       }
 
       // 🚩 3. Dispara os dois pedidos ao mesmo tempo (Mais rápido)
@@ -97,11 +120,11 @@ export default function DashboardPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [dateFilter, customStartDate, customEndDate]); // 🚩 Dependências adicionadas para useCallback
 
   useEffect(() => {
     fetchData();
-  }, [dateFilter]); 
+  }, [fetchData]); // 🚩 Chama fetchData quando suas dependências mudarem
 
   const filteredCalls = useMemo(() => {
     let result = [...calls];
@@ -112,19 +135,29 @@ export default function DashboardPage() {
         c.title?.toLowerCase().includes(term)
       );
     }
+    // 🚩 ALTERAÇÃO: Garante que sortOrder 'date_desc' também seja tratado
     return result.sort((a, b) => {
       if (sortOrder === 'score_desc') return (b.nota_spin || 0) - (a.nota_spin || 0);
       if (sortOrder === 'score_asc') return (a.nota_spin || 0) - (b.nota_spin || 0);
-      return 0; 
+      // 🚩 ALTERAÇÃO: Ordenar por data (assumindo analyzedAt, updatedAt ou createdAt para desempate)
+      // Usar uma data de fallback segura, como Date(0) para nulls.
+      if (sortOrder === 'date_desc') {
+        const dateA = a.analyzedAt || a.updatedAt || a.createdAt;
+        const dateB = b.analychedAt || b.updatedAt || b.createdAt;
+        const timeA = dateA ? new Date(dateA as any).getTime() : 0;
+        const timeB = dateB ? new Date(dateB as any).getTime() : 0;
+        return timeB - timeA;
+      }
+      return 0; // fallback, não deve ser atingido com os sortOrders definidos
     });
   }, [calls, searchTerm, sortOrder]);
 
-  // 🚩 MÉTRICAS CORRIGIDAS (Adaptadas para o novo Backend)
   const stats = summary as any;
-  const isSummaryEmpty = stats?.empty === true;
-  const avgSpin = stats && !isSummaryEmpty ? (stats.sum_notes / (stats.valid_calls || 1)) : 0;
+  const isSummaryEmpty = stats?.empty === true || !stats; 
+  // 🚩 ALTERAÇÃO: Proteção para evitar divisão por zero se valid_calls for 0
+  const avgSpin = stats && !isSummaryEmpty && stats.valid_calls > 0 ? (stats.sum_notes / stats.valid_calls) : 0;
   const totalCalls = stats?.total_calls || 0;
-  const analyzedCount = stats?.valid_calls || 0;
+  const analyzedCount = stats?.valid_calls || 0; // 'valid_calls' do backend já é o 'analyzedCount'
   const activeSDRsCount = stats?.sdr_ranking ? Object.keys(stats.sdr_ranking).length : 0;
 
   if (isLoading) {
@@ -210,7 +243,10 @@ export default function DashboardPage() {
             <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl group-hover:scale-110 transition-transform"><TrendingUp className="w-6 h-6" /></div>
             <div>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Média SPIN (Período)</p>
-              <p className="text-3xl font-headline font-bold text-slate-900">{avgSpin > 0 ? avgSpin.toFixed(1) : "--"}</p>
+              {/* 🚩 ALTERAÇÃO: Proteção para exibir 0.0 ou -- */}
+              <p className="text-3xl font-headline font-bold text-slate-900">
+                {analyzedCount > 0 ? avgSpin.toFixed(1) : "--"}
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -221,7 +257,9 @@ export default function DashboardPage() {
             <div>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Volume Total</p>
               <p className="text-3xl font-headline font-bold text-slate-900">{totalCalls}</p>
-              <p className="text-[9px] text-emerald-500 font-bold uppercase mt-1">{analyzedCount} análises concluídas</p>
+              <p className="text-[9px] text-emerald-500 font-bold uppercase mt-1">
+                {analyzedCount} análise{analyzedCount !== 1 ? 's' : ''} concluída{analyzedCount !== 1 ? 's' : ''}
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -271,7 +309,7 @@ export default function DashboardPage() {
           <div className="space-y-2 mb-4 bg-amber-50 border border-amber-100 rounded-lg p-3 flex items-center gap-3">
              <AlertCircle className="w-4 h-4 text-amber-600" />
              <p className="text-amber-700 text-[11px] font-medium">
-               Exibindo as chamadas de acordo com o filtro. Limite de segurança ativado para economizar dados.
+               Exibindo as chamadas de acordo com o filtro. Limite de 50 chamadas ativado.
              </p>
           </div>
 
