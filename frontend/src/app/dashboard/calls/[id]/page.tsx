@@ -22,7 +22,8 @@ import {
   MessageSquare,
   MinusCircle,
   RefreshCw,
-  SearchX
+  SearchX,
+  ExternalLink
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -30,6 +31,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import type { SDRCall, StatusFinal } from '@/types';
 import { cn } from '@/lib/utils';
+
+const HUBSPOT_ACCOUNT_ID = '45311822'; 
 
 export default function CallDetailPage() {
   const params = useParams();
@@ -57,7 +60,6 @@ export default function CallDetailPage() {
         const data = await res.json();
 
         if (!res.ok) {
-          // Se for 404 ou erro de cota, capturamos a mensagem vinda do Proxy
           throw new Error(data.debug || data.error || 'Não foi possível carregar esta análise.');
         }
 
@@ -74,7 +76,6 @@ export default function CallDetailPage() {
     loadCall();
   }, [routeId]);
 
-  // Formatador Robusto para Datas do Firebase (seconds/nanoseconds)
   const formatDate = (dateInput: any) => {
     if (!dateInput) return 'Data não disponível';
     const seconds = dateInput?._seconds || dateInput?.seconds || (typeof dateInput === 'number' ? dateInput : null);
@@ -151,7 +152,6 @@ export default function CallDetailPage() {
     );
   }
 
-  // 🚩 TRATAMENTO DE ERRO AMIGÁVEL
   if (error || !call) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-center space-y-6 px-6 max-w-md mx-auto">
@@ -178,6 +178,12 @@ export default function CallDetailPage() {
   const status = getStatusConfig(call.status_final);
   const isRotaC = call.status_final === 'NAO_SE_APLICA';
   const durationMin = call.durationMs ? (call.durationMs / 60000).toFixed(1) : '0.0';
+
+  const actualHubspotId = call.hubspotCallId || call.callId || call.id;
+  
+  const hubspotReviewUrl = actualHubspotId 
+    ? `https://app.hubspot.com/calls/${HUBSPOT_ACCOUNT_ID}/review/${actualHubspotId}`
+    : null;
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20 px-4 md:px-0">
@@ -227,8 +233,8 @@ export default function CallDetailPage() {
               </span>
             </div>
 
-            {call.recordingUrl && (
-              <div className="pt-2">
+            <div className="flex gap-2 pt-2"> 
+              {call.recordingUrl && (
                 <Button 
                   asChild 
                   variant="outline" 
@@ -236,11 +242,23 @@ export default function CallDetailPage() {
                   className="border-indigo-100 bg-indigo-50/30 text-indigo-600 hover:bg-indigo-600 hover:text-white transition-all active:scale-95 h-9 rounded-xl"
                 >
                   <a href={call.recordingUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 font-bold uppercase tracking-wider text-[9px]">
-                    <Mic className="w-3.5 h-3.5" /> Ouvir no HubSpot
+                    <Mic className="w-3.5 h-3.5" /> Ouvir Gravação
                   </a>
                 </Button>
-              </div>
-            )}
+              )}
+              {hubspotReviewUrl && (
+                <Button 
+                  asChild 
+                  variant="outline" 
+                  size="sm" 
+                  className="border-orange-100 bg-orange-50/30 text-orange-600 hover:bg-orange-600 hover:text-white transition-all active:scale-95 h-9 rounded-xl"
+                >
+                  <a href={hubspotReviewUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 font-bold uppercase tracking-wider text-[9px]">
+                    <ExternalLink className="w-3.5 h-3.5" /> Ver no HubSpot
+                  </a>
+                </Button>
+              )}
+            </div>
           </div>
 
           <div className="bg-white border border-slate-100 rounded-2xl p-6 flex flex-col items-center justify-center min-w-[150px] shadow-sm">

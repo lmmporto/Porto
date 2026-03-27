@@ -1,11 +1,29 @@
 export type StatusFinal = "APROVADO" | "ATENCAO" | "REPROVADO" | "NAO_IDENTIFICADO" | "NAO_SE_APLICA";
 export type CallSource = "HUBSPOT" | "MANUAL";
-export type ProcessingStatus = 'DONE' | 'SKIPPED_FOR_AUDIT' | 'NOT_CONNECTED' | 'SHORT_CALL' | 'FAILED_ANALYSIS' | 'NO_AUDIO' | 'SKIPPED_SHORT_CALL';
 
-// --- INTERFACE PARA AS LIGAÇÕES INDIVIDUAIS (Mantida) ---
+// 🚩 ATUALIZADO: Todos os status possíveis que o seu backend pode cuspir agora
+export type ProcessingStatus = 
+  | 'DONE' 
+  | 'PROCESSING'
+  | 'SKIPPED_FOR_AUDIT' 
+  | 'NOT_CONNECTED' 
+  | 'SHORT_CALL' 
+  | 'SKIPPED_SHORT_CALL'
+  | 'SKIPPED_TEAM_BLOCKED'
+  | 'SKIPPED_TEAM_NOT_MONITORED'
+  | 'SKIPPED_NO_AUDIO'
+  | 'SKIPPED_EMPTY_TRANSCRIPT'
+  | 'FAILED_ANALYSIS';
+
+// --- INTERFACE PARA AS LIGAÇÕES INDIVIDUAIS ---
 export interface SDRCall {
   id: string;
   callId: string;
+  
+  // 🚩 ADICIONADO: Pra ler direto do hubspot sem choradeira do TypeScript
+  hubspotCallId?: string; 
+  portalId?: string;
+
   createdAt?: any; 
   title: string;
   ownerId: string | null;
@@ -19,7 +37,7 @@ export interface SDRCall {
   analyzedAt: any;
   status_final: StatusFinal;
   nota_spin: number;
-  source: CallSource;
+  source?: CallSource; 
   processingStatus?: ProcessingStatus;
   
   resumo: string;
@@ -32,8 +50,7 @@ export interface SDRCall {
   perguntas_sugeridas?: string[];
 }
 
-// --- 🚩 NOVOS TIPOS: ESTRUTURA DO COFRE DE SALDOS ---
-
+// --- NOVOS TIPOS: ESTRUTURA DO COFRE DE SALDOS ---
 
 export interface SDRRankingEntry {
   calls: number;        
@@ -41,24 +58,17 @@ export interface SDRRankingEntry {
   sum_notes: number;    
   nota_media: number;   
 }
-export interface DashboardSummary {
-  date: string;         // Data do resumo (AAAA-MM-DD)
-  updatedAt: any;       // Timestamp da última atualização
-  
-  // Totais Globais
-  total_calls: number;           // Volume bruto de ligações
-  connected_calls: number;       // Ligações que tiveram conexão/áudio
-  analyzed_calls: number;        // Ligações processadas com sucesso pela IA
-  
-  // Métricas de Qualidade
-  sum_notes: number;             // Soma de todas as notas válidas
-  valid_calls_for_media: number; // Quantidade de chamadas usadas na média (evita Rota C)
-  
-  // Contadores de Status
-  count_aprovado: number;
-  count_atencao: number;
-  count_reprovado: number;
 
-  // Ranking Mastigado (Chave é o nome do SDR)
+// 🚩 ATUALIZADO: Reflete EXATAMENTE o que o /api/stats/summary devolve hoje
+export interface DashboardSummary {
+  total_calls: number;
+  valid_calls: number;
+  sum_notes: number;
+  media_geral: number;
   sdr_ranking: Record<string, SDRRankingEntry>;
+  
+  // Opcionais para tratamento de erro/vazio e debug
+  empty?: boolean;
+  message?: string;
+  _debug_version?: string;
 }
