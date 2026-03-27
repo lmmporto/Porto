@@ -32,8 +32,6 @@ import { Separator } from '@/components/ui/separator';
 import type { SDRCall, StatusFinal } from '@/types';
 import { cn } from '@/lib/utils';
 
-const HUBSPOT_ACCOUNT_ID = '45311822'; 
-
 export default function CallDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -175,14 +173,17 @@ export default function CallDetailPage() {
     );
   }
 
+  // AQUI COMEÇA A PREPARAÇÃO DOS DADOS PRO JSX:
   const status = getStatusConfig(call.status_final);
   const isRotaC = call.status_final === 'NAO_SE_APLICA';
   const durationMin = call.durationMs ? (call.durationMs / 60000).toFixed(1) : '0.0';
 
+  // 🚩 LÓGICA DE RESOLUÇÃO SÊNIOR PARA IDENTIFICADORES HUBSPOT
   const actualHubspotId = call.hubspotCallId || call.callId || call.id;
+  const actualPortalId = call.portalId || '1554114'; 
   
   const hubspotReviewUrl = actualHubspotId 
-    ? `https://app.hubspot.com/calls/${HUBSPOT_ACCOUNT_ID}/review/${actualHubspotId}`
+    ? `https://app.hubspot.com/calls/${actualPortalId}/review/${actualHubspotId}`
     : null;
 
   return (
