@@ -86,13 +86,11 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
   }
 
   console.log(`\n--- 🎙️ INICIANDO TRANSCRIÇÃO (Call: ${call.id}) ---`);
-  console.log(`[MODELO] Usando: ${CONFIG.GEMINI_TRANSCRIPTION_MODEL}`);
-
+  
   let localFilePath = '';
   let uploadedFile: { name?: string; uri?: string; mimeType?: string } | null = null;
 
   try {
-    console.log(`[STEP 1] Baixando áudio do HubSpot...`);
     const audioResponse = await axios.get(call.recordingUrl, {
       responseType: 'arraybuffer',
       timeout: 120000,
@@ -103,26 +101,16 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
     const ext = detectAudioExtension(contentType);
     const buffer = Buffer.from(audioResponse.data as ArrayBuffer);
     
-    const fileSizeMB = (buffer.byteLength / (1024 * 1024)).toFixed(2);
-    console.log(`[STEP 2] Peso do arquivo: ${fileSizeMB} MB`);
-
-    if (buffer.byteLength < 3500000) {
-      console.log(`[SKIP] 🛑 Call ${call.id} ignorada: Abaixo do limite mínimo de 3.5MB.`);
-      return '';
-    }
+    if (buffer.byteLength < 3500000) return '';
 
     localFilePath = path.join(os.tmpdir(), `call-${randomUUID()}.${ext}`);
     await writeFile(localFilePath, buffer);
-    console.log(`[STEP 3] Arquivo temporário criado: ${localFilePath}`);
 
-    console.log(`[STEP 4] Fazendo upload para Google Media Service...`);
     uploadedFile = await gemini.files.upload({ 
       file: localFilePath, 
       config: { mimeType: contentType } 
     });
-    console.log(`[STEP 4 - OK] File URI: ${uploadedFile.uri}`);
 
-    console.log(`[STEP 5] Chamando Gemini para transcrição...`);
     const response = await gemini.models.generateContent({
       model: CONFIG.GEMINI_TRANSCRIPTION_MODEL,
       contents: createUserContent([
@@ -138,26 +126,14 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
 
     const rawText = cleanGeminiResponse(response?.text || '');
     const parsed = safeJsonParse(rawText);
-    const transcript = sanitizeText(parsed?.transcript || '');
-
-    console.log(`[STEP 5 - OK] Transcrição concluída. Palavras: ${transcript.split(/\s+/).length}`);
-    return transcript;
+    return sanitizeText(parsed?.transcript || '');
 
   } catch (error: any) {
     console.error(`[TRANSCRIPTION ERROR] Falha na Call ${call.id}:`, error.message);
-    if (error.message.includes('8 RESOURCE_EXHAUSTED')) {
-      console.error('🚨 ALERTA: Cota do Google esgotada nesta etapa (Transcrição)!');
-    }
     throw error;
   } finally {
-    if (uploadedFile?.name) {
-      await gemini.files.delete({ name: uploadedFile.name }).catch(() => {});
-      console.log(`[CLEANUP] Arquivo deletado do Google Media.`);
-    }
-    if (localFilePath) {
-      await unlink(localFilePath).catch(() => {});
-      console.log(`[CLEANUP] Arquivo temporário local removido.`);
-    }
+    if (uploadedFile?.name) await gemini.files.delete({ name: uploadedFile.name }).catch(() => {});
+    if (localFilePath) await unlink(localFilePath).catch(() => {});
   }
 }
 
@@ -165,29 +141,41 @@ export async function analyzeCallWithGemini(call: CallData, ownerDetails: OwnerD
   if (!gemini) throw new Error('GEMINI_API_KEY não configurada.');
 
   console.log(`\n--- 🧠 INICIANDO ANÁLISE IA (Call: ${call.id}) ---`);
-  console.log(`[MODELO] Usando: ${CONFIG.GEMINI_ANALYSIS_MODEL}`);
-
   const wordCount = (call.transcript || '').split(/\s+/).length;
 
   const prompt = `
-Você é um Coach de Vendas focado em desenvolvimento contínuo. Sua abordagem é ADITIVA. Você entende o contexto de vendas B2B para contabilidade.
+OBJETIVO: Você é um Especialista Sênior em SDR. Sua função é avaliar chamadas de forma ADITIVA (começa em 0 e soma pontos). Você deve ser construtivo, apontando momentos em que o SDR poderia ter "apertado" mais o cliente para gerar urgência.
 
---- PASSO 1: CLASSIFICAÇÃO DO CONTEXTO ---
-Identifique o tipo da ligação:
-- ROTA A (Reagendamento/Follow-up)
-- ROTA B (Prospecção/Novo Agendamento)
-- ROTA C (Conversa Genérica/Não Avaliada)
+PASSO 1: CLASSIFICAÇÃO DA LIGAÇÃO (OBRIGATÓRIO)
+Identifique e escreva qual a rota da ligação:
+- ROTA A: Reagendamento / Follow-up (Lead que não apareceu ou pediu para ligar depois).
+- ROTA B: Prospecção / Novo Agendamento (Primeiro contato/Filtro).
+- ROTA C: Conversa Genérica / Outros. (Nota técnica = null no JSON).
 
---- PASSO 2: SISTEMA DE PONTUAÇÃO ADITIVO (0 a 10) ---
+PASSO 2: CRITÉRIOS DE PONTUAÇÃO (TOTAL 10 PONTOS)
+SE FOR ROTA B (Novo Agendamento):
+- Quebra de Gelo e Rapport (+2,5 pts): Fez uma abertura leve, personalizada e criou conexão real?
+- Situação e Problema (+4,0 pts): Mapeou o cenário atual e conseguiu identificar uma dor, insatisfação ou ponto cego do cliente?
+- Agendamento e Próximos Passos (+3,5 pts): Marcou data/hora, explicou como será a reunião e confirmou a presença dos sócios/decisores?
 
-SE ROTA A ou B: Baseado em técnica (SPIN).
-SE ROTA C: NOTA TÉCNICA = null.
+SE FOR ROTA A (Reagendamento):
+- Conexão e Contexto (+3,0 pts): Retomou o contato de forma profissional, sem parecer cobrador, e validou o motivo do reagendamento?
+- Re-ancoragem da Dor (+3,5 pts): Relembrou os pontos/problemas que motivaram o lead a querer a reunião originalmente? (Ex: "Na última vez falamos sobre sua dificuldade com o suporte do contador atual...")
+- Fechamento e Compromisso (+3,5 pts): Garantiu o novo horário e deixou claro o próximo passo?
 
---- REGRAS DE STATUS FINAL (Rigoroso) ---
-- ROTA A ou B com nota < 5: REPROVADO
-- ROTA A ou B com nota 5 a 7: ATENCAO
-- ROTA A ou B com nota 8 a 10: APROVADO
-- ROTA C: NAO_SE_APLICA.
+PASSO 3: RADAR DE OPORTUNIDADES (FEEDBACK DO COACH)
+Para qualquer rota (A ou B), localize um momento onde o cliente deu uma "deixa" e o SDR foi passivo.
+Formato de saída esperado no campo "analise_escuta": "Aos [00:00], o cliente disse [Citação]. Oportunidade desperdiçada: Você deveria ter feito uma pergunta de aprofundamento/implicação aqui para aumentar a percepção de valor, mas seguiu para o agendamento."
+
+PASSO 4: STATUS FINAL (RIGOROSO)
+- 0 a 4.9: REPROVADO
+- 5.0 a 7.9: ATENCAO
+- 8.0 a 10: APROVADO
+- ROTA C: NAO_SE_APLICA
+
+INSTRUÇÕES TÉCNICAS:
+- NUNCA misture os critérios. Se for ROTA A, ignore os critérios de diagnóstico profundo da Rota B.
+- ADITIVIDADE: Comece a nota em 0 e some conforme os critérios forem atendidos.
 
 SDR: ${ownerDetails.ownerName} | Equipe: ${ownerDetails.teamName}
 Duração: ${call.durationMs}ms | Palavras: ${wordCount}
@@ -225,7 +213,6 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
 
 /**
  * 📊 ATUALIZAÇÃO DO COFRE DE SALDOS
- * @param isUpdate - Se for true, não incrementa o total_calls (apenas atualiza notas/status)
  */
 export async function updateDailyStats(callData: any, analysis: any, isUpdate: boolean = false) {
   try {
@@ -239,31 +226,24 @@ export async function updateDailyStats(callData: any, analysis: any, isUpdate: b
     
     const nota = isValida ? Number(analysis.nota_spin) : 0;
     const sdrName = callData.ownerName || "Desconhecido";
-
-    // 🚩 LÓGICA SÊNIOR: Se for um update (IA terminou), o incremento de TOTAL é ZERO.
     const totalIncrement = isUpdate ? 0 : 1;
 
     const updatePayload: any = {
       date: today,
       updatedAt: FieldValue.serverTimestamp(),
       total_calls: FieldValue.increment(totalIncrement),
-      
-      // Só incrementa o divisor da média se a call for útil
       valid_calls: isValida ? FieldValue.increment(1) : FieldValue.increment(0),
       sum_notes: isValida ? FieldValue.increment(nota) : FieldValue.increment(0),
-      
       count_aprovado: analysis.status_final === 'APROVADO' ? FieldValue.increment(1) : FieldValue.increment(0),
       count_atencao: analysis.status_final === 'ATENCAO' ? FieldValue.increment(1) : FieldValue.increment(0),
       count_reprovado: analysis.status_final === 'REPROVADO' ? FieldValue.increment(1) : FieldValue.increment(0),
     };
 
-    // Ranking por SDR
     updatePayload[`sdr_ranking.${sdrName}.total`] = FieldValue.increment(totalIncrement);
     updatePayload[`sdr_ranking.${sdrName}.sum_notes`] = isValida ? FieldValue.increment(nota) : FieldValue.increment(0);
     updatePayload[`sdr_ranking.${sdrName}.valid_count`] = isValida ? FieldValue.increment(1) : FieldValue.increment(0);
 
     await statsRef.set(updatePayload, { merge: true });
-
     console.log(`📊 [COFRE] ${isUpdate ? 'UPDATE' : 'NOVO'}: ${sdrName} | Válida: ${isValida}`);
   } catch (error) {
     console.error("❌ [COFRE ERROR]:", error);
