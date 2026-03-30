@@ -144,38 +144,42 @@ export async function analyzeCallWithGemini(call: CallData, ownerDetails: OwnerD
   const wordCount = (call.transcript || '').split(/\s+/).length;
 
   const prompt = `
-OBJETIVO: Você é um Especialista Sênior em SDR. Sua função é avaliar chamadas de forma ADITIVA (começa em 0 e soma pontos). Você deve ser construtivo, apontando momentos em que o SDR poderia ter "apertado" mais o cliente para gerar urgência.
+OBJETIVO: Especialista Sênior em SDR. Avaliação ADITIVA (0 a 10).
+FOCO: Ser construtivo, mas rigoroso. Identificar passividade e falta de "aperto" no cliente.
 
-PASSO 1: CLASSIFICAÇÃO DA LIGAÇÃO (OBRIGATÓRIO)
-Identifique e escreva qual a rota da ligação:
-- ROTA A: Reagendamento / Follow-up (Lead que não apareceu ou pediu para ligar depois).
-- ROTA B: Prospecção / Novo Agendamento (Primeiro contato/Filtro).
-- ROTA C: Conversa Genérica / Outros. (Nota técnica = null no JSON).
+PASSO 1: CLASSIFICAÇÃO DA ROTA (OBRIGATÓRIO)
+- ROTA A: Reagendamento / Follow-up (Lead que não apareceu ou pediu retorno).
+- ROTA B: Prospecção / Novo Agendamento (Primeiro contato/Filtro com Decisor).
+- ROTA C: Gatekeeper / Navegação (Falou com secretária/assistente para chegar no decisor).
+- ROTA D: Outros / Descarte (Número errado, spam, ligação caiu). Nota técnica = null.
 
 PASSO 2: CRITÉRIOS DE PONTUAÇÃO (TOTAL 10 PONTOS)
-SE FOR ROTA B (Novo Agendamento):
-- Quebra de Gelo e Rapport (+2,5 pts): Fez uma abertura leve, personalizada e criou conexão real?
-- Situação e Problema (+4,0 pts): Mapeou o cenário atual e conseguiu identificar uma dor, insatisfação ou ponto cego do cliente?
-- Agendamento e Próximos Passos (+3,5 pts): Marcou data/hora, explicou como será a reunião e confirmou a presença dos sócios/decisores?
 
-SE FOR ROTA A (Reagendamento):
-- Conexão e Contexto (+3,0 pts): Retomou o contato de forma profissional, sem parecer cobrador, e validou o motivo do reagendamento?
-- Re-ancoragem da Dor (+3,5 pts): Relembrou os pontos/problemas que motivaram o lead a querer a reunião originalmente? (Ex: "Na última vez falamos sobre sua dificuldade com o suporte do contador atual...")
-- Fechamento e Compromisso (+3,5 pts): Garantiu o novo horário e deixou claro o próximo passo?
+--- SE ROTA A (Reagendamento) ---
+1. Conexão e Contexto (+3,0 pts): Retomou sem parecer cobrador e validou o motivo do reagendamento?
+2. Re-ancoragem da Dor (+4,0 pts): Relembrou os problemas que motivaram o interesse original?
+3. Fechamento e Compromisso (+3,0 pts): Garantiu novo horário e próximo passo claro?
+
+--- SE ROTA B (Novo Agendamento) ---
+1. Rapport e Quebra de Gelo (+2,0 pts): Conexão real e abertura personalizada?
+2. Diagnóstico e Implicação (+5,0 pts): Mapeou dor, insatisfação ou ponto cego? "Apertou" o cliente?
+3. Agendamento e Decisores (+3,0 pts): Marcou data/hora e confirmou presença de sócios/decisores?
+
+--- SE ROTA C (Gatekeeper) ---
+1. Posicionamento e Autoridade (+3,0 pts): Falou de igual para igual? Evitou parecer telemarketing?
+2. Coleta de Inteligência (+4,0 pts): Conseguiu nome do decisor, e-mail direto ou processo de decisão?
+3. Próximo Passo (+3,0 pts): Conseguiu transferência, agenda com o decisor ou prometeu retorno específico?
 
 PASSO 3: RADAR DE OPORTUNIDADES (FEEDBACK DO COACH)
-Para qualquer rota (A ou B), localize um momento onde o cliente deu uma "deixa" e o SDR foi passivo.
-Formato de saída esperado no campo "analise_escuta": "Aos [00:00], o cliente disse [Citação]. Oportunidade desperdiçada: Você deveria ter feito uma pergunta de aprofundamento/implicação aqui para aumentar a percepção de valor, mas seguiu para o agendamento."
+Formato: "Aos [00:00], o cliente disse [Citação]. Oportunidade desperdiçada: [Explicação de como aprofundar]."
 
 PASSO 4: STATUS FINAL (RIGOROSO)
-- 0 a 4.9: REPROVADO
-- 5.0 a 7.9: ATENCAO
-- 8.0 a 10: APROVADO
-- ROTA C: NAO_SE_APLICA
+- 0 a 4.9: REPROVADO | 5.0 a 7.9: ATENCAO | 8.0 a 10: APROVADO | ROTA D: NAO_SE_APLICA
 
-INSTRUÇÕES TÉCNICAS:
-- NUNCA misture os critérios. Se for ROTA A, ignore os critérios de diagnóstico profundo da Rota B.
-- ADITIVIDADE: Comece a nota em 0 e some conforme os critérios forem atendidos.
+INSTRUÇÕES TÉCNICAS (BLOQUEIO LÓGICO):
+1. ADITIVIDADE: A nota DEVE começar em 0. Some os pontos apenas se o critério for explicitamente atendido.
+2. EXCLUSIVIDADE: Use APENAS os critérios da rota identificada. Se for Rota C, ignore os critérios de Rota A e B.
+3. RIGOR: Se o SDR foi passivo em um momento crucial de dor, penalize a pontuação do critério correspondente, mas o feedback se mantem construtivo.
 
 SDR: ${ownerDetails.ownerName} | Equipe: ${ownerDetails.teamName}
 Duração: ${call.durationMs}ms | Palavras: ${wordCount}
