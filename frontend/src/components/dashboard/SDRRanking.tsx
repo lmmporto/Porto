@@ -24,15 +24,15 @@ interface SDRRankingProps {
 }
 
 export function SDRRanking({ summary }: SDRRankingProps) {
-  // 🚩 REVISÃO DE LÓGICA: Sincronizado com os campos 'calls' e 'valid_calls' do Cofre
+  // 🚩 REVISÃO DE LÓGICA SÊNIOR: Garantindo que o objeto nunca seja null/undefined antes da iteração
   const ranking = useMemo(() => {
-    if (!summary?.sdr_ranking) return [];
+    const entries = Object.entries(summary?.sdr_ranking ?? {}); // 🚩 ?? {} garante a segurança técnica
 
-    return Object.entries(summary.sdr_ranking)
+    return entries
       .map(([name, stats]: [string, any]) => {
-        // 🚩 VOLUME: Todas as chamadas (incluindo as que não foram analisadas)
+        // VOLUME: Todas as chamadas registradas no banco
         const totalCalls = Number(stats.calls || 0);
-        // 🚩 AVALIADAS: Apenas as que passaram pela IA e têm nota
+        // AVALIADAS: Apenas as que passaram pela IA
         const validCount = Number(stats.valid_calls || 0);
         const sumNotes = Number(stats.sum_notes || 0);
         const avgSpin = validCount > 0 ? sumNotes / validCount : 0;
@@ -56,7 +56,6 @@ export function SDRRanking({ summary }: SDRRankingProps) {
       };
     }
     
-    // Threshold 7.5 (Excelência)
     if (avg >= 7.5) return { color: "text-emerald-500", bg: "bg-emerald-50", icon: <CheckCircle2 className="w-3 h-3" /> };
     if (avg >= 5) return { color: "text-amber-500", bg: "bg-amber-50", icon: <MinusCircle className="w-3 h-3" /> };
     
@@ -67,10 +66,11 @@ export function SDRRanking({ summary }: SDRRankingProps) {
     };
   };
 
-  if (!summary || ranking.length === 0) {
+  // 🚩 FALLBACK: Se não houver entradas no ranking após o processamento
+  if (ranking.length === 0) {
     return (
       <div className="bg-white border border-slate-100 rounded-xl p-8 text-center">
-        <p className="text-xs text-slate-400 italic">Nenhum rastro encontrado no cofre.</p>
+        <p className="text-xs text-slate-400 italic">Nenhum rastro encontrado no cofre para este período.</p>
       </div>
     );
   }
@@ -83,7 +83,7 @@ export function SDRRanking({ summary }: SDRRankingProps) {
           Ranking Performance
         </h3>
         <span className="text-[9px] font-bold text-slate-300 uppercase tracking-tighter flex items-center gap-1">
-          <Phone className="w-2.5 h-2.5" /> {summary.total_calls} Vol. Total
+          <Phone className="w-2.5 h-2.5" /> {summary?.total_calls || 0} Vol. Total
         </span>
       </div>
       
