@@ -217,38 +217,47 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
 
 /**
  * 📊 ATUALIZAÇÃO DO COFRE DE SALDOS
+ * @param isUpdate - Se for true, não incrementa o total_calls (apenas atualiza notas/status)
  */
 export async function updateDailyStats(callData: any, analysis: any, isUpdate: boolean = false) {
   try {
-    const today = new Date().toISOString().split('T')[0];
-    const statsRef = db.collection('dashboard_stats').doc(today);
-
-    const isValida = analysis.status_final !== 'NAO_SE_APLICA' && 
-                     analysis.status_final !== 'NAO_IDENTIFICADO' && 
-                     analysis.nota_spin !== null && 
-                     Number(analysis.nota_spin) > 0;
+    const nowInBrazil = new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+    }).format(new Date());
+    const today = nowInBrazil.split('/').reverse().join('-');
     
-    const nota = isValida ? Number(analysis.nota_spin) : 0;
+    const statsRef = db.collection('dashboard_stats').doc(today);
     const sdrName = callData.ownerName || "Desconhecido";
+
+    // 🚩 LÓGICA SÊNIOR: Aceita nota 0.0. Só ignora se for Rota D (Descarte) ou Pendente.
+    const isValidaParaRanking = analysis.status_final !== 'NAO_SE_APLICA' && 
+                                analysis.status_final !== 'NAO_IDENTIFICADO' &&
+                                analysis.nota_spin !== null;
+
+    const nota = isValidaParaRanking ? Number(analysis.nota_spin || 0) : 0;
     const totalIncrement = isUpdate ? 0 : 1;
 
     const updatePayload: any = {
       date: today,
       updatedAt: FieldValue.serverTimestamp(),
       total_calls: FieldValue.increment(totalIncrement),
-      valid_calls: isValida ? FieldValue.increment(1) : FieldValue.increment(0),
-      sum_notes: isValida ? FieldValue.increment(nota) : FieldValue.increment(0),
-      count_aprovado: analysis.status_final === 'APROVADO' ? FieldValue.increment(1) : FieldValue.increment(0),
-      count_atencao: analysis.status_final === 'ATENCAO' ? FieldValue.increment(1) : FieldValue.increment(0),
-      count_reprovado: analysis.status_final === 'REPROVADO' ? FieldValue.increment(1) : FieldValue.increment(0),
+      // Globais
+      valid_calls: isValidaParaRanking && isUpdate ? FieldValue.increment(1) : FieldValue.increment(0),
+      sum_notes: isValidaParaRanking && isUpdate ? FieldValue.increment(nota) : FieldValue.increment(0),
     };
 
+    // Ranking por SDR
     updatePayload[`sdr_ranking.${sdrName}.total`] = FieldValue.increment(totalIncrement);
-    updatePayload[`sdr_ranking.${sdrName}.sum_notes`] = isValida ? FieldValue.increment(nota) : FieldValue.increment(0);
-    updatePayload[`sdr_ranking.${sdrName}.valid_count`] = isValida ? FieldValue.increment(1) : FieldValue.increment(0);
+    
+    // Se for o update da IA, incrementamos a nota e o contador de avaliações
+    if (isUpdate && isValidaParaRanking) {
+      updatePayload[`sdr_ranking.${sdrName}.sum_notes`] = FieldValue.increment(nota);
+      updatePayload[`sdr_ranking.${sdrName}.valid_count`] = FieldValue.increment(1);
+    }
 
     await statsRef.set(updatePayload, { merge: true });
-    console.log(`📊 [COFRE] ${isUpdate ? 'UPDATE' : 'NOVO'}: ${sdrName} | Válida: ${isValida}`);
+    console.log(`📊 [COFRE] ${isUpdate ? 'IA_FINISH' : 'WEBHOOK'}: ${sdrName} | Nota: ${nota} | Valida: ${isValidaParaRanking}`);
   } catch (error) {
     console.error("❌ [COFRE ERROR]:", error);
   }

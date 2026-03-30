@@ -41,39 +41,37 @@ router.get('/stats/summary', async (req, res) => {
         message: "Nenhum dado encontrado para este período", 
         total_calls: 0, valid_calls: 0, sum_notes: 0, media_geral: 0,
         sdr_ranking: {}, empty: true,
-        _debug_version: "FINAL_V1_BR_TIMEZONE_AGREGATED_04042024_EMPTY_SNAPSHOT" // 🚩 VERSÃO DO DEBUG
+        _debug_version: "FINAL_V1_BR_TIMEZONE_AGREGATED_04042024_EMPTY_SNAPSHOT"
       });
     }
 
     let total_calls = 0; 
     let valid_calls = 0; 
     let sum_notes = 0;
-    // 🚩 IMPORTANTE: Definir o tipo explicitamente para garantir que sdr_ranking seja um objeto
+    
+    // Objeto temporário para acumular os dados brutos
     const sdr_ranking: Record<string, { calls: number; sum_notes: number; valid_calls: number; nota_media: number }> = {};
 
     snapshot.forEach(doc => {
       const data = doc.data();
-      // 🚩 ADICIONAR ESTE LOG TEMPORARIAMENTE para VER o formato exato dos dados
       console.log(`[DEBUG - STATS_SUMMARY - RAW DATA] Document ID: ${doc.id}, Data:`, JSON.stringify(data, null, 2));
 
       total_calls += Number(data.total_calls || 0);
       valid_calls += Number(data.valid_calls || data.valid_calls_for_media || data.analyzed_calls || 0);
       sum_notes += Number(data.sum_notes || 0);
 
-      // 🚩 ALTERAÇÃO CRÍTICA: Lógica para reconstruir sdr_ranking de campos planos
+      // Lógica para reconstruir sdr_ranking de campos planos do Firestore
       for (const key in data) {
         if (key.startsWith('sdr_ranking.')) {
-          const parts = key.split('.'); // Ex: ['sdr_ranking', 'Abner Christófori', 'sum_notes']
+          const parts = key.split('.'); 
           if (parts.length === 3) {
             const sdrName = parts[1];
-            const statType = parts[2]; // Ex: 'sum_notes', 'total', 'valid_count'
+            const statType = parts[2]; 
 
-            // Inicializa o objeto do SDR se ainda não existir no nosso sdr_ranking agregado
             if (!sdr_ranking[sdrName]) {
               sdr_ranking[sdrName] = { calls: 0, sum_notes: 0, valid_calls: 0, nota_media: 0 };
             }
 
-            // Adiciona o valor ao campo correto
             const value = Number(data[key] || 0);
             if (statType === 'total') {
               sdr_ranking[sdrName].calls += value;
@@ -85,31 +83,40 @@ router.get('/stats/summary', async (req, res) => {
           }
         }
       }
-    }); // Fim do snapshot.forEach
+    });
 
-    // 🚩 CALCULAR nota_media PARA CADA SDR DEPOIS QUE TODAS AS AGREGACÕES ESTÃO FEITAS
-    for (const sdrName in sdr_ranking) {
-        const sdr = sdr_ranking[sdrName];
-        if (sdr.valid_calls > 0) {
-            sdr.nota_media = Number((sdr.sum_notes / sdr.valid_calls).toFixed(2));
-        } else {
-            sdr.nota_media = 0; // Garante 0 se não houver chamadas válidas para evitar NaN
-        }
-    }
+    // 🚩 PARTE FINAL: PROCESSAMENTO, FILTRAGEM E ORDENAÇÃO
+    const processedRanking: any = {};
+
+    Object.entries(sdr_ranking).forEach(([name, stats]) => {
+      // Só entra no ranking se tiver pelo menos UMA chamada avaliada (evita divisões por zero e lixo)
+      if (stats.valid_calls > 0) {
+        const media = Number((stats.sum_notes / stats.valid_calls).toFixed(1));
+        processedRanking[name] = {
+          ...stats,
+          nota_media: media
+        };
+      }
+    });
+
+    // Ordenação decrescente por nota_media
+    const sortedRanking = Object.entries(processedRanking)
+      .sort(([, a]: any, [, b]: any) => b.nota_media - a.nota_media);
+
+    const finalRanking = Object.fromEntries(sortedRanking);
+
+    const mediaGeralCalculada = valid_calls > 0 ? Number((sum_notes / valid_calls).toFixed(2)) : 0;
     
-    const mediaGeral = valid_calls > 0 ? (sum_notes / valid_calls) : 0;
-    
-    console.log(`📊 [STATS] Resumo - Total: ${total_calls}, Válidas: ${valid_calls}, Média Geral: ${mediaGeral.toFixed(2)}`);
-    // 🚩 ADICIONE UM LOG TEMPORÁRIO AQUI TAMBÉM para ver o sdr_ranking final antes de enviar
-    console.log(`📊 [STATS] Ranking Final:`, JSON.stringify(sdr_ranking, null, 2));
+    console.log(`📊 [STATS] Resumo - Total: ${total_calls}, Válidas: ${valid_calls}, Média Geral: ${mediaGeralCalculada}`);
+    console.log(`📊 [STATS] Ranking Final Ordenado:`, JSON.stringify(finalRanking, null, 2));
 
     return res.json({ 
       total_calls, 
       valid_calls, 
       sum_notes, 
-      media_geral: Number(mediaGeral.toFixed(2)), 
-      sdr_ranking,
-      _debug_version: "FINAL_V2_SDR_RANKING_FLAT_FIX_04042024_WITH_DATA" // 🚩 NOVA VERSÃO DO DEBUG
+      media_geral: mediaGeralCalculada, 
+      sdr_ranking: finalRanking,
+      _debug_version: "RANKING_FIX_V4"
     });
 
   } catch (error: any) {
@@ -117,7 +124,7 @@ router.get('/stats/summary', async (req, res) => {
     return res.status(500).json({ 
       error: "Erro interno", 
       details: error.message, 
-      _debug_version: "FINAL_V1_BR_TIMEZONE_AGREGATED_04042024_ERROR" // 🚩 VERSÃO DO DEBUG
+      _debug_version: "FINAL_ERROR_V4"
     });
   }
 });
