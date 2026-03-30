@@ -1,27 +1,19 @@
 "use client";
 
 import { useMemo } from 'react';
-import { Trophy, ArrowRight, CheckCircle2, MinusCircle, Phone, Timer } from 'lucide-react';
+import { Trophy, ArrowRight, CheckCircle2, MinusCircle, Phone, Timer, Users } from 'lucide-react';
 import Link from 'next/link';
 import type { DashboardSummary } from '@/types';
 import { cn } from '@/lib/utils';
 
 // --- UTILS ---
 
-/**
- * Exemplo de conversão segura para Firebase Timestamps no Frontend
- */
 export const formatDate = (dateInput: any) => {
   if (!dateInput) return '--/--';
-  
-  // 🚩 Verificação de Timestamps do Firebase (_seconds ou seconds)
   const seconds = dateInput?._seconds || dateInput?.seconds;
-  
   if (seconds) {
     return new Date(seconds * 1000).toLocaleDateString('pt-BR');
   }
-  
-  // Caso o back-end já tenha enviado como string ISO ou Date
   return new Date(dateInput).toLocaleDateString('pt-BR');
 };
 
@@ -32,29 +24,29 @@ interface SDRRankingProps {
 }
 
 export function SDRRanking({ summary }: SDRRankingProps) {
-  // 🚩 REVISÃO DE LÓGICA: Usando useMemo para evitar re-cálculos desnecessários
+  // 🚩 REVISÃO DE LÓGICA: Sincronizado com os campos 'calls' e 'valid_calls' do Cofre
   const ranking = useMemo(() => {
     if (!summary?.sdr_ranking) return [];
 
     return Object.entries(summary.sdr_ranking)
       .map(([name, stats]: [string, any]) => {
-        // Garantimos que os nomes das propriedades batam com o que o back-end envia
-        const validCount = Number(stats.valid_calls || stats.valid_count || 0);
+        // 🚩 VOLUME: Todas as chamadas (incluindo as que não foram analisadas)
+        const totalCalls = Number(stats.calls || 0);
+        // 🚩 AVALIADAS: Apenas as que passaram pela IA e têm nota
+        const validCount = Number(stats.valid_calls || 0);
         const sumNotes = Number(stats.sum_notes || 0);
         const avgSpin = validCount > 0 ? sumNotes / validCount : 0;
 
         return {
           name,
-          valid_count: validCount,
+          totalCalls,
+          validCount,
           avgSpin
         };
       })
       .sort((a, b) => b.avgSpin - a.avgSpin);
   }, [summary]);
 
-  /**
-   * Configuração de cores inteligente baseada na nota do Cofre
-   */
   const getStatusConfig = (avg: number, hasAnalyzed: boolean) => {
     if (!hasAnalyzed) {
       return { 
@@ -64,7 +56,7 @@ export function SDRRanking({ summary }: SDRRankingProps) {
       };
     }
     
-    // Threshold ajustado para 7.5 conforme solicitado
+    // Threshold 7.5 (Excelência)
     if (avg >= 7.5) return { color: "text-emerald-500", bg: "bg-emerald-50", icon: <CheckCircle2 className="w-3 h-3" /> };
     if (avg >= 5) return { color: "text-amber-500", bg: "bg-amber-50", icon: <MinusCircle className="w-3 h-3" /> };
     
@@ -97,7 +89,7 @@ export function SDRRanking({ summary }: SDRRankingProps) {
       
       <div className="divide-y divide-slate-50">
         {ranking.map((sdr, index) => {
-          const hasAnalyzed = sdr.valid_count > 0;
+          const hasAnalyzed = sdr.validCount > 0;
           const status = getStatusConfig(sdr.avgSpin, hasAnalyzed);
           
           return (
@@ -106,7 +98,7 @@ export function SDRRanking({ summary }: SDRRankingProps) {
               href={`/dashboard/sdrs/${encodeURIComponent(sdr.name)}`}
               className={cn(
                 "flex items-center justify-between p-4 transition-all group",
-                hasAnalyzed ? "hover:bg-slate-50" : "opacity-60 grayscale-[0.5]"
+                sdr.totalCalls > 0 ? "hover:bg-slate-50" : "opacity-60 grayscale-[0.5]"
               )}
             >
               <div className="flex items-center gap-3">
@@ -124,16 +116,18 @@ export function SDRRanking({ summary }: SDRRankingProps) {
                   <p className="text-[11px] font-bold text-slate-700 group-hover:text-indigo-600 transition-colors uppercase">
                     {sdr.name}
                   </p>
-                  <p className={cn(
-                    "text-[9px] font-bold flex items-center gap-1",
-                    hasAnalyzed ? "text-emerald-500" : "text-slate-400"
-                  )}>
-                    {hasAnalyzed ? (
-                      <>{sdr.valid_count} {sdr.valid_count === 1 ? 'analisada' : 'analisadas'}</>
-                    ) : (
-                      "Aguardando reunião qualificada"
-                    )}
-                  </p>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <p className="text-[9px] font-bold text-slate-400 flex items-center gap-1">
+                      <Users className="w-2.5 h-2.5" /> Vol: {sdr.totalCalls}
+                    </p>
+                    <span className="text-[8px] text-slate-200">|</span>
+                    <p className={cn(
+                      "text-[9px] font-bold",
+                      hasAnalyzed ? "text-emerald-500" : "text-slate-300"
+                    )}>
+                      Av: {sdr.validCount}
+                    </p>
+                  </div>
                 </div>
               </div>
 

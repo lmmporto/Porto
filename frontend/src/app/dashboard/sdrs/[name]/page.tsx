@@ -20,6 +20,16 @@ import type { SDRCall, DashboardSummary } from '@/types';
 
 type SortOrder = 'date_desc' | 'score_desc' | 'score_asc';
 
+// 🚩 CONSTANTES DE DATA (PADRÃO BRASÍLIA)
+const BRAZIL_TIMEZONE = 'America/Sao_Paulo';
+
+const getBrazilDateString = (date: Date): string => {
+  return new Intl.DateTimeFormat('fr-CA', { 
+    year: 'numeric', month: '2-digit', day: '2-digit', 
+    timeZone: BRAZIL_TIMEZONE 
+  }).format(date);
+};
+
 function SDRDetailContent() {
   const { name } = useParams(); 
   const router = useRouter();
@@ -166,15 +176,17 @@ function SDRDetailContent() {
       if (sortOrder === 'score_desc') return (Number(b.nota_spin) || 0) - (Number(a.nota_spin) || 0);
       if (sortOrder === 'score_asc') return (Number(a.nota_spin) || 0) - (Number(b.nota_spin) || 0);
       
-      const dateA = new Date(a.createdAt || a.updatedAt || 0).getTime();
-      const dateB = new Date(b.createdAt || b.updatedAt || 0).getTime();
-      return dateB - dateA; 
+      // Helper para extrair data do Firebase ou String
+      const getTime = (call: SDRCall) => {
+        const d = call.analyzedAt || call.updatedAt || call.createdAt;
+        if (!d) return 0;
+        const sec = typeof d === 'object' ? (d._seconds || d.seconds) : null;
+        return sec ? sec * 1000 : new Date(d as any).getTime();
+      };
+
+      return getTime(b) - getTime(a); 
     });
   }, [calls, sortOrder]);
-
-  // 🚩 LÓGICA DE VOLUME DO PERÍODO ATUALIZADA
-  const totalVolume = calls.length; 
-  const analyzedCalls = calls.filter(c => c.processingStatus === 'DONE').length;
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20 px-4 md:px-0">
@@ -203,18 +215,19 @@ function SDRDetailContent() {
                 <TrendingUp className="w-3 h-3 text-amber-500" /> Média SPIN
               </span>
               <span className="text-2xl font-headline font-bold text-slate-900">
-                {sdrStats.avg > 0 ? sdrStats.avg.toFixed(1) : "--"}
+                {/* 🚩 MUDANÇA: Se existem válidas, mostra a nota (mesmo que seja 0.0) */}
+                {sdrStats.validos > 0 ? sdrStats.avg.toFixed(1) : "--"}
               </span>
             </div>
 
             <div className="bg-white border border-slate-100 rounded-xl p-4 flex flex-col items-center min-w-[140px] shadow-sm transition-opacity duration-300" style={{ opacity: isLoading ? 0.5 : 1 }}>
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
-                <PhoneCall className="w-3 h-3 text-emerald-500" /> Analisadas
+                <PhoneCall className="w-3 h-3 text-emerald-500" /> Analisadas / Volume
               </span>
-              {/* 🚩 EXIBIÇÃO DO VOLUME DO PERÍODO ATUALIZADA */}
               <div className="flex items-baseline gap-1.5 mt-1">
-                <span className="text-2xl font-headline font-bold text-slate-900">{analyzedCalls}</span>
-                <span className="text-xs font-bold text-slate-300">/{totalVolume}</span>
+                {/* 🚩 MUDANÇA: Use sdrStats.validos e sdrStats.total (que vêm do resumo do banco) */}
+                <span className="text-2xl font-headline font-bold text-slate-900">{sdrStats.validos}</span>
+                <span className="text-xs font-bold text-slate-300"> / {sdrStats.total}</span>
               </div>
             </div>
           </div>

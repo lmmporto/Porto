@@ -3,15 +3,15 @@
 import { useState, useEffect } from 'react';
 import { 
   Search, 
-  Filter, 
   ChevronRight,
   CheckCircle2,
   AlertCircle,
   XCircle,
-  ShieldCheck,
   FileArchive,
   Loader2,
-  Hourglass
+  Hourglass,
+  MinusCircle,
+  RefreshCw
 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -31,7 +31,6 @@ export default function CallsListPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    // 🚩 Adicionado timestamp para evitar cache
     fetch(`/api/calls?t=${Date.now()}`)
       .then(res => res.json())
       .then(data => {
@@ -64,35 +63,46 @@ export default function CallsListPage() {
     }
   };
 
-  // 🚩 FUNÇÃO DE BADGE CORRIGIDA: Lida com casos sem nota (tentativas)
+  // 🚩 FUNÇÃO DE BADGE SÊNIOR: Transparência total para o usuário
   const getStatusBadge = (call: SDRCall) => {
-    const nota = call.nota_spin;
-    const isProcessed = call.processingStatus === "DONE";
+    const isDone = call.processingStatus === "DONE";
+    const isRotaC = call.status_final === "NAO_SE_APLICA";
+    const nota = Number(call.nota_spin || 0);
 
-    if (!isProcessed && (!nota || nota === 0)) {
+    if (isRotaC) {
       return (
-        <Badge className="bg-slate-100 text-slate-400 border-slate-200 hover:bg-slate-100 shadow-none">
-          <Hourglass className="w-3 h-3 mr-1" /> Tentativa
+        <Badge className="bg-slate-100 text-slate-500 border-slate-200 shadow-none uppercase text-[9px] font-bold">
+          <MinusCircle className="w-3 h-3 mr-1" /> Descarte
         </Badge>
       );
     }
 
-    if (nota >= 7) {
+    if (!isDone) {
+      const isProcessing = call.processingStatus === "PROCESSING";
       return (
-        <Badge className="bg-green-100 text-green-700 border-green-200 hover:bg-green-100 shadow-none">
+        <Badge className="bg-blue-50 text-blue-600 border-blue-100 shadow-none uppercase text-[9px] font-bold">
+          {isProcessing ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : <Hourglass className="w-3 h-3 mr-1" />}
+          {isProcessing ? "Analisando" : "Tentativa"}
+        </Badge>
+      );
+    }
+
+    if (nota >= 7.5) {
+      return (
+        <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 shadow-none uppercase text-[9px] font-bold">
           <CheckCircle2 className="w-3 h-3 mr-1" /> Aprovado
         </Badge>
       );
     } 
     if (nota >= 5) {
       return (
-        <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200 hover:bg-yellow-100 shadow-none">
+        <Badge className="bg-amber-50 text-amber-700 border-amber-200 shadow-none uppercase text-[9px] font-bold">
           <AlertCircle className="w-3 h-3 mr-1" /> Atenção
         </Badge>
       );
     }
     return (
-      <Badge className="bg-red-100 text-red-700 border-red-200 hover:bg-red-100 shadow-none">
+      <Badge className="bg-rose-50 text-rose-700 border-rose-200 shadow-none uppercase text-[9px] font-bold">
         <XCircle className="w-3 h-3 mr-1" /> Reprovado
       </Badge>
     );
@@ -167,18 +177,20 @@ export default function CallsListPage() {
                           </div>
                         </td>
                         <td className="p-4 align-middle">
-                          {/* 🚩 AGORA ENVIAMOS A 'call' INTEIRA PARA A FUNÇÃO DECIDIR O BADGE */}
                           {getStatusBadge(call)}
                         </td>
-                        <td className="p-4 align-middle font-bold text-slate-900 text-center">
-                          {/* 🚩 PROTEÇÃO: Só tenta formatar nota se ela existir, senão mostra '--' */}
-                          {call.processingStatus === "DONE" || (call.nota_spin !== null && call.nota_spin !== undefined) 
-                             ? Number(call.nota_spin).toFixed(1) 
+                        <td className={`p-4 align-middle font-bold text-center ${call.processingStatus === 'DONE' && Number(call.nota_spin) < 5 ? 'text-rose-600' : 'text-slate-900'}`}>
+                          {call.processingStatus === "DONE" && call.status_final !== "NAO_SE_APLICA"
+                             ? Number(call.nota_spin || 0).toFixed(1) 
                              : "--"}
                         </td>
-                        <td className="p-4 align-middle text-slate-500 text-xs">
-                          {/* 🚩 PROTEÇÃO: Garante que durationMs seja um número antes da conta */}
-                          {call.durationMs ? (Number(call.durationMs) / 60000).toFixed(1) : "0.0"} min
+                        <td className="p-4 align-middle text-slate-500 text-xs font-medium">
+                          {(() => {
+                            const ms = Number(call.durationMs || 0);
+                            const min = Math.floor(ms / 60000);
+                            const sec = Math.floor((ms % 60000) / 1000);
+                            return min > 0 ? `${min}m ${sec}s` : `${sec}s`;
+                          })()}
                         </td>
                         <td className="p-4 align-middle text-right">
                           <Button asChild size="sm" variant="ghost" className="h-8 text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-900">

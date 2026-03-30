@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from 'react'; // 🚩 ALTERAÇÃO: Adicionado useCallback
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   TrendingUp, 
   PhoneCall, 
@@ -20,13 +20,9 @@ import type { SDRCall, DashboardSummary } from '@/types';
 
 type SortOrder = 'date_desc' | 'score_desc' | 'score_asc';
 
-// 🚩 ALTERAÇÃO CRÍTICA: Constante para o fuso horário de Brasília, usada em todo o cálculo de datas
 const BRAZIL_TIMEZONE = 'America/Sao_Paulo';
 
-// 🚩 ALTERAÇÃO CRÍTICA: Função auxiliar para obter a data YYYY-MM-DD no fuso horário de Brasília
 const getBrazilDateString = (date: Date): string => {
-  // Usamos 'fr-CA' porque formata para YYYY-MM-DD naturalmente sem precisar de split/reverse/join
-  // Ex: new Date() no Brasil em 27/03/2026 => "2026-03-27"
   const formatter = new Intl.DateTimeFormat('fr-CA', { 
     year: 'numeric',
     month: '2-digit',
@@ -49,52 +45,45 @@ export default function DashboardPage() {
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
-  // 🚩 ALTERAÇÃO CRÍTICA: Função fetchData envolvida em useCallback e com lógica de data revisada
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
       const timestamp = Date.now();
       
-      let startPeriodStr = ''; // Formato: YYYY-MM-DD (fuso horário de Brasília)
-      let endPeriodStr = '';   // Formato: YYYY-MM-DD (fuso horário de Brasília)
+      let startPeriodStr = ''; 
+      let endPeriodStr = '';   
       
-      const now = new Date(); // Objeto Date do JavaScript, representa a data/hora local
+      const now = new Date(); 
 
       if (dateFilter === 'today') {
-        const todayBrazilStr = getBrazilDateString(now); // Ex: "2026-03-27"
+        const todayBrazilStr = getBrazilDateString(now); 
         startPeriodStr = todayBrazilStr;
         endPeriodStr = todayBrazilStr;
       } else if (dateFilter === '7d') {
-        const sevenDaysAgo = new Date(now); // Cria uma nova instância para não modificar 'now'
-        sevenDaysAgo.setDate(now.getDate() - 7); // Subtrai 7 dias
+        const sevenDaysAgo = new Date(now); 
+        sevenDaysAgo.setDate(now.getDate() - 7); 
         
         startPeriodStr = getBrazilDateString(sevenDaysAgo);
-        endPeriodStr = getBrazilDateString(now); // Fim do dia "hoje" em Brasília
+        endPeriodStr = getBrazilDateString(now); 
       } else if (dateFilter === 'month') {
-        // Primeiro dia do mês atual (no fuso horário de Brasília)
         const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         
         startPeriodStr = getBrazilDateString(firstDayOfMonth);
-        endPeriodStr = getBrazilDateString(now); // Fim do dia "hoje" em Brasília
+        endPeriodStr = getBrazilDateString(now); 
       } else if (dateFilter === 'custom' && customStartDate && customEndDate) {
-        // Para personalizado, customStartDate e customEndDate já são YYYY-MM-DD
-        // assumimos que são no fuso horário desejado, vindo do input type="date"
         startPeriodStr = customStartDate;
         endPeriodStr = customEndDate;
       }
 
-      // 🚩 ALTERAÇÃO CRÍTICA: Monta as URLs passando APENAS as strings YYYY-MM-DD
       let summaryUrl = `/api/stats/summary?t=${timestamp}`;
       let callsUrl = `/api/calls?limit=50&t=${timestamp}`; 
       
-      // 🚩 CRÍTICO: SOMENTE ADICIONA startDate e endDate se o filtro NÃO for 'all' e se as datas foram calculadas
       if (dateFilter !== 'all' && startPeriodStr && endPeriodStr) {
         summaryUrl += `&startDate=${startPeriodStr}&endDate=${endPeriodStr}`;
         callsUrl += `&startDate=${startPeriodStr}&endDate=${endPeriodStr}`;
       }
 
-      // 🚩 3. Dispara os dois pedidos ao mesmo tempo (Mais rápido)
       const [resSummary, resCalls] = await Promise.all([
         fetch(summaryUrl),
         fetch(callsUrl)
@@ -120,11 +109,11 @@ export default function DashboardPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [dateFilter, customStartDate, customEndDate]); // 🚩 Dependências adicionadas para useCallback
+  }, [dateFilter, customStartDate, customEndDate]);
 
   useEffect(() => {
     fetchData();
-  }, [fetchData]); // 🚩 Chama fetchData quando suas dependências mudarem
+  }, [fetchData]);
 
   const filteredCalls = useMemo(() => {
     let result = [...calls];
@@ -135,29 +124,30 @@ export default function DashboardPage() {
         c.title?.toLowerCase().includes(term)
       );
     }
-    // 🚩 ALTERAÇÃO: Garante que sortOrder 'date_desc' também seja tratado
+
     return result.sort((a, b) => {
-      if (sortOrder === 'score_desc') return (b.nota_spin || 0) - (a.nota_spin || 0);
-      if (sortOrder === 'score_asc') return (a.nota_spin || 0) - (b.nota_spin || 0);
-      // 🚩 ALTERAÇÃO: Ordenar por data (assumindo analyzedAt, updatedAt ou createdAt para desempate)
-      // Usar uma data de fallback segura, como Date(0) para nulls.
+      if (sortOrder === 'score_desc') return (b.nota_spin ?? 0) - (a.nota_spin ?? 0);
+      if (sortOrder === 'score_asc') return (a.nota_spin ?? 0) - (b.nota_spin ?? 0);
+      
       if (sortOrder === 'date_desc') {
-        const dateA = a.analyzedAt || a.updatedAt || a.createdAt;
-        const dateB = b.analyzedAt || b.updatedAt || b.createdAt;
-        const timeA = dateA ? new Date(dateA as any).getTime() : 0;
-        const timeB = dateB ? new Date(dateB as any).getTime() : 0;
-        return timeB - timeA;
+        const getTime = (call: SDRCall) => {
+          const d = call.analyzedAt || call.updatedAt || call.createdAt;
+          if (!d) return 0;
+          const sec = typeof d === 'object' ? (d._seconds || d.seconds) : null;
+          return sec ? sec * 1000 : new Date(d as any).getTime();
+        };
+
+        return getTime(b) - getTime(a);
       }
-      return 0; // fallback, não deve ser atingido com os sortOrders definidos
+      return 0;
     });
   }, [calls, searchTerm, sortOrder]);
 
   const stats = summary as any;
   const isSummaryEmpty = stats?.empty === true || !stats; 
-  // 🚩 ALTERAÇÃO: Proteção para evitar divisão por zero se valid_calls for 0
   const avgSpin = stats && !isSummaryEmpty && stats.valid_calls > 0 ? (stats.sum_notes / stats.valid_calls) : 0;
   const totalCalls = stats?.total_calls || 0;
-  const analyzedCount = stats?.valid_calls || 0; // 'valid_calls' do backend já é o 'analyzedCount'
+  const analyzedCount = stats?.valid_calls || 0; 
   const activeSDRsCount = stats?.sdr_ranking ? Object.keys(stats.sdr_ranking).length : 0;
 
   if (isLoading) {
@@ -231,8 +221,14 @@ export default function DashboardPage() {
             )}
           </div>
           
-          <Button onClick={fetchData} variant="outline" className="h-11 rounded-xl border-slate-200 hover:bg-slate-50">
-            <RefreshCw className="w-4 h-4 mr-2" /> Atualizar
+          <Button 
+            onClick={fetchData} 
+            variant="outline" 
+            disabled={isLoading}
+            className="h-11 rounded-xl border-slate-200 hover:bg-slate-50"
+          >
+            {isLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+            {isLoading ? "Sincronizando..." : "Atualizar"}
           </Button>
         </div>
       </div>
@@ -243,7 +239,6 @@ export default function DashboardPage() {
             <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl group-hover:scale-110 transition-transform"><TrendingUp className="w-6 h-6" /></div>
             <div>
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Média SPIN (Período)</p>
-              {/* 🚩 ALTERAÇÃO: Proteção para exibir 0.0 ou -- */}
               <p className="text-3xl font-headline font-bold text-slate-900">
                 {analyzedCount > 0 ? avgSpin.toFixed(1) : "--"}
               </p>
