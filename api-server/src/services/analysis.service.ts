@@ -161,8 +161,8 @@ PASSO 2: CRITÉRIOS DE PONTUAÇÃO (TOTAL 10 PONTOS)
 3. Fechamento e Compromisso (+3,0 pts): Garantiu novo horário e próximo passo claro?
 
 --- SE ROTA B (Novo Agendamento) ---
-1. Rapport e Quebra de Gelo (+2,0 pts): Conexão real e abertura personalizada?
-2. Diagnóstico e Implicação (+5,0 pts): Mapeou dor, insatisfação ou ponto cego? "Apertou" o cliente?
+1. Rapport e Quebra de Gelo (+3,0 pts): Conexão real e abertura personalizada?
+2. Diagnóstico e Implicação (+4,0 pts): Mapeou dor, insatisfação ou ponto cego? "Apertou" o cliente?
 3. Agendamento e Decisores (+3,0 pts): Marcou data/hora e confirmou presença de sócios/decisores?
 
 --- SE ROTA C (Gatekeeper) ---
