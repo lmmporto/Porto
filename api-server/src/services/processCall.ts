@@ -14,7 +14,7 @@ import {
   updateDailyStats 
 } from "./analysis.service.js";
 
-const ALLOWED_TEAMS = ["Time William", "Equipe Alex", "Time Lucas", "Time Amanda", "SDR", "Pré-Venda"];
+const ALLOWED_TEAMS = ["Time William", "Equipe Alex", "Time Lucas", "Time Amanda"];
 const BLOCKED_KEYWORDS = ["CX", "Suporte", "Atendimento", "Customer Success", "Financeiro", "GF"];
 
 export async function processCall(callId: string): Promise<any> {
