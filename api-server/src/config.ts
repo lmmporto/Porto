@@ -45,6 +45,8 @@ export const CONFIG = {
     DURATION: splitCsv(process.env.CALL_DURATION_PROPERTIES, 'hs_call_duration,duration,duracao_ms'),
     STATUS: splitCsv(process.env.CALL_STATUS_PROPERTIES, 'hs_call_status,status'),
     TIMESTAMP: splitCsv(process.env.CALL_TIMESTAMP_PROPERTIES, 'hs_timestamp,createdate'),
+    
+    const callRef = db.collection(CONFIG.CALLS_COLLECTION).doc(payload.callId),
     RECORDING: splitCsv(
       process.env.CALL_RECORDING_URL_PROPERTIES,
       'hs_call_recording_url,url_gravacao_chamada,recording_url'
