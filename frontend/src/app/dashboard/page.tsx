@@ -77,7 +77,7 @@ export default function DashboardPage() {
       }
 
       let summaryUrl = `/api/stats/summary?t=${timestamp}`;
-      let callsUrl = `/api/calls?limit=50&t=${timestamp}`; 
+      let callsUrl = `/api/calls?limit=50&t=${timestamp}&sort=${sortOrder}`; 
       
       if (dateFilter !== 'all' && startPeriodStr && endPeriodStr) {
         summaryUrl += `&startDate=${startPeriodStr}&endDate=${endPeriodStr}`;
@@ -109,7 +109,7 @@ export default function DashboardPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [dateFilter, customStartDate, customEndDate]);
+  }, [dateFilter, sortOrder, customStartDate, customEndDate]);
 
   useEffect(() => {
     fetchData();
@@ -126,8 +126,14 @@ export default function DashboardPage() {
     }
 
     return result.sort((a, b) => {
-      if (sortOrder === 'score_desc') return (b.nota_spin ?? 0) - (a.nota_spin ?? 0);
-      if (sortOrder === 'score_asc') return (a.nota_spin ?? 0) - (b.nota_spin ?? 0);
+      if (sortOrder === 'score_desc') {
+        // 🚩 LÓGICA SÊNIOR: Joga quem não é DONE ou não tem nota pro final (valor -1)
+        const scoreA = a.processingStatus === 'DONE' ? (Number(a.nota_spin) || 0) : -1;
+        const scoreB = b.processingStatus === 'DONE' ? (Number(b.nota_spin) || 0) : -1;
+        return scoreB - scoreA;
+      }
+      
+      if (sortOrder === 'score_asc') return (Number(a.nota_spin) ?? 0) - (Number(b.nota_spin) ?? 0);
       
       if (sortOrder === 'date_desc') {
         const getTime = (call: SDRCall) => {
