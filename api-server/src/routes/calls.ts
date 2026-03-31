@@ -9,6 +9,8 @@ import admin from "firebase-admin";
 import { db } from "../firebase.js";
 import { CONFIG } from "../config.js";
 import { processCall } from "../services/processCall.js";
+// 🚩 Importando o serviço de triagem conforme ajuste
+import { handleIncomingCall } from "../services/webhook.service.js";
 
 const router: IRouter = Router();
 
@@ -35,25 +37,22 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
 
 // --- HANDLERS DE PROCESSAMENTO ---
 
+// 🚩 Handler atualizado para utilizar o serviço de triagem (webhook.service.js)
 async function hubspotWebhookHandler(req: Request, res: Response) {
   try {
     const body = req.body;
     const callId = body?.callId || body?.objectId || (Array.isArray(body) ? body[0]?.objectId : undefined);
-    const normalizedCallId = String(callId || "").trim();
+    
+    if (!callId) return res.status(200).json({ success: true, ignored: true });
 
-    if (!normalizedCallId) return res.status(200).json({ success: true, ignored: true });
-
-    res.status(200).json({ success: true, received: true, callId: normalizedCallId });
-
-    setImmediate(async () => {
-      try { 
-        console.log(`🚀 [WEBHOOK] Disparando análise para: ${normalizedCallId}`);
-        await processCall(normalizedCallId); 
-      } 
-      catch (e) { console.error(`[WEBHOOK ERROR] ${normalizedCallId}:`, e); }
-    });
+    // O serviço agora valida e joga no Firestore como QUEUED
+    const result = await handleIncomingCall({ ...body, callId: String(callId).trim() });
+    
+    // Retornamos 202 (Accepted) para o HubSpot
+    res.status(202).json({ success: true, ...result });
   } catch (error) {
-    if (!res.headersSent) res.status(200).json({ success: true, ignored: true });
+    console.error("[WEBHOOK ERROR]:", error);
+    res.status(500).json({ success: false, error: "Falha na triagem" });
   }
 }
 
@@ -76,7 +75,6 @@ router.get("/calls", async (req: Request, res: Response, next: NextFunction) => 
 
       let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
       
-      // 🚩 FILTRO DE DATA (Firestore faz sem índice composto se for o único filtro)
       if (startDateParam && endDateParam) {
         const start = new Date(startDateParam);
         const end = new Date(endDateParam);
@@ -88,10 +86,9 @@ router.get("/calls", async (req: Request, res: Response, next: NextFunction) => 
             .where("updatedAt", "<=", admin.firestore.Timestamp.fromDate(end));
       }
 
-      // 🚩 BUSCA SIMPLES (Ordena só por data no banco pra não pedir índice composto)
       query = query.orderBy("updatedAt", "desc");
 
-      const snapshot = await query.limit(200).get(); // Busca um pouco mais pra ordenar na mão
+      const snapshot = await query.limit(200).get(); 
       
       let calls = snapshot.docs.map((doc) => {
         const data = doc.data();
@@ -102,14 +99,12 @@ router.get("/calls", async (req: Request, res: Response, next: NextFunction) => 
         };
       });
 
-      // 🚩 ORDENAÇÃO EM MEMÓRIA (Resolve o problema do índice)
       if (sortParam === 'score_desc') {
         calls.sort((a, b) => (Number(b.nota_spin) || 0) - (Number(a.nota_spin) || 0));
       } else if (sortParam === 'score_asc') {
         calls.sort((a, b) => (Number(a.nota_spin) || 0) - (Number(b.nota_spin) || 0));
       }
 
-      // Retorna apenas o limite solicitado
       res.json(calls.slice(0, limit));
 
     } catch (error: any) {
