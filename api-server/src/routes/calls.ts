@@ -35,10 +35,6 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
 
 // --- HANDLERS DE PROCESSAMENTO ---
 
-/**
- * 🚩 RESTAURADO: Handler real do Webhook
- * Sem isso, sua IA para de trabalhar sozinha.
- */
 async function hubspotWebhookHandler(req: Request, res: Response) {
   try {
     const body = req.body;
@@ -47,10 +43,8 @@ async function hubspotWebhookHandler(req: Request, res: Response) {
 
     if (!normalizedCallId) return res.status(200).json({ success: true, ignored: true });
 
-    // Responde rápido pro HubSpot não dar timeout
     res.status(200).json({ success: true, received: true, callId: normalizedCallId });
 
-    // Processa em background
     setImmediate(async () => {
       try { 
         console.log(`🚀 [WEBHOOK] Disparando análise para: ${normalizedCallId}`);
@@ -73,66 +67,56 @@ async function analyzeCallHandler(req: Request, res: Response, next: NextFunctio
 
 // --- ROTAS ---
 
-// 🚩 Rota de Listagem com ORDENAÇÃO NO BANCO
 router.get("/calls", async (req: Request, res: Response, next: NextFunction) => {
     try {
       const limit = Math.min(Number(req.query.limit || 50), 100); 
-      const ownerNameParam = req.query.ownerName as string;
       const startDateParam = req.query.startDate as string;
       const endDateParam = req.query.endDate as string;
       const sortParam = req.query.sort as string; 
 
-      console.log(`📞 [CALLS] Buscando chamadas (Sort: ${sortParam || 'recent'})...`);
-
       let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
       
-      if (ownerNameParam) {
-        query = query.where("ownerName", "==", ownerNameParam);
-      }
-
+      // 🚩 FILTRO DE DATA (Firestore faz sem índice composto se for o único filtro)
       if (startDateParam && endDateParam) {
         const start = new Date(startDateParam);
         const end = new Date(endDateParam);
-        if (startDateParam.length === 10) {
-            start.setUTCHours(0, 0, 0, 0);
-            end.setUTCHours(23, 59, 59, 999);
-        }
+        start.setUTCHours(0, 0, 0, 0);
+        end.setUTCHours(23, 59, 59, 999);
+
         query = query
             .where("updatedAt", ">=", admin.firestore.Timestamp.fromDate(start))
             .where("updatedAt", "<=", admin.firestore.Timestamp.fromDate(end));
       }
 
-      // 🚩 LÓGICA DE ORDENAÇÃO SÊNIOR
-      // Nota: Isso exige índices compostos no Firebase. 
-      // Se der erro, clique no link que aparecerá no log do Render.
-      if (sortParam === 'score_desc') {
-        query = query.orderBy("nota_spin", "desc").orderBy("updatedAt", "desc");
-      } else if (sortParam === 'score_asc') {
-        query = query.orderBy("nota_spin", "asc").orderBy("updatedAt", "desc");
-      } else {
-        query = query.orderBy("updatedAt", "desc");
-      }
+      // 🚩 BUSCA SIMPLES (Ordena só por data no banco pra não pedir índice composto)
+      query = query.orderBy("updatedAt", "desc");
 
-      const snapshot = await query.limit(limit).get();
+      const snapshot = await query.limit(200).get(); // Busca um pouco mais pra ordenar na mão
       
-      const calls = snapshot.docs.map((doc) => {
+      let calls = snapshot.docs.map((doc) => {
         const data = doc.data();
-        const timestamp = data.updatedAt || data.analyzedAt || data.createdAt;
         return {
           id: doc.id,
           ...data,
-          updatedAt: timestamp,
           nota_spin: data.nota_spin !== undefined ? Number(data.nota_spin) : 0,
         };
       });
 
-      res.json(calls);
+      // 🚩 ORDENAÇÃO EM MEMÓRIA (Resolve o problema do índice)
+      if (sortParam === 'score_desc') {
+        calls.sort((a, b) => (Number(b.nota_spin) || 0) - (Number(a.nota_spin) || 0));
+      } else if (sortParam === 'score_asc') {
+        calls.sort((a, b) => (Number(a.nota_spin) || 0) - (Number(b.nota_spin) || 0));
+      }
+
+      // Retorna apenas o limite solicitado
+      res.json(calls.slice(0, limit));
+
     } catch (error: any) {
       console.error("❌ [CALLS LIST ERROR]:", error.message);
       next(error);
     }
-  }
-);
+});
 
 router.get("/calls/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
