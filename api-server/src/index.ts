@@ -1,4 +1,5 @@
 import app from "./app.js";
+import { startWorker } from "./services/worker.service.js";
 
 const rawPort = process.env["PORT"];
 
@@ -19,4 +20,7 @@ app.listen(port, () => {
   console.log("🚀 SERVER STARTED");
   console.log(`🌐 Listening on port: ${port}`);
   console.log("=================================");
+  
+  // 🚩 LIGA O MOTOR DE PROCESSAMENTO EM BACKGROUND
+  startWorker();
 });
