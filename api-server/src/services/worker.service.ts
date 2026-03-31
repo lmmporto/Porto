@@ -1,28 +1,32 @@
 import { db } from '../firebase.js';
 import { processCall } from './processCall.js';
 import { CONFIG } from '../config.js';
-
 export function startWorker() {
-  console.log('🚀 [WORKER] Trabalhador iniciado, monitorando fila...');
+  console.log('🚀 [WORKER] Trabalhador iniciado.');
   
-  // Roda a cada 15 segundos para não estourar leitura do Firestore
-  setInterval(async () => {
+  // 🚩 Ajustado para 1 minuto (60 segundos) conforme solicitado
+  const intervaloDeDescanso = 1 * 60 * 1000; 
+
+  const processarFila = async () => {
     try {
       const snapshot = await db.collection(CONFIG.CALLS_COLLECTION)
         .where('processingStatus', '==', 'QUEUED')
-        .limit(3) // Processa de 3 em 3 para não sobrecarregar a memória
+        .limit(1)
         .get();
 
-      if (snapshot.empty) return;
-
-      for (const doc of snapshot.docs) {
-        console.log(`[WORKER] 🔥 Iniciando processamento automático: ${doc.id}`);
-        // Removemos o await aqui se quiser processar em paralelo, 
-        // mas mantemos para garantir ordem e não estourar limite da IA
+      if (!snapshot.empty) {
+        const doc = snapshot.docs[0];
+        console.log(`[WORKER] 🔥 Processando agora: ${doc.id}`);
         await processCall(doc.id).catch(e => console.error(`[WORKER ERROR] ${doc.id}:`, e));
       }
     } catch (error) {
-      console.error('[WORKER] Erro no ciclo de busca:', error);
+      console.error('[WORKER] Erro no ciclo:', error);
     }
-  }, 15000); 
+  };
+
+  // 1. Roda a primeira vez imediatamente ao subir o servidor
+  processarFila();
+
+  // 2. Agenda as próximas rodadas a cada 1 minuto
+  setInterval(processarFila, intervaloDeDescanso);
 }
