@@ -4,51 +4,51 @@ import { CONFIG } from "./src/config.js";
 
 async function runRecovery() {
   console.log("-----------------------------------------");
-  console.log("🚀 INICIANDO VARREDURA DIÁRIA (HOJE)");
+  console.log("🚀 INICIANDO VARREDURA: FILTRO +2 MINUTOS");
   console.log("-----------------------------------------");
 
-  // 1. Calcular o início do dia atual (00:00:00)
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0); 
 
   try {
-    // 2. Buscar no Firebase o que foi registrado hoje
     const snapshot = await db.collection(CONFIG.CALLS_COLLECTION)
       .where("updatedAt", ">=", startOfToday)
       .get();
 
-    // Filtramos apenas as que NÃO foram concluídas (DONE) ou que já estão em processamento
+    // Filtro cirúrgico:
+    // 1. Duração >= 120.000ms (2 minutos)
+    // 2. Não possui nota (significa que a IA ainda não processou/finalizou)
     const toProcess = snapshot.docs.filter(doc => {
-      const status = doc.data().processingStatus;
-      return status !== "DONE" && status !== "PROCESSING";
+      const data = doc.data();
+      const duration = Number(data.duration || 0); // Ajuste o campo 'duration' se for outro nome
+      const hasNota = data.nota_spin !== null && data.nota_spin !== undefined;
+      const isDone = data.processingStatus === "DONE";
+
+      // Só processa se tiver +2min E NÃO tiver nota E NÃO estiver marcado como DONE
+      return duration >= 120000 && !hasNota && !isDone;
     });
 
-    console.log(`📅 Data de início: ${startOfToday.toLocaleString()}`);
-    console.log(`📊 Total encontrado hoje: ${snapshot.size} chamadas.`);
-    console.log(`📋 Pendentes para reprocessar: ${toProcess.length} chamadas.`);
+    console.log(`📊 Total de chamadas hoje: ${snapshot.size}`);
+    console.log(`📋 Pendentes (>= 2min sem nota): ${toProcess.length} chamadas.`);
     console.log("-----------------------------------------");
 
     for (const doc of toProcess) {
       const data = doc.data();
-      console.log(`\n🔄 Tentando resgatar: ${doc.id}`);
-      console.log(`👤 SDR: ${data.ownerName || 'Desconhecido'} | Equipe: ${data.teamName || 'N/A'}`);
+      console.log(`\n🔄 Reprocessando: ${doc.id} (${(data.duration / 1000).toFixed(0)}s)`);
       
       try {
         const result = await processCall(doc.id);
-        console.log(`✅ Resultado: ${result.reason || result.status || "OK"}`);
+        console.log(`✅ Resultado: ${result.reason || "ANÁLISE_CONCLUÍDA"}`);
       } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        console.error(`❌ Erro no ID ${doc.id}:`, errorMessage);
+        console.error(`❌ Erro no ID ${doc.id}:`, err instanceof Error ? err.message : err);
       }
     }
 
-    console.log("\n-----------------------------------------");
-    console.log("✨ VARREDURA FINALIZADA!");
-    console.log("-----------------------------------------");
+    console.log("\n✨ VARREDURA FINALIZADA!");
     process.exit(0);
 
   } catch (error) {
-    console.error("❌ Erro fatal na varredura:", error);
+    console.error("❌ Erro fatal:", error);
     process.exit(1);
   }
 }
