@@ -58,47 +58,42 @@ export async function processCall(callId: string): Promise<any> {
       updatedAt: FieldValue.serverTimestamp(),
     };
 
-    // 🚩 ALTERAÇÃO SÊNIOR: Registro imediato do VOLUME no cofre
+    // 🚩 REGISTRO DE VOLUME: Se a equipe é permitida, já registramos o VOLUME no cofre
     if (isAllowed && !isBlocked) {
         const mockInitialAnalysis = {
             status_final: 'NAO_IDENTIFICADO',
             nota_spin: null
         };
-        // Registra o total_calls e inicializa o ranking do SDR
         await updateDailyStats(basePayload, mockInitialAnalysis);
     }
 
-    // Marcamos como "PROCESSING" para evitar que webhooks duplicados iniciem outro processo
+    // Marcamos como "PROCESSING" temporariamente
     await callRef.set({ 
       processingStatus: "PROCESSING", 
       updatedAt: FieldValue.serverTimestamp() 
     }, { merge: true });
 
-    // Lógica de Bloqueio
+    // --- LOGICA DE LIMPEZA: Filtros de Equipe ---
     if (isBlocked && !teamName.toUpperCase().includes("SDR")) { 
-      console.log(`[IGNORE] 🚫 Equipe bloqueada: ${teamName}`);
-      await callRef.set({ ...basePayload, processingStatus: "SKIPPED_TEAM_BLOCKED" }, { merge: true });
-      return { success: true, reason: "TEAM_BLOCKED" };
+      console.log(`[CLEANUP] 🧹 Equipe bloqueada: ${teamName}. Removendo registro.`);
+      await callRef.delete();
+      return { success: false, reason: "TEAM_BLOCKED_CLEANED" };
     }
 
     if (!isAllowed) {
-      console.log(`[IGNORE] ⚠️ Equipe não monitorada: ${teamName}`);
-      await callRef.set({ ...basePayload, processingStatus: "SKIPPED_TEAM_NOT_MONITORED" }, { merge: true });
-      return { success: true, reason: "TEAM_NOT_MONITORED" };
+      console.log(`[CLEANUP] 🧹 Equipe não monitorada: ${teamName}. Removendo registro.`);
+      await callRef.delete();
+      return { success: false, reason: "TEAM_NOT_MONITORED_CLEANED" };
     }
 
-    // --- FILTRO 2: TEMPO MÍNIMO (1 MINUTO) ---
+    // --- LOGICA DE LIMPEZA: Tempo Mínimo ---
     const DURATION_LIMIT = 60000; 
     const duration = Number(call.durationMs || 0);
 
     if (duration < DURATION_LIMIT) {
-      console.log(`[SKIP] 🛑 Call ${callId} muito curta ou zerada (${duration/1000}s).`);
-      await callRef.set({
-        ...basePayload,
-        processingStatus: "SKIPPED_SHORT_CALL",
-        nota_spin: 0
-      }, { merge: true });
-      return { success: true, reason: "CALL_TOO_SHORT" };
+      console.log(`[CLEANUP] 🧹 Call ${callId} muito curta (${duration/1000}s). Removendo registro.`);
+      await callRef.delete();
+      return { success: false, reason: "CALL_TOO_SHORT_CLEANED" };
     }
 
     // --- BUSCA DE ÁUDIO (Retry Loop) ---
@@ -108,25 +103,21 @@ export async function processCall(callId: string): Promise<any> {
       call = await fetchCall(callId);
     }
 
+    // --- LOGICA DE LIMPEZA: Sem Áudio ---
     if (!call.recordingUrl) {
-      console.log(`[SKIP] 🔇 Sem URL de áudio após retentativas.`);
-      await callRef.set({
-        ...basePayload,
-        processingStatus: "SKIPPED_NO_AUDIO",
-      }, { merge: true });
-      return { success: true, reason: "NO_AUDIO_AVAILABLE" };
+      console.log(`[CLEANUP] 🧹 Sem URL de áudio após retentativas: ${callId}. Removendo registro.`);
+      await callRef.delete();
+      return { success: false, reason: "NO_AUDIO_CLEANED" };
     }
 
     // --- ANÁLISE ---
     const transcript = await transcribeRecordingFromHubSpot(call);
     
+    // --- LOGICA DE LIMPEZA: Transcrição Insuficiente ---
     if (!transcript || transcript.length < 100) {
-      console.log(`[SKIP] 📝 Transcrição insuficiente para análise.`);
-      await callRef.set({
-        ...basePayload,
-        processingStatus: "SKIPPED_EMPTY_TRANSCRIPT",
-      }, { merge: true });
-      return { success: true, reason: "INSUFFICIENT_CONTENT" };
+      console.log(`[CLEANUP] 🧹 Transcrição insuficiente para ${callId}. Removendo registro.`);
+      await callRef.delete();
+      return { success: false, reason: "INSUFFICIENT_CONTENT_CLEANED" };
     }
 
     call.transcript = transcript;
@@ -151,16 +142,14 @@ export async function processCall(callId: string): Promise<any> {
       rawResponse
     }, { merge: true });
 
-    console.log(`[SUCCESS] 🎉 Call ${callId} finalizada e salva no Cofre.`);
+    console.log(`[SUCCESS] 🎉 Call ${callId} finalizada e salva.`);
     return { success: true, status: "ANALYZED" };
 
   } catch (error: any) {
     console.error(`[ERROR] ❌ Erro na Call ${callId}:`, error.message);
-    await callRef.set({
-      processingStatus: "FAILED_ANALYSIS",
-      error: error.message,
-      updatedAt: FieldValue.serverTimestamp(),
-    }, { merge: true });
+    // --- LOGICA DE LIMPEZA: Erro na IA/Processamento ---
+    console.log(`[CLEANUP] 🧹 Erro no processamento. Removendo registro incompleto: ${callId}`);
+    await callRef.delete();
     throw error;
   }
 }
