@@ -9,10 +9,18 @@ import admin from "firebase-admin";
 import { db } from "../firebase.js";
 import { CONFIG } from "../config.js";
 import { processCall } from "../services/processCall.js";
-// 🚩 Importando o serviço de triagem conforme ajuste
 import { handleIncomingCall } from "../services/webhook.service.js";
 
 const router: IRouter = Router();
+
+// --- INTERFACES ---
+
+interface CallDocument {
+  id: string;
+  ownerName?: string;
+  nota_spin?: number;
+  [key: string]: any; // Permite campos dinâmicos do Firestore
+}
 
 // --- MIDDLEWARES DE SEGURANÇA ---
 
@@ -37,7 +45,6 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
 
 // --- HANDLERS DE PROCESSAMENTO ---
 
-// 🚩 Handler atualizado para utilizar o serviço de triagem (webhook.service.js)
 async function hubspotWebhookHandler(req: Request, res: Response) {
   try {
     const body = req.body;
@@ -45,10 +52,8 @@ async function hubspotWebhookHandler(req: Request, res: Response) {
     
     if (!callId) return res.status(200).json({ success: true, ignored: true });
 
-    // O serviço agora valida e joga no Firestore como QUEUED
     const result = await handleIncomingCall({ ...body, callId: String(callId).trim() });
     
-    // Retornamos 202 (Accepted) para o HubSpot
     res.status(202).json({ success: true, ...result });
   } catch (error) {
     console.error("[WEBHOOK ERROR]:", error);
@@ -72,6 +77,7 @@ router.get("/calls", async (req: Request, res: Response, next: NextFunction) => 
       const startDateParam = req.query.startDate as string;
       const endDateParam = req.query.endDate as string;
       const sortParam = req.query.sort as string; 
+      const ownerNameParam = req.query.ownerName as string; 
 
       let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
       
@@ -90,7 +96,8 @@ router.get("/calls", async (req: Request, res: Response, next: NextFunction) => 
 
       const snapshot = await query.limit(200).get(); 
       
-      let calls = snapshot.docs.map((doc) => {
+      // 🚩 APLICAÇÃO DE INTERFACE E TIPAGEM
+      let calls: CallDocument[] = snapshot.docs.map((doc) => {
         const data = doc.data();
         return {
           id: doc.id,
@@ -99,6 +106,12 @@ router.get("/calls", async (req: Request, res: Response, next: NextFunction) => 
         };
       });
 
+      // 🚩 FILTRO POR SDR COM TIPAGEM RECONHECIDA
+      if (ownerNameParam) {
+        calls = calls.filter(call => call.ownerName === ownerNameParam);
+      }
+
+      // Ordenação em Memória
       if (sortParam === 'score_desc') {
         calls.sort((a, b) => (Number(b.nota_spin) || 0) - (Number(a.nota_spin) || 0));
       } else if (sortParam === 'score_asc') {
