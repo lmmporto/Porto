@@ -62,7 +62,6 @@ export async function fetchOwnerDetails(ownerId: string | null): Promise<OwnerDe
 }
 
 export async function fetchCall(callId: string): Promise<CallData> {
-  // Ajustado para incluir 'hs_portal_id' nas propriedades a serem buscadas
   const propertiesToFetch = [
     ...new Set([...Object.values(CONFIG.PROPS).flat(), 'hs_call_disposition', 'hs_portal_id'])
   ];
@@ -77,13 +76,12 @@ export async function fetchCall(callId: string): Promise<CallData> {
   const dispId = String(props.hs_call_disposition || "");
   const recording = firstFilled(props, CONFIG.PROPS.RECORDING) || "";
 
-  // Regra de conexão: mais de 20s e tem gravação
   const wasConnected = duration > 20000 && recording !== "";
 
   return {
     id: data.id,
-    hubspotCallId: data.id, // 🚩 Mapeando o ID do HubSpot para o novo campo
-    callId: data.id,        // 🚩 Mapeando para callId também para redundância
+    hubspotCallId: data.id, 
+    callId: data.id,        
     portalId: String(props.hs_portal_id || ""),
     title: firstFilled(props, CONFIG.PROPS.TITLE) || `Call ${callId}`,
     ownerId: ownerId ? String(ownerId) : "",
@@ -100,14 +98,21 @@ export async function fetchCall(callId: string): Promise<CallData> {
 }
 
 export async function searchCallsInHubSpot({ limit = 100 }: { limit?: number }) {
-  // Ajustado para incluir 'hs_portal_id' na busca também
   const properties = [...new Set([...Object.values(CONFIG.PROPS).flat(), 'hs_call_disposition', 'hs_portal_id'])];
   
   const body = {
-    limit: Math.min(Number(limit) || CONFIG.TEST_CALLS_DEFAULT_LIMIT, CONFIG.TEST_CALLS_MAX_LIMIT),
+    // 🚩 Ajuste: Removemos as travas de Math.min do config
+    limit: Number(limit) || 100, 
     sorts: [{ propertyName: "hs_timestamp", direction: "DESCENDING" }],
     properties,
-    filterGroups: [],
+    // 🚩 Ajuste: Filtro de duração mínima direto na API do HubSpot
+    filterGroups: [
+      {
+        filters: [
+          { propertyName: "hs_call_duration", operator: "GT", value: "119000" }
+        ]
+      }
+    ],
   };
 
   const { data } = await hubspot.post("/crm/v3/objects/calls/search", body);

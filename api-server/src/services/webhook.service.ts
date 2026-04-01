@@ -9,7 +9,9 @@ export async function handleIncomingCall(payload: any) {
   }
 
   // Persistência como Fila: O status QUEUED é o gatilho para o seu processCall
-  const callRef = db.collection(CONFIG.calls_analysis).doc(payload.callId);
+  const collectionName = CONFIG.CALLS_COLLECTION || 'calls_analysis';
+const callRef = db.collection(collectionName).doc(payload.callId);
+  
   
   await callRef.set({
     ...payload,

@@ -1,6 +1,6 @@
-import { searchCallsInHubSpot } from '../services/hubspot.js';
+import 'dotenv/config';
+import { searchCallsInHubSpot } from '../services/hubspot.js'; // Verifique se o caminho está correto
 import { handleIncomingCall } from '../services/webhook.service.js';
-
 async function puxarLigacoesDoDia() {
   console.log('🔍 [BACKFILL] Buscando ligações no HubSpot...');
   
