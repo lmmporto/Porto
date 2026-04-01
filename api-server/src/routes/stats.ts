@@ -6,122 +6,68 @@ import { updateDailyStats } from '../services/analysis.service.js';
 
 const router = Router();
 
-// 🚩 CONSTANTE: Fuso horário de Brasília para reuso e clareza
+// 🚩 CONSTANTE: Fuso horário de Brasília para consistência entre rotas
 const BRAZIL_TIMEZONE = 'America/Sao_Paulo';
 
+/**
+ * GET /api/stats/summary
+ * Retorna o resumo de performance do Placar Consolidado com logs de fuso horário.
+ */
 router.get('/stats/summary', async (req: Request, res: Response) => {
-  console.log('!!!!!!!!!!!! INICIANDO HANDLER /api/stats/summary (VERSÃO COM AGREGACAO)! !!!!!!!!!!!!'); 
-  
   try {
-    const { startDate, endDate } = req.query;
-
+    // 🚩 LÓGICA DE DATA MANTIDA PARA DEBUG E AUDITORIA
     const nowInBrazil = new Intl.DateTimeFormat('pt-BR', {
       timeZone: BRAZIL_TIMEZONE,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
+      year: 'numeric', month: '2-digit', day: '2-digit',
     }).format(new Date());
-
     const brDate = nowInBrazil.split('/').reverse().join('-');
 
-    console.log(`[DEBUG - STATS_SUMMARY] brDate calculado: ${brDate}`);
+    console.log(`📊 [STATS] Solicitando resumo. Ref Hoje Brasil: ${brDate}`);
 
-    const start = startDate ? String(startDate).split('T')[0] : brDate;
-    const end = endDate ? String(endDate).split('T')[0] : brDate;
+    // 1. Puxa do Placar Consolidado (sdr_stats) - Onde a performance real reside
+    const snapshot = await db.collection('sdr_stats').orderBy('averageScore', 'desc').get();
 
-    console.log(`📊 [STATS] Buscando resumo de ${start} até ${end} (Hoje Ref: ${brDate})`);
-
-    const snapshot = await db.collection('dashboard_stats')
-      .where(admin.firestore.FieldPath.documentId(), '>=', start)
-      .where(admin.firestore.FieldPath.documentId(), '<=', end)
-      .get();
-
-    if (snapshot.empty) {
-      console.log(`📊 [STATS] Nenhum dado encontrado para ${start} até ${end}.`);
-      return res.json({ 
-        message: "Nenhum dado encontrado para este período", 
-        total_calls: 0, valid_calls: 0, sum_notes: 0, media_geral: 0,
-        sdr_ranking: {}, empty: true,
-        _debug_version: "FINAL_V1_BR_TIMEZONE_AGREGATED_04042024_EMPTY_SNAPSHOT"
-      });
-    }
-
-    let total_calls = 0; 
-    let valid_calls = 0; 
+    let valid_calls = 0;
     let sum_notes = 0;
-    
-    const sdr_ranking: Record<string, { calls: number; sum_notes: number; valid_calls: number; nota_media: number }> = {};
+    const sdr_ranking: any = {};
 
-    snapshot.forEach(doc => {
+    snapshot.docs.forEach(doc => {
       const data = doc.data();
-      console.log(`[DEBUG - STATS_SUMMARY - RAW DATA] Document ID: ${doc.id}, Data:`, JSON.stringify(data, null, 2));
+      const nome = data.ownerName || "SDR Desconhecido";
 
-      total_calls += Number(data.total_calls || 0);
-      valid_calls += Number(data.valid_calls || data.valid_calls_for_media || data.analyzed_calls || 0);
-      sum_notes += Number(data.sum_notes || 0);
+      // 2. Formata para a estrutura que o Frontend espera
+      sdr_ranking[nome] = {
+        calls: data.totalCalls || 0,
+        valid_calls: data.totalCalls || 0,
+        sum_notes: data.totalScore || 0,
+        nota_media: data.averageScore || 0
+      };
 
-      for (const key in data) {
-        if (key.startsWith('sdr_ranking.')) {
-          const parts = key.split('.'); 
-          if (parts.length === 3) {
-            const sdrName = parts[1];
-            const statType = parts[2]; 
-
-            if (!sdr_ranking[sdrName]) {
-              sdr_ranking[sdrName] = { calls: 0, sum_notes: 0, valid_calls: 0, nota_media: 0 };
-            }
-
-            const value = Number(data[key] || 0);
-            if (statType === 'total') {
-              sdr_ranking[sdrName].calls += value;
-            } else if (statType === 'sum_notes') {
-              sdr_ranking[sdrName].sum_notes += value;
-            } else if (statType === 'valid_count') {
-              sdr_ranking[sdrName].valid_calls += value;
-            }
-          }
-        }
-      }
+      valid_calls += (data.totalCalls || 0);
+      sum_notes += (data.totalScore || 0);
     });
 
-    const processedRanking: any = {};
+    const media_geral = valid_calls > 0 ? Number((sum_notes / valid_calls).toFixed(2)) : 0;
 
-    Object.entries(sdr_ranking).forEach(([name, stats]) => {
-      if (stats.valid_calls > 0) {
-        const media = Number((stats.sum_notes / stats.valid_calls).toFixed(1));
-        processedRanking[name] = {
-          ...stats,
-          nota_media: media
-        };
-      }
-    });
-
-    const sortedRanking = Object.entries(processedRanking)
-      .sort(([, a]: any, [, b]: any) => b.nota_media - a.nota_media);
-
-    const finalRanking = Object.fromEntries(sortedRanking);
-    const mediaGeralCalculada = valid_calls > 0 ? Number((sum_notes / valid_calls).toFixed(2)) : 0;
-
-    return res.json({ 
-      total_calls, 
-      valid_calls, 
-      sum_notes, 
-      media_geral: mediaGeralCalculada, 
-      sdr_ranking: finalRanking,
-      _debug_version: "RANKING_FIX_V4"
+    return res.json({
+      total_calls: valid_calls,
+      valid_calls: valid_calls,
+      sum_notes: sum_notes,
+      media_geral: media_geral,
+      sdr_ranking: sdr_ranking,
+      version: "V1_PLACAR_CONSOLIDADO_BR_TIMEZONE" // 🚩 Versão com Placar + Timezone
     });
 
   } catch (error: any) {
-    console.error("❌ [STATS ERROR]:", error.message, error);
-    return res.status(500).json({ 
-      error: "Erro interno", 
-      details: error.message, 
-      _debug_version: "FINAL_ERROR_V4"
-    });
+    console.error("❌ [STATS ERROR]:", error.message);
+    return res.status(500).json({ error: "Erro interno ao processar estatísticas" });
   }
 });
 
-// 🚩 ROTA SÊNIOR: Reconstrói as estatísticas do dia do zero
+/**
+ * 🚩 ROTA DE MANUTENÇÃO: Reconstrói as estatísticas do dia do zero
+ * Usa o fuso horário de Brasília para identificar as chamadas de hoje.
+ */
 router.post("/rebuild-today-stats", async (req: Request, res: Response) => {
   try {
     const nowInBrazil = new Intl.DateTimeFormat('pt-BR', {
