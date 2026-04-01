@@ -18,10 +18,9 @@ router.get('/stats/summary', async (req: Request, res: Response) => {
     const { startDate, endDate } = req.query;
 
     // 1. Define o intervalo (se não vier nada, pega o dia de hoje em formato ISO)
-    const today = new Date().toISOString().split('T')[0];
-    const start = startDate ? String(startDate).split('T')[0] : today;
-    const end = endDate ? String(endDate).split('T')[0] : today;
-
+// 🚩 CORREÇÃO: Se não vier data, 'start' vira o início do ano e 'end' vira hoje.
+    const start = startDate ? String(startDate).split('T')[0] : '2024-01-01';
+    const end = endDate ? String(endDate).split('T')[0] : new Date().toISOString().split('T')[0];
     console.log(`📊 [STATS] Buscando intervalo: ${start} até ${end}`);
 
     // 2. Busca todos os documentos de data dentro desse intervalo usando o ID (__name__)
