@@ -73,55 +73,51 @@ async function analyzeCallHandler(req: Request, res: Response, next: NextFunctio
 
 router.get("/calls", async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const limit = Math.min(Number(req.query.limit || 50), 100); 
+      const limit = Math.min(Number(req.query.limit || 10), 50); 
+      const startAfter = req.query.lastVisible as string; // Cursor para paginação
+      const minScore = Number(req.query.minScore);        // Filtro de nota
       const startDateParam = req.query.startDate as string;
       const endDateParam = req.query.endDate as string;
-      const sortParam = req.query.sort as string; 
-      const ownerNameParam = req.query.ownerName as string; 
 
       let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
       
+      // 1. Filtro de Data
       if (startDateParam && endDateParam) {
         const start = new Date(startDateParam);
         const end = new Date(endDateParam);
-        start.setUTCHours(0, 0, 0, 0);
-        end.setUTCHours(23, 59, 59, 999);
-
-        query = query
-            .where("updatedAt", ">=", admin.firestore.Timestamp.fromDate(start))
-            .where("updatedAt", "<=", admin.firestore.Timestamp.fromDate(end));
+        query = query.where("updatedAt", ">=", admin.firestore.Timestamp.fromDate(start))
+                     .where("updatedAt", "<=", admin.firestore.Timestamp.fromDate(end));
       }
 
-      query = query.orderBy("updatedAt", "desc");
+      // 2. Filtro de Nota (Só aceita se for maior ou igual)
+      if (!isNaN(minScore)) {
+        query = query.where("nota_spin", ">=", minScore);
+      }
 
-      const snapshot = await query.limit(200).get(); 
+      // 3. Ordenação e Paginação
+      query = query.orderBy("updatedAt", "desc");
       
-      // 🚩 APLICAÇÃO DE INTERFACE E TIPAGEM
-      let calls: CallDocument[] = snapshot.docs.map((doc) => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          ...data,
-          nota_spin: data.nota_spin !== undefined ? Number(data.nota_spin) : 0,
-        };
+      if (startAfter) {
+        // Pega o documento anterior para começar depois dele
+        const lastDoc = await db.collection(CONFIG.CALLS_COLLECTION).doc(startAfter).get();
+        query = query.startAfter(lastDoc);
+      }
+
+      const snapshot = await query.limit(limit).get();
+      
+      const calls = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        nota_spin: Number(doc.data().nota_spin || 0),
+      }));
+
+      // Retorna os dados e o ID do último pra usar na próxima página
+      res.json({
+        calls,
+        lastVisible: snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1].id : null
       });
 
-      // 🚩 FILTRO POR SDR COM TIPAGEM RECONHECIDA
-      if (ownerNameParam) {
-        calls = calls.filter(call => call.ownerName === ownerNameParam);
-      }
-
-      // Ordenação em Memória
-      if (sortParam === 'score_desc') {
-        calls.sort((a, b) => (Number(b.nota_spin) || 0) - (Number(a.nota_spin) || 0));
-      } else if (sortParam === 'score_asc') {
-        calls.sort((a, b) => (Number(a.nota_spin) || 0) - (Number(b.nota_spin) || 0));
-      }
-
-      res.json(calls.slice(0, limit));
-
     } catch (error: any) {
-      console.error("❌ [CALLS LIST ERROR]:", error.message);
       next(error);
     }
 });
