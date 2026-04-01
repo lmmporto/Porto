@@ -4,3 +4,4 @@ dist
 # Credenciais do Firebase
 chave-firebase.json.js
 chave-firebase.json.json
+api-server/src/scripts/
