@@ -11,23 +11,27 @@ const BRAZIL_TIMEZONE = 'America/Sao_Paulo';
 
 /**
  * GET /api/stats/summary
- * Agrega estatísticas de performance baseadas em um intervalo de datas.
+ * Agrega estatísticas de performance. Se startDate/endDate não forem enviados,
+ * traz o consolidado de todo o histórico.
  */
 router.get('/stats/summary', async (req: Request, res: Response) => {
   try {
     const { startDate, endDate } = req.query;
 
-    // 1. Define o intervalo (se não vier nada, pega o dia de hoje em formato ISO)
-// 🚩 CORREÇÃO: Se não vier data, 'start' vira o início do ano e 'end' vira hoje.
-    const start = startDate ? String(startDate).split('T')[0] : '2024-01-01';
-    const end = endDate ? String(endDate).split('T')[0] : new Date().toISOString().split('T')[0];
-    console.log(`📊 [STATS] Buscando intervalo: ${start} até ${end}`);
+    // 1. Começamos com a busca aberta (Traz tudo)
+    let query: FirebaseFirestore.Query = db.collection('dashboard_stats');
 
-    // 2. Busca todos os documentos de data dentro desse intervalo usando o ID (__name__)
-    const snapshot = await db.collection('dashboard_stats')
-      .where('__name__', '>=', start)
-      .where('__name__', '<=', end)
-      .get();
+    // 2. Se o site enviou datas, a gente aplica o filtro por ID de documento (__name__)
+    if (startDate && endDate) {
+      const start = String(startDate).split('T')[0];
+      const end = String(endDate).split('T')[0];
+      console.log(`📊 [STATS] Filtrando período: ${start} até ${end}`);
+      query = query.where('__name__', '>=', start).where('__name__', '<=', end);
+    } else {
+      console.log(`📊 [STATS] Sem datas informadas. Trazendo todo o histórico.`);
+    }
+
+    const snapshot = await query.get();
 
     let total_calls = 0;
     let valid_calls = 0;
@@ -52,20 +56,20 @@ router.get('/stats/summary', async (req: Request, res: Response) => {
         sdr_ranking[name].valid_calls += sdrValid;
         sdr_ranking[name].sum_notes += sdrSum;
         
-        // Totais globais do período acumulados
+        // Totais globais acumulados
         total_calls += sdrTotal;
         valid_calls += sdrValid;
         sum_notes += sdrSum;
       }
     });
 
-    // 4. Calcula a média final de cada SDR para o período
+    // 4. Calcula a média final de cada SDR para o período processado
     Object.keys(sdr_ranking).forEach(name => {
       const s = sdr_ranking[name];
       s.nota_media = s.valid_calls > 0 ? Number((s.sum_notes / s.valid_calls).toFixed(1)) : 0;
     });
 
-    // 5. Ordena por quem teve a melhor média no período e reconstrói o objeto
+    // 5. Ordena por quem teve a melhor média e reconstrói o objeto
     const sortedRanking = Object.fromEntries(
       Object.entries(sdr_ranking).sort(([, a]: any, [, b]: any) => b.nota_media - a.nota_media)
     );
@@ -76,13 +80,12 @@ router.get('/stats/summary', async (req: Request, res: Response) => {
       sum_notes,
       media_geral: valid_calls > 0 ? Number((sum_notes / valid_calls).toFixed(2)) : 0,
       sdr_ranking: sortedRanking,
-      period: { start, end },
-      version: "V2_AGGREGATED_RANGE_STATS"
+      version: "V3_FIXED_ALL_PERIOD"
     });
 
   } catch (error: any) {
     console.error("❌ [STATS ERROR]:", error.message);
-    return res.status(500).json({ error: "Erro interno no filtro de datas" });
+    return res.status(500).json({ error: "Erro interno no processamento de estatísticas" });
   }
 });
 
