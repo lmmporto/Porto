@@ -6,67 +6,89 @@ import { updateDailyStats } from '../services/analysis.service.js';
 
 const router = Router();
 
-// 🚩 CONSTANTE: Fuso horário de Brasília para consistência entre rotas
+// 🚩 CONSTANTE: Fuso horário de Brasília para consistência na manutenção
 const BRAZIL_TIMEZONE = 'America/Sao_Paulo';
 
 /**
  * GET /api/stats/summary
- * Retorna o resumo de performance do Placar Consolidado com logs de fuso horário.
+ * Agrega estatísticas de performance baseadas em um intervalo de datas.
  */
 router.get('/stats/summary', async (req: Request, res: Response) => {
   try {
-    // 🚩 LÓGICA DE DATA MANTIDA PARA DEBUG E AUDITORIA
-    const nowInBrazil = new Intl.DateTimeFormat('pt-BR', {
-      timeZone: BRAZIL_TIMEZONE,
-      year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(new Date());
-    const brDate = nowInBrazil.split('/').reverse().join('-');
+    const { startDate, endDate } = req.query;
 
-    console.log(`📊 [STATS] Solicitando resumo. Ref Hoje Brasil: ${brDate}`);
+    // 1. Define o intervalo (se não vier nada, pega o dia de hoje em formato ISO)
+    const today = new Date().toISOString().split('T')[0];
+    const start = startDate ? String(startDate).split('T')[0] : today;
+    const end = endDate ? String(endDate).split('T')[0] : today;
 
-    // 1. Puxa do Placar Consolidado (sdr_stats) - Onde a performance real reside
-    const snapshot = await db.collection('sdr_stats').orderBy('averageScore', 'desc').get();
+    console.log(`📊 [STATS] Buscando intervalo: ${start} até ${end}`);
 
+    // 2. Busca todos os documentos de data dentro desse intervalo usando o ID (__name__)
+    const snapshot = await db.collection('dashboard_stats')
+      .where('__name__', '>=', start)
+      .where('__name__', '<=', end)
+      .get();
+
+    let total_calls = 0;
     let valid_calls = 0;
     let sum_notes = 0;
-    const sdr_ranking: any = {};
+    const sdr_ranking: Record<string, any> = {};
 
-    snapshot.docs.forEach(doc => {
+    // 3. Soma os dados de cada dia na memória
+    snapshot.forEach(doc => {
       const data = doc.data();
-      const nome = data.ownerName || "SDR Desconhecido";
+      const rankings = data.sdr_ranking || {};
+      
+      for (const [name, stats] of Object.entries(rankings) as any) {
+        if (!sdr_ranking[name]) {
+          sdr_ranking[name] = { calls: 0, valid_calls: 0, sum_notes: 0, nota_media: 0 };
+        }
 
-      // 2. Formata para a estrutura que o Frontend espera
-      sdr_ranking[nome] = {
-        calls: data.totalCalls || 0,
-        valid_calls: data.totalCalls || 0,
-        sum_notes: data.totalScore || 0,
-        nota_media: data.averageScore || 0
-      };
+        const sdrTotal = Number(stats.total || 0);
+        const sdrValid = Number(stats.valid_count || 0);
+        const sdrSum = Number(stats.sum_notes || 0);
 
-      valid_calls += (data.totalCalls || 0);
-      sum_notes += (data.totalScore || 0);
+        sdr_ranking[name].calls += sdrTotal;
+        sdr_ranking[name].valid_calls += sdrValid;
+        sdr_ranking[name].sum_notes += sdrSum;
+        
+        // Totais globais do período acumulados
+        total_calls += sdrTotal;
+        valid_calls += sdrValid;
+        sum_notes += sdrSum;
+      }
     });
 
-    const media_geral = valid_calls > 0 ? Number((sum_notes / valid_calls).toFixed(2)) : 0;
+    // 4. Calcula a média final de cada SDR para o período
+    Object.keys(sdr_ranking).forEach(name => {
+      const s = sdr_ranking[name];
+      s.nota_media = s.valid_calls > 0 ? Number((s.sum_notes / s.valid_calls).toFixed(1)) : 0;
+    });
+
+    // 5. Ordena por quem teve a melhor média no período e reconstrói o objeto
+    const sortedRanking = Object.fromEntries(
+      Object.entries(sdr_ranking).sort(([, a]: any, [, b]: any) => b.nota_media - a.nota_media)
+    );
 
     return res.json({
-      total_calls: valid_calls,
-      valid_calls: valid_calls,
-      sum_notes: sum_notes,
-      media_geral: media_geral,
-      sdr_ranking: sdr_ranking,
-      version: "V1_PLACAR_CONSOLIDADO_BR_TIMEZONE" // 🚩 Versão com Placar + Timezone
+      total_calls,
+      valid_calls,
+      sum_notes,
+      media_geral: valid_calls > 0 ? Number((sum_notes / valid_calls).toFixed(2)) : 0,
+      sdr_ranking: sortedRanking,
+      period: { start, end },
+      version: "V2_AGGREGATED_RANGE_STATS"
     });
 
   } catch (error: any) {
     console.error("❌ [STATS ERROR]:", error.message);
-    return res.status(500).json({ error: "Erro interno ao processar estatísticas" });
+    return res.status(500).json({ error: "Erro interno no filtro de datas" });
   }
 });
 
 /**
  * 🚩 ROTA DE MANUTENÇÃO: Reconstrói as estatísticas do dia do zero
- * Usa o fuso horário de Brasília para identificar as chamadas de hoje.
  */
 router.post("/rebuild-today-stats", async (req: Request, res: Response) => {
   try {
@@ -89,21 +111,15 @@ router.post("/rebuild-today-stats", async (req: Request, res: Response) => {
       return res.json({ success: true, message: "Nenhuma chamada encontrada para hoje." });
     }
 
-    console.log(`[REBUILD] 📚 Processando ${snapshot.size} chamadas encontradas...`);
-
     let count = 0;
     for (const doc of snapshot.docs) {
       const callData = doc.data();
-      
-      // Primeiro registra como VOLUME (isUpdate: false)
       const mockInitial = { status_final: 'NAO_IDENTIFICADO', nota_spin: null };
       await updateDailyStats(callData, mockInitial, false);
 
-      // Se a chamada já estiver concluída, registra a PERFORMANCE (isUpdate: true)
       if (callData.processingStatus === "DONE") {
         await updateDailyStats(callData, callData, true);
       }
-      
       count++;
     }
 
