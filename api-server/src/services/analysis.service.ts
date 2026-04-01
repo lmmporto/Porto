@@ -230,7 +230,6 @@ export async function updateDailyStats(callData: any, analysis: any, isUpdate: b
     const statsRef = db.collection('dashboard_stats').doc(today);
     const sdrName = callData.ownerName || "Desconhecido";
 
-    // 🚩 LÓGICA SÊNIOR: Aceita nota 0.0. Só ignora se for Rota D (Descarte) ou Pendente.
     const isValidaParaRanking = analysis.status_final !== 'NAO_SE_APLICA' && 
                                 analysis.status_final !== 'NAO_IDENTIFICADO' &&
                                 analysis.nota_spin !== null;
@@ -242,15 +241,12 @@ export async function updateDailyStats(callData: any, analysis: any, isUpdate: b
       date: today,
       updatedAt: FieldValue.serverTimestamp(),
       total_calls: FieldValue.increment(totalIncrement),
-      // Globais
       valid_calls: isValidaParaRanking && isUpdate ? FieldValue.increment(1) : FieldValue.increment(0),
       sum_notes: isValidaParaRanking && isUpdate ? FieldValue.increment(nota) : FieldValue.increment(0),
     };
 
-    // Ranking por SDR
     updatePayload[`sdr_ranking.${sdrName}.total`] = FieldValue.increment(totalIncrement);
     
-    // Se for o update da IA, incrementamos a nota e o contador de avaliações
     if (isUpdate && isValidaParaRanking) {
       updatePayload[`sdr_ranking.${sdrName}.sum_notes`] = FieldValue.increment(nota);
       updatePayload[`sdr_ranking.${sdrName}.valid_count`] = FieldValue.increment(1);
@@ -260,5 +256,47 @@ export async function updateDailyStats(callData: any, analysis: any, isUpdate: b
     console.log(`📊 [COFRE] ${isUpdate ? 'IA_FINISH' : 'WEBHOOK'}: ${sdrName} | Nota: ${nota} | Valida: ${isValidaParaRanking}`);
   } catch (error) {
     console.error("❌ [COFRE ERROR]:", error);
+  }
+}
+
+/**
+ * 🏆 ATUALIZAÇÃO DO PLACAR GLOBAL POR SDR
+ */
+export async function updateSdrGlobalStats(ownerName: string, nota: number) {
+  if (!ownerName || ownerName === "Não identificado") return;
+  
+  // Limpa o nome para virar um ID válido no banco (tira espaços e caracteres especiais)
+  const safeId = ownerName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
+  const sdrRef = db.collection('sdr_stats').doc(safeId);
+  
+  try {
+    await db.runTransaction(async (transaction) => {
+      const doc = await transaction.get(sdrRef);
+      
+      if (!doc.exists) {
+        transaction.set(sdrRef, {
+          ownerName: ownerName,
+          totalCalls: 1,
+          totalScore: nota,
+          averageScore: nota,
+          lastUpdated: FieldValue.serverTimestamp()
+        });
+      } else {
+        const data = doc.data()!;
+        const newTotalCalls = (data.totalCalls || 0) + 1;
+        const newTotalScore = (data.totalScore || 0) + nota;
+        const newAverage = newTotalScore / newTotalCalls;
+
+        transaction.update(sdrRef, {
+          totalCalls: newTotalCalls,
+          totalScore: newTotalScore,
+          averageScore: Number(newAverage.toFixed(2)),
+          lastUpdated: FieldValue.serverTimestamp()
+        });
+      }
+    });
+    console.log(`🏆 [PLACAR] SDR ${ownerName} atualizado. Nova Média: ${nota}`);
+  } catch (error) {
+    console.error(`❌ [ERRO NO PLACAR] Falha ao atualizar ${ownerName}:`, error);
   }
 }

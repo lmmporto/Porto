@@ -11,7 +11,8 @@ import {
 import { 
   transcribeRecordingFromHubSpot, 
   analyzeCallWithGemini,
-  updateDailyStats 
+  updateDailyStats,
+  updateSdrGlobalStats 
 } from "./analysis.service.js";
 
 const ALLOWED_TEAMS = ["Time William", "Equipe Alex", "Time Lucas", "Time Amanda"];
@@ -142,7 +143,10 @@ export async function processCall(callId: string): Promise<any> {
       rawResponse
     }, { merge: true });
 
-    console.log(`[SUCCESS] 🎉 Call ${callId} finalizada e salva.`);
+    // 🚩 NOVO: Atualiza o Placar Consolidado do SDR após salvar como DONE
+    await updateSdrGlobalStats(basePayload.ownerName, Number(analysis.nota_spin || 0));
+
+    console.log(`[SUCCESS] 🎉 Call ${callId} finalizada e salva no Cofre.`);
     return { success: true, status: "ANALYZED" };
 
   } catch (error: any) {
