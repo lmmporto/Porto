@@ -7,13 +7,13 @@ export function useCalls(limit = 10) {
   const [lastVisible, setLastVisible] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   
-  // 🚩 Estado para armazenar os critérios de busca
+  // 🚩 Estado para armazenar os critérios de busca (datas, sort, owner, etc.)
   const [filters, setFilters] = useState<any>({});
 
-  // 🚩 1. Definição da função updateFilters dentro do hook
+  // 🚩 Função que atualiza o critério de busca e reseta o cursor
   const updateFilters = useCallback((newFilters: any) => {
     setFilters(newFilters);
-    setLastVisible(null); // Reset do cursor ao mudar filtros para voltar à pág 1
+    setLastVisible(null); // Reset do cursor ao mudar filtros (volta à pág 1)
   }, []);
 
   const fetchData = useCallback(async (isReset = false) => {
@@ -24,7 +24,7 @@ export function useCalls(limit = 10) {
       // Constrói a URL base com o limite
       let url = `/api/calls?limit=${limit}`;
       
-      // Adiciona o cursor de paginação se não for um reset
+      // Adiciona o cursor de paginação se não for um reset (carregamento contínuo)
       if (!isReset && lastVisible) {
         url += `&lastVisible=${lastVisible}`;
       }
@@ -41,8 +41,10 @@ export function useCalls(limit = 10) {
 
       if (!res.ok) throw new Error(data.error || 'Erro ao buscar chamadas');
 
+      // 🚩 ATUALIZAÇÃO SEGURA: Utilizando prevState para evitar a dependência de `calls`
       // Se for reset, substitui a lista. Se for paginação, anexa ao final.
       setCalls(prev => isReset ? (data.calls || []) : [...prev, ...(data.calls || [])]);
+      
       setLastVisible(data.lastVisible || null);
       
     } catch (err: any) {
@@ -50,9 +52,9 @@ export function useCalls(limit = 10) {
     } finally {
       setIsLoading(false);
     }
-  }, [limit, lastVisible, filters]); // 🚩 filters adicionado às dependências
+  // 🚩 ARRAY DE DEPENDÊNCIAS SEGURO (Sem 'calls' para evitar loops infinitos)
+  }, [limit, lastVisible, filters]); 
 
-  // 🚩 2. Retorno atualizado com a função updateFilters
   return { 
     calls, 
     isLoading, 
