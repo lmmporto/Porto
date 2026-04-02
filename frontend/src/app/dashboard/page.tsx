@@ -31,6 +31,7 @@ const getBrazilDateString = (date: Date): string => {
     day: '2-digit',
     timeZone: BRAZIL_TIMEZONE,
   });
+  console.log("DADOS QUE CHEGARAM NO FRONT:", summary);
   return formatter.format(date);
 };
 

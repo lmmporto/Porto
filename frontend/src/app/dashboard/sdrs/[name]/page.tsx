@@ -16,11 +16,11 @@ import {
 } from 'lucide-react';
 import { getInitials } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
+import { useCalls } from '@/hooks/useCalls';
 import type { SDRCall, DashboardSummary } from '@/types';
 
 type SortOrder = 'date_desc' | 'score_desc' | 'score_asc';
 
-// 🚩 CONSTANTES DE DATA (PADRÃO BRASÍLIA)
 const BRAZIL_TIMEZONE = 'America/Sao_Paulo';
 
 const getBrazilDateString = (date: Date): string => {
@@ -37,25 +37,24 @@ function SDRDetailContent() {
   const decodedName = decodeURIComponent(name as string);
 
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [calls, setCalls] = useState<SDRCall[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   
-  const initialTimeFilter = searchParams.get('period') || searchParams.get('filter') || 'today';
-  const initialStartDate = searchParams.get('startDate') || searchParams.get('start') || '';
-  const initialEndDate = searchParams.get('endDate') || searchParams.get('end') || '';
-
-  const [timeFilter, setTimeFilter] = useState(initialTimeFilter); 
+  const [timeFilter, setTimeFilter] = useState(() => {
+    return searchParams.get('filter') || searchParams.get('period') || 'today';
+  });
+  const [customStartDate, setCustomStartDate] = useState(() => searchParams.get('start') || '');
+  const [customEndDate, setCustomEndDate] = useState(() => searchParams.get('end') || '');
   const [sortOrder, setSortOrder] = useState<SortOrder>('score_desc');
-  
-  const [customStartDate, setCustomStartDate] = useState(initialStartDate);
-  const [customEndDate, setCustomEndDate] = useState(initialEndDate);
+  const [minScore, setMinScore] = useState(0);
 
+  // 🚩 ADICIONADO CONFORME AJUSTE: Limite máximo para o calendário customizado
   const todayMaxDate = useMemo(() => new Date().toISOString().split('T')[0], []);
 
+  // 🚩 HOOK DE CARREGAMENTO
+  const { calls, isLoading, error, fetchData, updateFilters, hasMore } = useCalls(10);
+  
   const updateUrlParams = useCallback((newFilter: string, start?: string, end?: string) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set('filter', newFilter);
-    
     if (newFilter === 'custom' && start && end) {
       params.set('start', start);
       params.set('end', end);
@@ -63,106 +62,65 @@ function SDRDetailContent() {
       params.delete('start');
       params.delete('end');
     }
-
     router.replace(`?${params.toString()}`, { scroll: false });
   }, [searchParams, router]);
 
-  const getDateRange = useCallback(() => {
+  // 🚩 ORQUESTRADOR
+  useEffect(() => {
     const now = new Date();
-    let startIso = '';
-    let endIso = '';
-
-    const toLocalISO = (date: Date) => {
-      const offset = date.getTimezoneOffset() * 60000;
-      return new Date(date.getTime() - offset).toISOString().split('T')[0];
-    };
+    let start = '';
+    let end = '';
 
     if (timeFilter === 'today') {
-      const today = toLocalISO(now);
-      startIso = `${today}T00:00:00.000Z`;
-      endIso = `${today}T23:59:59.999Z`;
-    } else if (timeFilter === '7d' || timeFilter === '7days') {
-      const past = new Date();
+      start = getBrazilDateString(now);
+      end = start;
+    } else if (timeFilter === '7d') {
+      const past = new Date(now);
       past.setDate(now.getDate() - 7);
-      startIso = `${toLocalISO(past)}T00:00:00.000Z`;
-      endIso = `${toLocalISO(now)}T23:59:59.999Z`;
+      start = getBrazilDateString(past);
+      end = getBrazilDateString(now);
     } else if (timeFilter === 'month') {
-      const monthStr = String(now.getMonth() + 1).padStart(2, '0');
-      startIso = `${now.getFullYear()}-${monthStr}-01T00:00:00.000Z`;
-      endIso = `${toLocalISO(now)}T23:59:59.999Z`;
-    } else if (timeFilter === 'custom' && customStartDate && customEndDate) {
-      startIso = `${customStartDate}T00:00:00.000Z`;
-      endIso = `${customEndDate}T23:59:59.999Z`;
-    }
-    return { startIso, endIso };
-  }, [timeFilter, customStartDate, customEndDate]);
-
-
-  const fetchData = async () => {
-    if (timeFilter === 'custom') {
-      if (!customStartDate || !customEndDate) return;
-      if (customStartDate > customEndDate) return; 
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      start = getBrazilDateString(firstDay);
+      end = getBrazilDateString(now);
+    } else if (timeFilter === 'custom') {
+      start = customStartDate;
+      end = customEndDate;
     }
 
-    setIsLoading(true);
-    try {
-      const timestamp = Date.now();
-      const { startIso, endIso } = getDateRange();
-      
-      let summaryUrl = `/api/stats/summary?t=${timestamp}`;
-      let callsUrl = `/api/calls?ownerName=${encodeURIComponent(decodedName)}&limit=50&t=${timestamp}`;
+    // INJEÇÃO DO SDR: Agora o hook SABE que deve buscar as ligações deste SDR
+    updateFilters({
+      startDate: start,
+      endDate: end,
+      sort: sortOrder,
+      minScore: minScore,
+      ownerName: decodedName 
+    });
 
-      if (timeFilter !== 'all' && startIso && endIso) {
-        const dateParams = `&startDate=${encodeURIComponent(startIso)}&endDate=${encodeURIComponent(endIso)}`;
-        summaryUrl += dateParams;
-        callsUrl += dateParams;
+    fetchData(true);
+
+    // Busca o Summary (Placar)
+    const fetchSummary = async () => {
+      try {
+        let url = `/api/stats/summary?t=${Date.now()}`;
+        if (start && end) url += `&startDate=${start}&endDate=${end}`;
+        
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("Erro na rede");
+        const data = await res.json();
+        setSummary(data);
+      } catch (e) {
+        console.error("❌ Erro ao buscar resumo:", e);
       }
-
-      const resSummary = await fetch(summaryUrl);
-      if (resSummary.ok) {
-        const summaryData = await resSummary.json();
-        setSummary(summaryData);
-      }
-
-      const resCalls = await fetch(callsUrl);
-      if (resCalls.ok) {
-        const callsData = await resCalls.json();
-        setCalls(Array.isArray(callsData) ? callsData : []);
-      }
-
-    } catch (error) {
-      console.error("Erro ao carregar perfil do SDR:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (decodedName) fetchData();
-  }, [decodedName, timeFilter, customStartDate, customEndDate]);
-
-  const handleTimeFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newFilter = e.target.value;
-    setTimeFilter(newFilter);
-    if (newFilter !== 'custom') {
-      updateUrlParams(newFilter);
-    }
-  };
-
-  const handleCustomDateSearch = () => {
-    if (customStartDate && customEndDate && customStartDate <= customEndDate) {
-      updateUrlParams('custom', customStartDate, customEndDate);
-      fetchData();
-    }
-  };
+    };
+    fetchSummary();
+  }, [timeFilter, sortOrder, minScore, customStartDate, customEndDate, decodedName, updateFilters, fetchData]);
 
   const sdrStats = useMemo(() => {
     const ranking = summary?.sdr_ranking;
     const stats = ranking ? ranking[decodedName] : null;
 
-    if (!stats) {
-      return { total: 0, avg: 0, validos: 0 };
-    }
+    if (!stats) return { total: 0, avg: 0, validos: 0 };
 
     return {
       total: Number(stats.calls || 0),
@@ -171,22 +129,22 @@ function SDRDetailContent() {
     };
   }, [summary, decodedName]);
 
-  const sortedCalls = useMemo(() => {
-    return [...calls].sort((a, b) => {
-      if (sortOrder === 'score_desc') return (Number(b.nota_spin) || 0) - (Number(a.nota_spin) || 0);
-      if (sortOrder === 'score_asc') return (Number(a.nota_spin) || 0) - (Number(b.nota_spin) || 0);
-      
-      // Helper para extrair data do Firebase ou String
-      const getTime = (call: SDRCall) => {
-        const d = call.analyzedAt || call.updatedAt || call.createdAt;
-        if (!d) return 0;
-        const sec = typeof d === 'object' ? (d._seconds || d.seconds) : null;
-        return sec ? sec * 1000 : new Date(d as any).getTime();
-      };
+  const handleTimeFilterChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newFilter = e.target.value;
+    setTimeFilter(newFilter);
+    if (newFilter !== 'custom') updateUrlParams(newFilter);
+  };
 
-      return getTime(b) - getTime(a); 
-    });
-  }, [calls, sortOrder]);
+  // 🚩 FUNÇÃO DE BUSCA CUSTOMIZADA ATUALIZADA
+  const handleCustomDateSearch = () => {
+    if (customStartDate && customEndDate && customStartDate <= customEndDate) {
+      updateUrlParams('custom', customStartDate, customEndDate);
+      fetchData(true); // 🚩 Dispara o reset da busca conforme solicitado
+    }
+  };
+
+  const totalVolume = calls.length; 
+  const totalAnalyzed = calls.filter(c => c.processingStatus === 'DONE').length;
 
   return (
     <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20 px-4 md:px-0">
@@ -215,7 +173,6 @@ function SDRDetailContent() {
                 <TrendingUp className="w-3 h-3 text-amber-500" /> Média SPIN
               </span>
               <span className="text-2xl font-headline font-bold text-slate-900">
-                {/* 🚩 MUDANÇA: Se existem válidas, mostra a nota (mesmo que seja 0.0) */}
                 {sdrStats.validos > 0 ? sdrStats.avg.toFixed(1) : "--"}
               </span>
             </div>
@@ -225,7 +182,6 @@ function SDRDetailContent() {
                 <PhoneCall className="w-3 h-3 text-emerald-500" /> Analisadas / Volume
               </span>
               <div className="flex items-baseline gap-1.5 mt-1">
-                {/* 🚩 MUDANÇA: Use sdrStats.validos e sdrStats.total (que vêm do resumo do banco) */}
                 <span className="text-2xl font-headline font-bold text-slate-900">{sdrStats.validos}</span>
                 <span className="text-xs font-bold text-slate-300"> / {sdrStats.total}</span>
               </div>
@@ -241,7 +197,7 @@ function SDRDetailContent() {
           Últimas Atividades 
           {!isLoading && (
             <span className="bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full text-[9px]">
-              {calls.length} exibidas
+              {totalAnalyzed} / {totalVolume} exibidas
             </span>
           )}
         </h3>
@@ -305,7 +261,7 @@ function SDRDetailContent() {
           </div>
           
           <Button 
-            onClick={fetchData} 
+            onClick={() => fetchData(true)} 
             variant="outline" 
             size="sm"
             className="h-9 rounded-xl border-slate-200 hover:bg-slate-50"
@@ -316,32 +272,36 @@ function SDRDetailContent() {
         </div>
       </div>
 
-      <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 flex items-start gap-3">
-        <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
-        <div>
-          <p className="text-xs font-bold text-amber-800 uppercase tracking-tight">Barreira de Performance Ativa</p>
-          <p className="text-[11px] text-amber-700 mt-0.5">
-            Para economizar cota, exibimos até as 50 chamadas mais recentes da busca. 
-            O volume total do período continua contabilizado nos cards acima.
-          </p>
+      {error && (
+        <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm border border-red-100 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" /> {error}
         </div>
-      </div>
+      )}
 
       <div className="grid gap-3 min-h-[300px]">
-        {isLoading ? (
+        {isLoading && calls.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3">
             <RefreshCw className="w-6 h-6 animate-spin text-indigo-600" />
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Buscando rastros...</p>
           </div>
-        ) : sortedCalls.length > 0 ? (
-          sortedCalls.map(call => (
-            <CallCard key={call.id} call={call} />
-          ))
+        ) : calls.length > 0 ? (
+          calls.map(call => <CallCard key={call.id} call={call} />)
         ) : (
           <div className="flex flex-col items-center justify-center py-20 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-100 gap-3">
             <Hourglass className="w-8 h-8 text-slate-200" />
             <p className="text-sm text-slate-400 italic font-medium">Nenhum rastro encontrado para este SDR neste período.</p>
           </div>
+        )}
+
+        {hasMore && (
+          <Button 
+            variant="ghost" 
+            className="w-full py-8 text-slate-400 hover:text-indigo-600 font-bold text-xs tracking-widest uppercase border-2 border-dashed border-slate-100 rounded-2xl mt-4" 
+            onClick={() => fetchData(false)}
+            disabled={isLoading}
+          >
+            {isLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : "Carregar mais chamadas"}
+          </Button>
         )}
       </div>
     </div>
