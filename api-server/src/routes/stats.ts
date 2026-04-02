@@ -11,34 +11,31 @@ const BRAZIL_TIMEZONE = 'America/Sao_Paulo';
 
 /**
  * GET /api/stats/summary
- * Agrega estatísticas de performance. Se startDate/endDate não forem enviados,
- * traz o consolidado de todo o histórico.
+ * Agrega estatísticas de performance baseadas em um intervalo de datas.
  */
 router.get('/stats/summary', async (req: Request, res: Response) => {
   try {
     const { startDate, endDate } = req.query;
 
-    // 1. Começamos com a busca aberta (Traz tudo)
-    let query: FirebaseFirestore.Query = db.collection('dashboard_stats');
+    // 🚩 AJUSTE SÊNIOR: Define datas padrão caso não venham na query
+    const today = new Date().toISOString().split('T')[0];
+    const start = startDate ? String(startDate).split('T')[0] : '2026-03-01'; 
+    const end = endDate ? String(endDate).split('T')[0] : today;
 
-    // 2. Se o site enviou datas, a gente aplica o filtro por ID de documento (__name__)
-    if (startDate && endDate) {
-      const start = String(startDate).split('T')[0];
-      const end = String(endDate).split('T')[0];
-      console.log(`📊 [STATS] Filtrando período: ${start} até ${end}`);
-      query = query.where('__name__', '>=', start).where('__name__', '<=', end);
-    } else {
-      console.log(`📊 [STATS] Sem datas informadas. Trazendo todo o histórico.`);
-    }
+    console.log(`📊 [STATS] Filtrando período: ${start} até ${end}`);
 
-    const snapshot = await query.get();
+    // Busca os documentos de data dentro do intervalo usando o ID (__name__)
+    const snapshot = await db.collection('dashboard_stats')
+      .where('__name__', '>=', start)
+      .where('__name__', '<=', end)
+      .get();
 
     let total_calls = 0;
     let valid_calls = 0;
     let sum_notes = 0;
     const sdr_ranking: Record<string, any> = {};
 
-    // 3. Soma os dados de cada dia na memória
+    // Soma os dados de cada dia na memória
     snapshot.forEach(doc => {
       const data = doc.data();
       const rankings = data.sdr_ranking || {};
@@ -56,20 +53,19 @@ router.get('/stats/summary', async (req: Request, res: Response) => {
         sdr_ranking[name].valid_calls += sdrValid;
         sdr_ranking[name].sum_notes += sdrSum;
         
-        // Totais globais acumulados
         total_calls += sdrTotal;
         valid_calls += sdrValid;
         sum_notes += sdrSum;
       }
     });
 
-    // 4. Calcula a média final de cada SDR para o período processado
+    // Calcula a média final de cada SDR para o período
     Object.keys(sdr_ranking).forEach(name => {
       const s = sdr_ranking[name];
       s.nota_media = s.valid_calls > 0 ? Number((s.sum_notes / s.valid_calls).toFixed(1)) : 0;
     });
 
-    // 5. Ordena por quem teve a melhor média e reconstrói o objeto
+    // Ordena por performance e reconstrói o objeto
     const sortedRanking = Object.fromEntries(
       Object.entries(sdr_ranking).sort(([, a]: any, [, b]: any) => b.nota_media - a.nota_media)
     );
