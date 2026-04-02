@@ -76,6 +76,7 @@ router.get("/calls", async (req: Request, res: Response, next: NextFunction) => 
       const limit = Math.min(Number(req.query.limit || 10), 50); 
       const startAfter = req.query.lastVisible as string; // Cursor para paginação
       const minScore = Number(req.query.minScore);        // Filtro de nota
+      const ownerNameParam = req.query.ownerName as string; // 🚩 Filtro de SDR
       const startDateParam = req.query.startDate as string;
       const endDateParam = req.query.endDate as string;
 
@@ -98,18 +99,29 @@ router.get("/calls", async (req: Request, res: Response, next: NextFunction) => 
       query = query.orderBy("updatedAt", "desc");
       
       if (startAfter) {
-        // Pega o documento anterior para começar depois dele
         const lastDoc = await db.collection(CONFIG.CALLS_COLLECTION).doc(startAfter).get();
-        query = query.startAfter(lastDoc);
+        if (lastDoc.exists) {
+          query = query.startAfter(lastDoc);
+        }
       }
 
       const snapshot = await query.limit(limit).get();
       
-      const calls = snapshot.docs.map((doc) => ({
+      let calls: CallDocument[] = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
         nota_spin: Number(doc.data().nota_spin || 0),
       }));
+
+      // 🚩 NOVO: Filtro robusto para o SDR (Ajuste solicitado)
+      if (ownerNameParam) {
+        const cleanParam = decodeURIComponent(ownerNameParam).trim().toLowerCase();
+        
+        calls = calls.filter(call => {
+          const callOwner = (call.ownerName || "").trim().toLowerCase();
+          return callOwner === cleanParam;
+        });
+      }
 
       // Retorna os dados e o ID do último pra usar na próxima página
       res.json({
