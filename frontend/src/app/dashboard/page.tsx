@@ -1,4 +1,3 @@
-console.log("URL DO BACKEND:", process.env.NEXT_PUBLIC_API_BASE_URL);
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -31,7 +30,7 @@ const getBrazilDateString = (date: Date): string => {
     day: '2-digit',
     timeZone: BRAZIL_TIMEZONE,
   });
-  console.log("DADOS QUE CHEGARAM NO FRONT:", summary);
+  
   return formatter.format(date);
 };
 
