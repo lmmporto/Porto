@@ -9,13 +9,27 @@ const router = Router();
 // 🚩 CONSTANTE: Fuso horário de Brasília para consistência na manutenção
 const BRAZIL_TIMEZONE = 'America/Sao_Paulo';
 
+// 🚩 ESTADOS DE CACHE EM MEMÓRIA (1 MINUTO)
+let cachedStats: any = null;
+let lastCacheTime = 0;
+
 /**
  * GET /api/stats/summary
  * Retorna o resumo de performance extraído do Placar Consolidado (sdr_stats).
  */
 router.get('/stats/summary', async (req: Request, res: Response) => {
   try {
-    // 🚩 MUDANÇA SÊNIOR: Agora lemos diretamente do placar consolidado por SDR
+    const now = Date.now();
+    
+    // 🚩 LÓGICA DE CACHE: Retorna o cache se tiver menos de 1 minuto
+    if (cachedStats && (now - lastCacheTime < 60000)) {
+      console.log(`📊 [STATS] Retornando resumo de performance do CACHE.`);
+      return res.json(cachedStats);
+    }
+
+    console.log(`📊 [STATS] Buscando resumo de performance do FIRESTORE...`);
+
+    // Agora lemos diretamente do placar consolidado por SDR
     const snapshot = await db.collection('sdr_stats')
       .orderBy('averageScore', 'desc')
       .get();
@@ -40,14 +54,21 @@ router.get('/stats/summary', async (req: Request, res: Response) => {
       sum_notes += Number(data.totalScore || 0);
     });
 
-    return res.json({
+    // 🚩 EMPACOTANDO O RESULTADO PARA SALVAR NO CACHE
+    const resultado = {
       total_calls,
       valid_calls: total_calls,
       sum_notes,
       media_geral: total_calls > 0 ? Number((sum_notes / total_calls).toFixed(2)) : 0,
       sdr_ranking: sdr_ranking,
-      version: "V3_SDR_STATS_FIX"
-    });
+      version: "V4_SDR_STATS_CACHED"
+    };
+
+    // Atualiza as variáveis globais de cache
+    cachedStats = resultado;
+    lastCacheTime = now;
+
+    return res.json(resultado);
 
   } catch (error: any) {
     console.error("❌ [STATS ERROR]:", error.message);
