@@ -11,72 +11,42 @@ const BRAZIL_TIMEZONE = 'America/Sao_Paulo';
 
 /**
  * GET /api/stats/summary
- * Agrega estatísticas de performance baseadas em um intervalo de datas.
+ * Retorna o resumo de performance extraído do Placar Consolidado (sdr_stats).
  */
 router.get('/stats/summary', async (req: Request, res: Response) => {
   try {
-    const { startDate, endDate } = req.query;
-
-    // 🚩 AJUSTE SÊNIOR: Define datas padrão caso não venham na query
-    const today = new Date().toISOString().split('T')[0];
-    const start = startDate ? String(startDate).split('T')[0] : '2026-03-01'; 
-    const end = endDate ? String(endDate).split('T')[0] : today;
-
-    console.log(`📊 [STATS] Filtrando período: ${start} até ${end}`);
-
-    // Busca os documentos de data dentro do intervalo usando o ID (__name__)
-    const snapshot = await db.collection('dashboard_stats')
-      .where('__name__', '>=', start)
-      .where('__name__', '<=', end)
+    // 🚩 MUDANÇA SÊNIOR: Agora lemos diretamente do placar consolidado por SDR
+    const snapshot = await db.collection('sdr_stats')
+      .orderBy('averageScore', 'desc')
       .get();
 
-    let total_calls = 0;
-    let valid_calls = 0;
-    let sum_notes = 0;
     const sdr_ranking: Record<string, any> = {};
+    let total_calls = 0;
+    let sum_notes = 0;
 
-    // Soma os dados de cada dia na memória
-    snapshot.forEach(doc => {
+    snapshot.docs.forEach(doc => {
       const data = doc.data();
-      const rankings = data.sdr_ranking || {};
+      const name = data.ownerName || "SDR Desconhecido";
       
-      for (const [name, stats] of Object.entries(rankings) as any) {
-        if (!sdr_ranking[name]) {
-          sdr_ranking[name] = { calls: 0, valid_calls: 0, sum_notes: 0, nota_media: 0 };
-        }
+      // Mapeamento direto do documento consolidado do SDR
+      sdr_ranking[name] = {
+        calls: data.totalCalls || 0,
+        valid_calls: data.totalCalls || 0,
+        sum_notes: data.totalScore || 0,
+        nota_media: data.averageScore || 0
+      };
 
-        const sdrTotal = Number(stats.total || 0);
-        const sdrValid = Number(stats.valid_count || 0);
-        const sdrSum = Number(stats.sum_notes || 0);
-
-        sdr_ranking[name].calls += sdrTotal;
-        sdr_ranking[name].valid_calls += sdrValid;
-        sdr_ranking[name].sum_notes += sdrSum;
-        
-        total_calls += sdrTotal;
-        valid_calls += sdrValid;
-        sum_notes += sdrSum;
-      }
+      total_calls += Number(data.totalCalls || 0);
+      sum_notes += Number(data.totalScore || 0);
     });
-
-    // Calcula a média final de cada SDR para o período
-    Object.keys(sdr_ranking).forEach(name => {
-      const s = sdr_ranking[name];
-      s.nota_media = s.valid_calls > 0 ? Number((s.sum_notes / s.valid_calls).toFixed(1)) : 0;
-    });
-
-    // Ordena por performance e reconstrói o objeto
-    const sortedRanking = Object.fromEntries(
-      Object.entries(sdr_ranking).sort(([, a]: any, [, b]: any) => b.nota_media - a.nota_media)
-    );
 
     return res.json({
       total_calls,
-      valid_calls,
+      valid_calls: total_calls,
       sum_notes,
-      media_geral: valid_calls > 0 ? Number((sum_notes / valid_calls).toFixed(2)) : 0,
-      sdr_ranking: sortedRanking,
-      version: "V3_FIXED_ALL_PERIOD"
+      media_geral: total_calls > 0 ? Number((sum_notes / total_calls).toFixed(2)) : 0,
+      sdr_ranking: sdr_ranking,
+      version: "V3_SDR_STATS_FIX"
     });
 
   } catch (error: any) {
