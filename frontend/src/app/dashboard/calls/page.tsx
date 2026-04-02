@@ -34,10 +34,15 @@ export default function CallsListPage() {
     fetch(`/api/calls?t=${Date.now()}`)
       .then(res => res.json())
       .then(data => {
-        setCalls(Array.isArray(data) ? data : []);
+        // 🚩 AJUSTE SÊNIOR: Suporte à nova estrutura de paginação do backend
+        // Se 'data' for um objeto com a chave 'calls', extraímos ela. 
+        // Caso contrário, verificamos se é um Array legado.
+        const listaChamadas = data.calls || (Array.isArray(data) ? data : []);
+        setCalls(listaChamadas);
         setIsLoading(false);
       })
-      .catch(() => {
+      .catch((error) => {
+        console.error("Erro ao carregar chamadas:", error);
         setCalls([]);
         setIsLoading(false);
       });
@@ -63,7 +68,6 @@ export default function CallsListPage() {
     }
   };
 
-  // 🚩 FUNÇÃO DE BADGE SÊNIOR: Transparência total para o usuário
   const getStatusBadge = (call: SDRCall) => {
     const isDone = call.processingStatus === "DONE";
     const isRotaC = call.status_final === "NAO_SE_APLICA";
