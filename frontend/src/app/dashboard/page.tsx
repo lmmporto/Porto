@@ -30,15 +30,12 @@ const getBrazilDateString = (date: Date): string => {
     day: '2-digit',
     timeZone: BRAZIL_TIMEZONE,
   });
-  
   return formatter.format(date);
 };
 
 export default function DashboardPage() {
-  // 🚩 1. SUBSTITUIÇÃO DOS ESTADOS PELO HOOK
   const { calls, isLoading, error, fetchData, updateFilters, hasMore } = useCalls(10);
   
-  // 🚩 2. FILTROS QUE PERMANECEM NO COMPONENTE
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortOrder, setSortOrder] = useState<SortOrder>('score_desc');
@@ -48,7 +45,7 @@ export default function DashboardPage() {
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
-  // 🚩 3. LÓGICA DE SINCRONIZAÇÃO DE FILTROS E BUSCA
+  // 🚩 3. LÓGICA DE SINCRONIZAÇÃO DE FILTROS E BUSCA (AJUSTADA)
   useEffect(() => {
     const now = new Date();
     let start = '';
@@ -95,7 +92,10 @@ export default function DashboardPage() {
       }
     };
     fetchSummary();
-  }, [dateFilter, sortOrder, minScore, customStartDate, customEndDate, fetchData, updateFilters]);
+
+    // 🚩 AJUSTE: Removidas as dependências 'fetchData' e 'updateFilters' para parar o loop infinito
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFilter, sortOrder, customStartDate, customEndDate, minScore]);
 
   const filteredCalls = useMemo(() => {
     let result = [...calls];
@@ -236,7 +236,6 @@ export default function DashboardPage() {
           <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Ranking de Performance</h3>
           <SDRRanking 
             summary={summary} 
-          
           /> 
         </div>
 
@@ -265,6 +264,13 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          <div className="space-y-2 mb-4 bg-amber-50 border border-amber-100 rounded-lg p-3 flex items-center gap-3">
+             <AlertCircle className="w-4 h-4 text-amber-600" />
+             <p className="text-amber-700 text-[11px] font-medium">
+               Exibindo as chamadas de acordo com o filtro. Limite de 50 chamadas ativado.
+             </p>
+          </div>
+
           <div className="grid gap-4">
             {filteredCalls.length > 0 ? (
               filteredCalls.map(call => <CallCard key={call.id} call={call} />)
@@ -274,7 +280,7 @@ export default function DashboardPage() {
               </div>
             )}
             
-            {/* 🚩 BOTÃO CARREGAR MAIS (SUBSTITUINDO O LIMITE FIXO) */}
+            {/* 🚩 BOTÃO CARREGAR MAIS */}
             {hasMore && (
               <Button 
                 variant="ghost" 
