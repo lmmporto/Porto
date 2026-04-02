@@ -1,3 +1,4 @@
+console.log("URL DO BACKEND:", process.env.NEXT_PUBLIC_API_BASE_URL);
 "use client";
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
@@ -16,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CallCard } from '@/components/dashboard/CallCard';
 import { SDRRanking } from '@/components/dashboard/SDRRanking';
+import { useCalls } from '../../hooks/useCalls';
 import type { SDRCall, DashboardSummary } from '@/types';
 
 type SortOrder = 'date_desc' | 'score_desc' | 'score_asc';
@@ -33,87 +35,67 @@ const getBrazilDateString = (date: Date): string => {
 };
 
 export default function DashboardPage() {
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
-  const [calls, setCalls] = useState<SDRCall[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
+  // 🚩 1. SUBSTITUIÇÃO DOS ESTADOS PELO HOOK
+  const { calls, isLoading, error, fetchData, updateFilters, hasMore } = useCalls(10);
   
+  // 🚩 2. FILTROS QUE PERMANECEM NO COMPONENTE
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
   const [sortOrder, setSortOrder] = useState<SortOrder>('score_desc');
   const [dateFilter, setDateFilter] = useState('today');
+  const [minScore, setMinScore] = useState(0);
   
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
-  const fetchData = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const timestamp = Date.now();
-      
-      let startPeriodStr = ''; 
-      let endPeriodStr = '';   
-      
-      const now = new Date(); 
-
-      if (dateFilter === 'today') {
-        const todayBrazilStr = getBrazilDateString(now); 
-        startPeriodStr = todayBrazilStr;
-        endPeriodStr = todayBrazilStr;
-      } else if (dateFilter === '7d') {
-        const sevenDaysAgo = new Date(now); 
-        sevenDaysAgo.setDate(now.getDate() - 7); 
-        
-        startPeriodStr = getBrazilDateString(sevenDaysAgo);
-        endPeriodStr = getBrazilDateString(now); 
-      } else if (dateFilter === 'month') {
-        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        
-        startPeriodStr = getBrazilDateString(firstDayOfMonth);
-        endPeriodStr = getBrazilDateString(now); 
-      } else if (dateFilter === 'custom' && customStartDate && customEndDate) {
-        startPeriodStr = customStartDate;
-        endPeriodStr = customEndDate;
-      }
-
-      let summaryUrl = `/api/stats/summary?t=${timestamp}`;
-      let callsUrl = `/api/calls?limit=50&t=${timestamp}&sort=${sortOrder}`; 
-      
-      if (dateFilter !== 'all' && startPeriodStr && endPeriodStr) {
-        summaryUrl += `&startDate=${startPeriodStr}&endDate=${endPeriodStr}`;
-        callsUrl += `&startDate=${startPeriodStr}&endDate=${endPeriodStr}`;
-      }
-
-      const [resSummary, resCalls] = await Promise.all([
-        fetch(summaryUrl),
-        fetch(callsUrl)
-      ]);
-
-      const summaryData = await resSummary.json();
-      const callsData = await resCalls.json();
-
-      if (!resSummary.ok || summaryData.error) {
-        throw new Error(summaryData.error || 'Falha ao carregar as métricas do Cofre.');
-      }
-      
-      if (!resCalls.ok || callsData.error) {
-        throw new Error(callsData.error || 'Falha ao carregar a lista de chamadas.');
-      }
-
-      setSummary(summaryData);
-      setCalls(Array.isArray(callsData) ? callsData : []);
-
-    } catch (err: any) {
-      console.error("❌ Erro na sincronização do Dashboard:", err);
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [dateFilter, sortOrder, customStartDate, customEndDate]);
-
+  // 🚩 3. LÓGICA DE SINCRONIZAÇÃO DE FILTROS E BUSCA
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    const now = new Date();
+    let start = '';
+    let end = '';
+
+    if (dateFilter === 'today') {
+      start = getBrazilDateString(now);
+      end = start;
+    } else if (dateFilter === '7d') {
+      const past = new Date(now);
+      past.setDate(now.getDate() - 7);
+      start = getBrazilDateString(past);
+      end = getBrazilDateString(now);
+    } else if (dateFilter === 'month') {
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      start = getBrazilDateString(firstDay);
+      end = getBrazilDateString(now);
+    } else if (dateFilter === 'custom') {
+      start = customStartDate;
+      end = customEndDate;
+    }
+
+    // Atualiza os filtros internos do hook
+    updateFilters({
+      startDate: start,
+      endDate: end,
+      sort: sortOrder,
+      minScore
+    });
+
+    // Dispara a busca resetando a lista (Página 1)
+    fetchData(true);
+
+    // Busca o resumo estatístico (Summary) separadamente
+    const fetchSummary = async () => {
+      try {
+        let url = `/api/stats/summary?t=${Date.now()}`;
+        if (start && end) url += `&startDate=${start}&endDate=${end}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        setSummary(data);
+      } catch (e) {
+        console.error("Erro ao buscar resumo:", e);
+      }
+    };
+    fetchSummary();
+  }, [dateFilter, sortOrder, minScore, customStartDate, customEndDate, fetchData, updateFilters]);
 
   const filteredCalls = useMemo(() => {
     let result = [...calls];
@@ -124,30 +106,8 @@ export default function DashboardPage() {
         c.title?.toLowerCase().includes(term)
       );
     }
-
-    return result.sort((a, b) => {
-      if (sortOrder === 'score_desc') {
-        // 🚩 LÓGICA SÊNIOR: Joga quem não é DONE ou não tem nota pro final (valor -1)
-        const scoreA = a.processingStatus === 'DONE' ? (Number(a.nota_spin) || 0) : -1;
-        const scoreB = b.processingStatus === 'DONE' ? (Number(b.nota_spin) || 0) : -1;
-        return scoreB - scoreA;
-      }
-      
-      if (sortOrder === 'score_asc') return (Number(a.nota_spin) ?? 0) - (Number(b.nota_spin) ?? 0);
-      
-      if (sortOrder === 'date_desc') {
-        const getTime = (call: SDRCall) => {
-          const d = call.analyzedAt || call.updatedAt || call.createdAt;
-          if (!d) return 0;
-          const sec = typeof d === 'object' ? (d._seconds || d.seconds) : null;
-          return sec ? sec * 1000 : new Date(d as any).getTime();
-        };
-
-        return getTime(b) - getTime(a);
-      }
-      return 0;
-    });
-  }, [calls, searchTerm, sortOrder]);
+    return result;
+  }, [calls, searchTerm]);
 
   const stats = summary as any;
   const isSummaryEmpty = stats?.empty === true || !stats; 
@@ -156,28 +116,11 @@ export default function DashboardPage() {
   const analyzedCount = stats?.valid_calls || 0; 
   const activeSDRsCount = stats?.sdr_ranking ? Object.keys(stats.sdr_ranking).length : 0;
 
-  if (isLoading) {
+  if (isLoading && calls.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
         <RefreshCw className="w-6 h-6 animate-spin text-indigo-500" />
         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Acessando Banco de Dados...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4 animate-in fade-in zoom-in duration-300">
-        <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-2">
-          <AlertCircle className="w-8 h-8" />
-        </div>
-        <h2 className="text-xl font-headline font-bold text-slate-800">Problema de Conexão</h2>
-        <p className="text-sm text-slate-500 text-center max-w-md bg-white border border-slate-200 p-4 rounded-xl shadow-sm">
-          {error}
-        </p>
-        <Button onClick={fetchData} className="mt-4 bg-slate-900 hover:bg-slate-800 rounded-xl">
-          <RefreshCw className="w-4 h-4 mr-2" /> Tentar Novamente
-        </Button>
       </div>
     );
   }
@@ -206,6 +149,19 @@ export default function DashboardPage() {
                 <option value="custom">Personalizado...</option>
               </select>
             </div>
+
+            <div className="h-4 w-px bg-slate-100 hidden sm:block mx-1" />
+            
+            {/* 🚩 FILTRO DE NOTA MÍNIMA */}
+            <select 
+              value={minScore}
+              onChange={(e) => setMinScore(Number(e.target.value))}
+              className="text-sm font-bold text-slate-700 bg-transparent outline-none cursor-pointer h-8"
+            >
+              <option value="0">Qualquer Nota</option>
+              <option value="5">Nota 5+</option>
+              <option value="8">Nota 8+</option>
+            </select>
             
             {dateFilter === 'custom' && (
               <div className="flex items-center gap-2 sm:ml-2 sm:pl-3 sm:border-l border-slate-100 animate-in zoom-in duration-200">
@@ -222,13 +178,12 @@ export default function DashboardPage() {
                   onChange={e => setCustomEndDate(e.target.value)} 
                   className="h-8 text-xs font-medium text-slate-600 rounded-lg px-2 outline-none"
                 />
-                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={fetchData}><RefreshCw className="w-3 h-3"/></Button>
               </div>
             )}
           </div>
           
           <Button 
-            onClick={fetchData} 
+            onClick={() => fetchData(true)} 
             variant="outline" 
             disabled={isLoading}
             className="h-11 rounded-xl border-slate-200 hover:bg-slate-50"
@@ -279,7 +234,10 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         <div className="space-y-4">
           <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em]">Ranking de Performance</h3>
-          <SDRRanking summary={summary} /> 
+          <SDRRanking 
+            summary={summary} 
+          
+          /> 
         </div>
 
         <div className="lg:col-span-3 space-y-6">
@@ -307,13 +265,6 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="space-y-2 mb-4 bg-amber-50 border border-amber-100 rounded-lg p-3 flex items-center gap-3">
-             <AlertCircle className="w-4 h-4 text-amber-600" />
-             <p className="text-amber-700 text-[11px] font-medium">
-               Exibindo as chamadas de acordo com o filtro. Limite de 50 chamadas ativado.
-             </p>
-          </div>
-
           <div className="grid gap-4">
             {filteredCalls.length > 0 ? (
               filteredCalls.map(call => <CallCard key={call.id} call={call} />)
@@ -323,10 +274,16 @@ export default function DashboardPage() {
               </div>
             )}
             
-            {calls.length >= 50 && (
-               <Button variant="ghost" className="w-full py-8 text-slate-400 hover:text-indigo-600 font-bold text-xs tracking-widest uppercase">
-                 Limite de 50 chamadas atingido. Refine a busca →
-               </Button>
+            {/* 🚩 BOTÃO CARREGAR MAIS (SUBSTITUINDO O LIMITE FIXO) */}
+            {hasMore && (
+              <Button 
+                variant="ghost" 
+                className="w-full py-8 text-slate-400 hover:text-indigo-600 font-bold text-xs tracking-widest uppercase border-2 border-dashed border-slate-100 rounded-2xl" 
+                onClick={() => fetchData(false)}
+                disabled={isLoading}
+              >
+                {isLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : "Carregar mais chamadas"}
+              </Button>
             )}
           </div>
         </div>
