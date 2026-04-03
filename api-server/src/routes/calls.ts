@@ -14,26 +14,19 @@ import { handleIncomingCall } from "../services/webhook.service.js";
 const router: IRouter = Router();
 
 // --- INTERFACES ---
-
 interface CallDocument {
   id: string;
   ownerName?: string;
   nota_spin?: number;
-  [key: string]: any; // Permite campos dinâmicos do Firestore
+  [key: string]: any;
 }
 
 // --- MIDDLEWARES DE SEGURANÇA ---
-
 function requireWebhookSecret(req: Request, res: Response, next: NextFunction) {
-  const headerSecret = req.headers["x-webhook-secret"];
-  const querySecret = req.query.secret;
-  const providedSecret = (Array.isArray(headerSecret) ? headerSecret[0] : headerSecret) || 
-                         (Array.isArray(querySecret) ? querySecret[0] : querySecret) || "";
+  const providedSecret = req.headers["x-webhook-secret"] || req.query.secret || "";
   const expectedSecret = process.env.WEBHOOK_SECRET || "";
-  
   if (String(providedSecret) !== String(expectedSecret)) {
-    res.status(401).json({ success: false, error: "Webhook não autorizado" });
-    return;
+    return res.status(401).json({ success: false, error: "Não autorizado" });
   }
   next();
 }
@@ -43,34 +36,9 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   res.status(401).json({ success: false, error: "Não autenticado" });
 }
 
-// --- HANDLERS DE PROCESSAMENTO ---
-
-async function hubspotWebhookHandler(req: Request, res: Response) {
-  try {
-    const body = req.body;
-    const callId = body?.callId || body?.objectId || (Array.isArray(body) ? body[0]?.objectId : undefined);
-    
-    if (!callId) return res.status(200).json({ success: true, ignored: true });
-
-    const result = await handleIncomingCall({ ...body, callId: String(callId).trim() });
-    
-    res.status(202).json({ success: true, ...result });
-  } catch (error) {
-    console.error("[WEBHOOK ERROR]:", error);
-    res.status(500).json({ success: false, error: "Falha na triagem" });
-  }
-}
-
-async function analyzeCallHandler(req: Request, res: Response, next: NextFunction) {
-  try {
-    const callId = String(req.body?.callId || req.query?.callId || "").trim();
-    if (!callId) return res.status(400).json({ success: false, error: "callId ausente" });
-    res.json(await processCall(callId));
-  } catch (error) { next(error); }
-}
-
 // --- ROTAS ---
 
+// 1. LISTAGEM COM FILTRO E PAGINAÇÃO
 router.get("/", async (req: Request, res: Response, next: NextFunction) => {
     try {
       const limit = Math.min(Number(req.query.limit || 10), 50); 
@@ -82,7 +50,17 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
 
       let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
       
-      // 1. Filtro de Data
+      // FILTRO POR NOME (Direto no Banco)
+      if (ownerNameParam) {
+        query = query.where("ownerName", "==", ownerNameParam);
+      }
+
+      // FILTRO POR NOTA (Direto no Banco)
+      if (!isNaN(minScore) && minScore > 0) {
+        query = query.where("nota_spin", ">=", minScore);
+      }
+
+      // FILTRO POR DATA
       if (startDateParam && endDateParam) {
         const start = new Date(startDateParam);
         const end = new Date(endDateParam);
@@ -90,12 +68,7 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
                      .where("updatedAt", "<=", admin.firestore.Timestamp.fromDate(end));
       }
 
-      // 2. Filtro de Nota
-      if (!isNaN(minScore)) {
-        query = query.where("nota_spin", ">=", minScore);
-      }
-
-      // 3. Ordenação e Paginação (Busca ampliada para permitir filtragem posterior)
+      // ORDENAÇÃO (Obrigatório para paginação)
       query = query.orderBy("updatedAt", "desc");
       
       if (startAfter) {
@@ -105,37 +78,26 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
         }
       }
 
-      // Aumentamos o limite da query para 100 para ter margem de manobra com o filtro do SDR
-      const snapshot = await query.limit(100).get(); 
+      const snapshot = await query.limit(limit).get();
       
-      let calls: CallDocument[] = snapshot.docs.map((doc) => ({
+      const calls = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
         nota_spin: Number(doc.data().nota_spin || 0),
       }));
 
-      // 🚩 FILTRO ROBUSTO PARA O SDR (Ajuste solicitado)
-      if (ownerNameParam) {
-        const cleanParam = decodeURIComponent(ownerNameParam).trim().toLowerCase();
-        
-        calls = calls.filter(call => {
-          const callOwner = (call.ownerName || "").trim().toLowerCase();
-          // 🚩 Troca do === pelo .includes() para ser mais permissivo
-          return callOwner.includes(cleanParam); 
-        });
-      }
-
-      // Retorna os dados e o ID do último pra usar na próxima página
       res.json({
-        calls: calls.slice(0, limit),
+        calls,
         lastVisible: snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1].id : null
       });
 
     } catch (error: any) {
+      console.error("ERRO NA BUSCA:", error.message);
       next(error);
     }
 });
 
+// 2. DETALHE DE UMA LIGAÇÃO
 router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params; 
@@ -145,7 +107,28 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
   } catch (error) { next(error); }
 });
 
+// 3. ENTRADA DE DADOS (WEBHOOK)
 router.post("/hubspot-webhook", requireWebhookSecret, hubspotWebhookHandler);
-router.post("/analyze-call", requireAuth, analyzeCallHandler);
+
+// 4. DISPARO MANUAL DE ANÁLISE
+router.post("/analyze-call", requireAuth, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const callId = String(req.body?.callId || req.query?.callId || "").trim();
+    if (!callId) return res.status(400).json({ success: false, error: "ID ausente" });
+    res.json(await processCall(callId));
+  } catch (error) { next(error); }
+});
+
+async function hubspotWebhookHandler(req: Request, res: Response) {
+  try {
+    const body = req.body;
+    const callId = body?.callId || body?.objectId || (Array.isArray(body) ? body[0]?.objectId : undefined);
+    if (!callId) return res.status(200).json({ success: true, ignored: true });
+    const result = await handleIncomingCall({ ...body, callId: String(callId).trim() });
+    res.status(202).json({ success: true, ...result });
+  } catch (error) {
+    res.status(500).json({ success: false, error: "Erro no webhook" });
+  }
+}
 
 export default router;
