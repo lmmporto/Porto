@@ -32,9 +32,10 @@ const getBrazilDateString = (date: Date): string => {
 
 function SDRDetailContent() {
   const { name } = useParams(); 
+  const routeId = String(name ?? ''); // 🚩 Definido para uso no useEffect
   const router = useRouter();
   const searchParams = useSearchParams();
-  const decodedName = decodeURIComponent(name as string);
+  const decodedName = decodeURIComponent(routeId);
 
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   
@@ -46,6 +47,7 @@ function SDRDetailContent() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('score_desc');
   const [minScore, setMinScore] = useState(0);
 
+  // 🚩 ADICIONADO CONFORME AJUSTE: Limite máximo para o calendário
   const todayMaxDate = useMemo(() => new Date().toISOString().split('T')[0], []);
 
   // 🚩 HOOK DE CARREGAMENTO
@@ -64,15 +66,15 @@ function SDRDetailContent() {
     router.replace(`?${params.toString()}`, { scroll: false });
   }, [searchParams, router]);
 
-  // 🚩 ORQUESTRADOR COM TRAVA DE SEGURANÇA
+  // 🚩 NOVO EFFECT: SUBSTITUÍDO CONFORME AJUSTE SUGERIDO
   useEffect(() => {
-    // 🚩 TRAVA DE SEGURANÇA: Se já estiver carregando, não faz nada.
-    if (isLoading) return;
-
+    const sdrName = decodeURIComponent(routeId);
+    
     const now = new Date();
     let start = '';
     let end = '';
 
+    // Lógica de datas mantida para o backend filtrar o período corretamente
     if (timeFilter === 'today') {
       start = getBrazilDateString(now);
       end = start;
@@ -90,36 +92,31 @@ function SDRDetailContent() {
       end = customEndDate;
     }
 
-    // INJEÇÃO DO SDR: Agora o hook SABE que deve buscar as ligações deste SDR
+    // 1. Atualiza os filtros do Hook com o nome do SDR e datas
     updateFilters({
+      ownerName: sdrName, // 🚩 O BACKEND VAI LER ISSO AGORA
       startDate: start,
       endDate: end,
       sort: sortOrder,
-      minScore: minScore,
-      ownerName: decodedName 
+      minScore: minScore
     });
 
+    // 2. Dispara a busca
     fetchData(true);
 
-    // Busca o Summary (Placar)
+    // 3. Busca o Summary (Placar)
     const fetchSummary = async () => {
       try {
         let url = `/api/stats/summary?t=${Date.now()}`;
         if (start && end) url += `&startDate=${start}&endDate=${end}`;
-        
         const res = await fetch(url);
-        if (!res.ok) throw new Error("Erro na rede");
         const data = await res.json();
         setSummary(data);
-      } catch (e) {
-        console.error("❌ Erro ao buscar resumo:", e);
-      }
+      } catch (e) { console.error("❌ Erro summary:", e); }
     };
     fetchSummary();
 
-    // 🚩 IMPORTANTE: Apenas as variáveis que o usuário altera estão nas dependências
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeFilter, sortOrder, minScore, customStartDate, customEndDate, decodedName]);
+  }, [routeId, updateFilters, fetchData, timeFilter, sortOrder, minScore, customStartDate, customEndDate]);
 
   const sdrStats = useMemo(() => {
     const ranking = summary?.sdr_ranking;
@@ -140,10 +137,11 @@ function SDRDetailContent() {
     if (newFilter !== 'custom') updateUrlParams(newFilter);
   };
 
+  // 🚩 ADICIONADO CONFORME AJUSTE: Função do botão de refresh
   const handleCustomDateSearch = () => {
     if (customStartDate && customEndDate && customStartDate <= customEndDate) {
       updateUrlParams('custom', customStartDate, customEndDate);
-      fetchData(true); 
+      fetchData(true);
     }
   };
 
@@ -275,12 +273,6 @@ function SDRDetailContent() {
           </Button>
         </div>
       </div>
-
-      {error && (
-        <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm border border-red-100 flex items-center gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0" /> {error}
-        </div>
-      )}
 
       <div className="grid gap-3 min-h-[300px]">
         {isLoading && calls.length === 0 ? (
