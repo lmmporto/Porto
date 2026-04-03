@@ -6,32 +6,24 @@ export function useCalls(limit = 10) {
   const [isLoading, setIsLoading] = useState(false);
   const [lastVisible, setLastVisible] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  
-  // Estado para armazenar os critérios de busca (datas, sort, owner, etc.)
   const [filters, setFilters] = useState<any>({});
 
-  // Função que atualiza o critério de busca e reseta o cursor
-  const updateFilters = useCallback((newFilters: any) => {
-    setFilters(newFilters);
-    setLastVisible(null); // Reset do cursor ao mudar filtros (volta à pág 1)
-  }, []);
-
-  const fetchData = useCallback(async (isReset = false) => {
+  const fetchData = useCallback(async (isReset = false, overrideFilters?: any) => {
+    if (isLoading) return;
     setIsLoading(true);
     setError(null);
 
     try {
-      // 🚩 AQUI: Usamos o lastVisible que está no estado do Hook
+      // 🚩 Usa os filtros que acabaram de chegar ou os que já estavam salvos
+      const currentFilters = overrideFilters || filters;
       let url = `/api/calls?limit=${limit}`;
       
-      // Injeta os filtros dinamicamente na URL (cobre minScore, datas, sort, ownerName)
-      Object.entries(filters).forEach(([key, value]) => {
+      Object.entries(currentFilters).forEach(([key, value]) => {
         if (value !== undefined && value !== null && value !== '') {
           url += `&${key}=${encodeURIComponent(String(value))}`;
         }
       });
 
-      // Se não for reset, adicionamos o cursor atual para a paginação
       if (!isReset && lastVisible) {
         url += `&lastVisible=${lastVisible}`;
       }
@@ -41,10 +33,7 @@ export function useCalls(limit = 10) {
 
       if (!res.ok) throw new Error(data.error || 'Erro ao buscar chamadas');
 
-      // 🚩 AQUI: Se for reset, substitui. Se for carregar mais, adiciona ao fim.
       setCalls(prev => isReset ? (data.calls || []) : [...prev, ...(data.calls || [])]);
-      
-      // Atualiza o cursor para a próxima página
       setLastVisible(data.lastVisible || null);
       
     } catch (err: any) {
@@ -52,7 +41,13 @@ export function useCalls(limit = 10) {
     } finally {
       setIsLoading(false);
     }
-  }, [limit, lastVisible, filters]); // lastVisible aqui garante que a próxima página saiba onde começar
+  }, [limit, lastVisible, filters, isLoading]);
+
+  const updateFilters = useCallback((newFilters: any) => {
+    setFilters(newFilters);
+    setLastVisible(null);
+    // 🚩 DICA: Agora você pode chamar fetchData(true, newFilters) direto no seu page.tsx
+  }, []);
 
   return { 
     calls, 

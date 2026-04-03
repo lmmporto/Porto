@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { getInitials } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
-import { useCalls } from '@/hooks/useCalls'; // 🚩 2. Instalação do motor novo
+import { useCalls } from '@/hooks/useCalls';
 import type { DashboardSummary } from '@/types';
 
 type SortOrder = 'date_desc' | 'score_desc' | 'score_asc';
@@ -35,7 +35,7 @@ function SDRDetailContent() {
   const searchParams = useSearchParams();
   const decodedName = decodeURIComponent(name as string);
 
-  // 🚩 1 e 2. Arranque o motor velho e instale o motor novo
+  // 🚩 Instalação do motor novo
   const { calls, isLoading, error, fetchData, updateFilters, hasMore } = useCalls(10);
   
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
@@ -62,12 +62,14 @@ function SDRDetailContent() {
     router.replace(`?${params.toString()}`, { scroll: false });
   }, [searchParams, router]);
 
-  // 🚩 3. Ligue os fios (useEffect atualizado)
+  // 🚩 LIGAÇÃO DOS FIOS (useEffect Sênior conforme sugestão)
   useEffect(() => {
+    const sdrName = decodedName;
     const now = new Date();
     let start = '';
     let end = '';
 
+    // Cálculo de datas para o objeto de filtros
     if (timeFilter === 'today') {
       start = getBrazilDateString(now);
       end = start;
@@ -84,18 +86,21 @@ function SDRDetailContent() {
       start = customStartDate;
       end = customEndDate;
     }
-
-    // Sincroniza filtros com o Hook (Injetando ownerName para filtrar por SDR)
-    updateFilters({
+    
+    // 1. Prepara o papel com os dados
+    const novosFiltros = {
+      ownerName: sdrName,
       startDate: start,
       endDate: end,
       sort: sortOrder,
-      minScore: minScore,
-      ownerName: decodedName 
-    });
+      minScore: minScore
+    };
 
-    // Dispara a busca inicial de chamadas
-    fetchData(true);
+    // 2. Guarda na gaveta para o futuro
+    updateFilters(novosFiltros);
+
+    // 3. Manda buscar AGORA passando o papel direto (novosFiltros)
+    fetchData(true, novosFiltros);
 
     // Busca o Summary estatístico separadamente
     const fetchSummary = async () => {
@@ -111,8 +116,9 @@ function SDRDetailContent() {
       }
     };
     fetchSummary();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeFilter, sortOrder, minScore, customStartDate, customEndDate, decodedName]);
+
+    // 🚩 REGRA DE OURO: Removidos fetchData e updateFilters das dependências
+  }, [decodedName, timeFilter, sortOrder, minScore, customStartDate, customEndDate]);
 
   const sdrStats = useMemo(() => {
     const ranking = summary?.sdr_ranking;
@@ -134,7 +140,6 @@ function SDRDetailContent() {
   const handleCustomDateSearch = () => {
     if (customStartDate && customEndDate && customStartDate <= customEndDate) {
       updateUrlParams('custom', customStartDate, customEndDate);
-      fetchData(true);
     }
   };
 
