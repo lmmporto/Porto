@@ -1,59 +1,149 @@
-import { useState, useCallback } from 'react';
-import type { SDRCall } from '@/types';
+import {
+  Router,
+  type IRouter,
+  type Request,
+  type Response,
+  type NextFunction,
+} from "express";
+import admin from "firebase-admin";
+import { db } from "../firebase.js";
+import { CONFIG } from "../config.js";
+import { processCall } from "../services/processCall.js";
+import { handleIncomingCall } from "../services/webhook.service.js";
 
-export function useCalls(limit = 10) {
-  const [calls, setCalls] = useState<SDRCall[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [lastVisible, setLastVisible] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+const router: IRouter = Router();
+
+// --- INTERFACES ---
+
+interface CallDocument {
+  id: string;
+  ownerName?: string;
+  nota_spin?: number;
+  [key: string]: any; // Permite campos dinâmicos do Firestore
+}
+
+// --- MIDDLEWARES DE SEGURANÇA ---
+
+function requireWebhookSecret(req: Request, res: Response, next: NextFunction) {
+  const headerSecret = req.headers["x-webhook-secret"];
+  const querySecret = req.query.secret;
+  const providedSecret = (Array.isArray(headerSecret) ? headerSecret[0] : headerSecret) || 
+                         (Array.isArray(querySecret) ? querySecret[0] : querySecret) || "";
+  const expectedSecret = process.env.WEBHOOK_SECRET || "";
   
-  const [filters, setFilters] = useState<any>({});
+  if (String(providedSecret) !== String(expectedSecret)) {
+    res.status(401).json({ success: false, error: "Webhook não autorizado" });
+    return;
+  }
+  next();
+}
 
-  const updateFilters = useCallback((newFilters: any) => {
-    setFilters(newFilters);
-    setLastVisible(null); 
-  }, []);
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (req.isAuthenticated && req.isAuthenticated()) return next();
+  res.status(401).json({ success: false, error: "Não autenticado" });
+}
 
-  const fetchData = useCallback(async (isReset = false) => {
-    setIsLoading(true);
-    setError(null);
+// --- HANDLERS DE PROCESSAMENTO ---
 
+async function hubspotWebhookHandler(req: Request, res: Response) {
+  try {
+    const body = req.body;
+    const callId = body?.callId || body?.objectId || (Array.isArray(body) ? body[0]?.objectId : undefined);
+    
+    if (!callId) return res.status(200).json({ success: true, ignored: true });
+
+    const result = await handleIncomingCall({ ...body, callId: String(callId).trim() });
+    
+    res.status(202).json({ success: true, ...result });
+  } catch (error) {
+    console.error("[WEBHOOK ERROR]:", error);
+    res.status(500).json({ success: false, error: "Falha na triagem" });
+  }
+}
+
+async function analyzeCallHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const callId = String(req.body?.callId || req.query?.callId || "").trim();
+    if (!callId) return res.status(400).json({ success: false, error: "callId ausente" });
+    res.json(await processCall(callId));
+  } catch (error) { next(error); }
+}
+
+// --- ROTAS ---
+
+router.get("/calls", async (req: Request, res: Response, next: NextFunction) => {
     try {
-      let url = `/api/calls?limit=${limit}`;
+      const limit = Math.min(Number(req.query.limit || 10), 50); 
+      const startAfter = req.query.lastVisible as string; // Cursor para paginação
+      const minScore = Number(req.query.minScore);        // Filtro de nota
+      const ownerNameParam = req.query.ownerName as string; // 🚩 Filtro de SDR
+      const startDateParam = req.query.startDate as string;
+      const endDateParam = req.query.endDate as string;
+
+      let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
       
-      if (!isReset && lastVisible) {
-        url += `&lastVisible=${lastVisible}`;
+      // 1. Filtro de Data
+      if (startDateParam && endDateParam) {
+        const start = new Date(startDateParam);
+        const end = new Date(endDateParam);
+        query = query.where("updatedAt", ">=", admin.firestore.Timestamp.fromDate(start))
+                     .where("updatedAt", "<=", admin.firestore.Timestamp.fromDate(end));
       }
 
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== '') {
-          url += `&${key}=${encodeURIComponent(String(value))}`;
+      // 2. Filtro de Nota (Só aceita se for maior ou igual)
+      if (!isNaN(minScore)) {
+        query = query.where("nota_spin", ">=", minScore);
+      }
+
+      // 3. Ordenação e Paginação
+      query = query.orderBy("updatedAt", "desc");
+      
+      if (startAfter) {
+        const lastDoc = await db.collection(CONFIG.CALLS_COLLECTION).doc(startAfter).get();
+        if (lastDoc.exists) {
+          query = query.startAfter(lastDoc);
         }
+      }
+
+      const snapshot = await query.limit(limit).get();
+      
+      let calls: CallDocument[] = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        nota_spin: Number(doc.data().nota_spin || 0),
+      }));
+
+      // 🚩 NOVO: Filtro robusto para o SDR (Ajuste solicitado)
+      if (ownerNameParam) {
+        const cleanParam = decodeURIComponent(ownerNameParam).trim().toLowerCase();
+        
+        calls = calls.filter(call => {
+          const callOwner = (call.ownerName || "").trim().toLowerCase();
+          return callOwner === cleanParam;
+        });
+      }
+
+      // Retorna os dados e o ID do último pra usar na próxima página
+      res.json({
+        calls,
+        lastVisible: snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1].id : null
       });
 
-      const res = await fetch(url);
-      const data = await res.json();
-
-      if (!res.ok) throw new Error(data.error || 'Erro ao buscar chamadas');
-
-      // 🚩 APLICAÇÃO DA DICA SÊNIOR: Usar "prev" aqui elimina a necessidade
-      // de ter 'calls' no array de dependências do useCallback
-      setCalls(prev => isReset ? (data.calls || []) : [...prev, ...(data.calls || [])]);
-      setLastVisible(data.lastVisible || null);
-      
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
+    } catch (error: any) {
+      next(error);
     }
-  }, [limit, lastVisible, filters]); // 🚩 AJUSTE FEITO: 'calls' removido daqui!
+});
 
-  return { 
-    calls, 
-    isLoading, 
-    error, 
-    fetchData, 
-    updateFilters, 
-    hasMore: !!lastVisible 
-  };
-}
+router.get("/calls/:id", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = req.params; 
+    const doc = await db.collection(CONFIG.CALLS_COLLECTION).doc(String(id)).get();
+    if (!doc.exists) return res.status(404).json({ success: false, error: "Não encontrada" });
+    res.json({ id: doc.id, ...doc.data() });
+  } catch (error) { next(error); }
+});
+
+router.post("/hubspot-webhook", requireWebhookSecret, hubspotWebhookHandler);
+router.post("/analyze-call", requireAuth, analyzeCallHandler);
+
+export default router;
