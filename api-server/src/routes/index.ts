@@ -10,10 +10,12 @@ const router: IRouter = Router();
 // Rota de monitoramento do Render (healthz)
 router.use(healthRouter);
 
-// Rotas de listagem e detalhe de chamadas (/api/calls)
-router.use(callsRouter);
+// 🚩 AJUSTE: Monta o callsRouter no caminho base "/calls"
+// Assim, router.get("/") dentro de calls.ts vira "/api/calls"
+router.use("/calls", callsRouter);
 
-// Rota do "Cofre" (/api/stats/summary)
-router.use(statsRouter);
+// 🚩 AJUSTE: Monta o statsRouter no caminho base "/stats"
+// Assim, router.get("/summary") dentro de stats.ts vira "/api/stats/summary"
+router.use("/stats", statsRouter);
 
 export default router;

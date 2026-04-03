@@ -64,7 +64,9 @@ async function buildAll() {
       "process.env.NODE_ENV": '"production"',
     },
     minify: true,
-    external: externals,
+    // 🚩 AQUI A MÁGICA:
+    // Adicionamos 'react', 'react-dom' e 'lucide-react' na lista de externos forçados
+    external: [...externals, 'react', 'react-dom', 'lucide-react'], 
     logLevel: "info",
   });
 }
