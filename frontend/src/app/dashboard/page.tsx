@@ -45,7 +45,8 @@ export default function DashboardPage() {
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
-  // 🚩 3. LÓGICA DE SINCRONIZAÇÃO DE FILTROS E BUSCA (AJUSTADA)
+  // 🚩 3. LÓGICA DE SINCRONIZAÇÃO DE FILTROS E BUSCA (COMENTADA PARA DEBUG)
+  /*
   useEffect(() => {
     const now = new Date();
     let start = '';
@@ -93,9 +94,9 @@ export default function DashboardPage() {
     };
     fetchSummary();
 
-    // 🚩 AJUSTE: Removidas as dependências 'fetchData' e 'updateFilters' para parar o loop infinito
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFilter, sortOrder, customStartDate, customEndDate, minScore]);
+  */
 
   const filteredCalls = useMemo(() => {
     let result = [...calls];
