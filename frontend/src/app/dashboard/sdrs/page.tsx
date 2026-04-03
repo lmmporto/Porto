@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { RefreshCw, Trophy, Target, PhoneCall, AlertCircle, Calendar } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { useCalls } from '@/hooks/useCalls'; // 🚩 2. Instalação do motor novo
 
 interface API_SDRStats {
   nota_media?: string | number;
@@ -24,10 +25,11 @@ function SDRRankingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  // 🚩 1 e 2. Arranque o motor velho e instale o motor novo
+  // Removidos useState locais de isLoading e error pois agora vêm do hook
+  const { isLoading, error, fetchData, updateFilters } = useCalls(10);
+  
   const [ranking, setRanking] = useState<SDRRankingItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
   const [dateFilter, setDateFilter] = useState(searchParams.get('filter') || 'today');
   const [customStartDate, setCustomStartDate] = useState(searchParams.get('start') || '');
   const [customEndDate, setCustomEndDate] = useState(searchParams.get('end') || '');
@@ -47,8 +49,6 @@ function SDRRankingContent() {
 
   const getDateRange = useCallback(() => {
     const now = new Date();
-    
-    // Função que gera EXATAMENTE o mesmo formato do seu Backend
     const getBackendFormat = (date: Date) => {
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -80,61 +80,54 @@ function SDRRankingContent() {
     return { startIso, endIso };
   }, [dateFilter, customStartDate, customEndDate]);
 
-  const fetchData = async () => {
-    if (dateFilter === 'custom' && (!customStartDate || !customEndDate)) return;
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const { startIso, endIso } = getDateRange();
-      let summaryUrl = `/api/stats/summary?t=${Date.now()}`;
-      
-      if (dateFilter !== 'all' && startIso && endIso) {
-        summaryUrl += `&startDate=${startIso}&endDate=${endIso}`;
-      }
-
-      const res = await fetch(summaryUrl);
-      const data = await res.json();
-      
-      if (!res.ok || data.error) {
-        throw new Error(data.error || 'Falha ao carregar o ranking. Tente novamente.');
-      }
-
-      if (data.sdr_ranking) {
-        const formattedRanking: SDRRankingItem[] = Object.entries(data.sdr_ranking)
-          .map(([name, stats]) => {
-            const typedStats = stats as API_SDRStats;
-            return {
-              name,
-              nota: Number(typedStats.nota_media || 0),
-              volume: Number(typedStats.calls || 0),
-              validos: Number(typedStats.valid_calls || 0)
-            };
-          })
-          .sort((a, b) => b.nota - a.nota);
-        setRanking(formattedRanking);
-      } else {
-        setRanking([]);
-      }
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // 🚩 ORQUESTRADOR DE BUSCA COM TRAVA DE SEGURANÇA
+  // 🚩 3. Ligue os fios (useEffect atualizado)
   useEffect(() => {
-    // 🚩 TRAVA DE SEGURANÇA: Se já estiver carregando, não faz nada.
-    // Como o estado inicial de isLoading é true, precisamos permitir a primeira execução.
-    // Para isso, verificamos se o ranking já tem dados (se tiver, não busca de novo a menos que force).
-    // Se a lista estiver vazia, deixamos passar para a primeira carga.
-    if (isLoading && ranking.length > 0) return;
+    const { startIso, endIso } = getDateRange();
 
-    fetchData();
+    // 🚩 Sincroniza filtros com o Hook
+    updateFilters({
+      startDate: startIso,
+      endDate: endIso,
+    });
     
-    // 🚩 IMPORTANTE: Removidas funções da lista de dependências para evitar loops infinitos
+    // 🚩 Dispara a busca inicial de chamadas
+    fetchData(true);
+
+    // Busca o sumário do ranking (Stats) separadamente conforme lógica de negócio
+    const fetchRankingSummary = async () => {
+      if (dateFilter === 'custom' && (!customStartDate || !customEndDate)) return;
+      
+      try {
+        let summaryUrl = `/api/stats/summary?t=${Date.now()}`;
+        if (dateFilter !== 'all' && startIso && endIso) {
+          summaryUrl += `&startDate=${startIso}&endDate=${endIso}`;
+        }
+
+        const res = await fetch(summaryUrl);
+        const data = await res.json();
+        
+        if (data.sdr_ranking) {
+          const formattedRanking: SDRRankingItem[] = Object.entries(data.sdr_ranking)
+            .map(([name, stats]) => {
+              const typedStats = stats as API_SDRStats;
+              return {
+                name,
+                nota: Number(typedStats.nota_media || 0),
+                volume: Number(typedStats.calls || 0),
+                validos: Number(typedStats.valid_calls || 0)
+              };
+            })
+            .sort((a, b) => b.nota - a.nota);
+          setRanking(formattedRanking);
+        } else {
+          setRanking([]);
+        }
+      } catch (err) {
+        console.error("Erro ao buscar ranking summary:", err);
+      }
+    };
+
+    fetchRankingSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFilter, customStartDate, customEndDate]);
 
@@ -154,7 +147,6 @@ function SDRRankingContent() {
 
   return (
     <div className="space-y-8 pb-20 animate-in fade-in duration-700">
-      
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-3xl font-headline font-bold text-slate-900 tracking-tight">Equipe de Vendas</h1>
@@ -203,9 +195,15 @@ function SDRRankingContent() {
             )}
           </div>
           
-          <Button onClick={fetchData} variant="outline" className="h-11 rounded-xl border-slate-200 hover:bg-slate-50">
+          {/* 🚩 4. Conecte os botões */}
+          <Button 
+            onClick={() => fetchData(true)} 
+            variant="outline" 
+            className="h-11 rounded-xl border-slate-200 hover:bg-slate-50"
+            disabled={isLoading}
+          >
             <RefreshCw className={`w-4 h-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} /> 
-            {isLoading ? "Atualizando..." : "Atualizar"}
+            {isLoading ? "Sincronizando..." : "Atualizar"}
           </Button>
         </div>
       </div>
@@ -216,13 +214,13 @@ function SDRRankingContent() {
            <p className="text-xs font-bold text-slate-400 tracking-widest uppercase">Processando Ranking...</p>
         </div>
       ) : error ? (
-        <div className="flex flex-col items-center justify-center min-h-[300px] gap-4 animate-in fade-in zoom-in duration-300">
+        <div className="flex flex-col items-center justify-center min-h-[300px] gap-4">
           <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-2">
             <AlertCircle className="w-8 h-8" />
           </div>
           <h2 className="text-xl font-headline font-bold text-slate-800">Problema de Conexão</h2>
           <p className="text-sm text-slate-500 text-center max-w-md bg-white border border-slate-200 p-4 rounded-xl shadow-sm">{error}</p>
-          <Button onClick={fetchData} className="mt-4 bg-slate-900 hover:bg-slate-800 rounded-xl">
+          <Button onClick={() => fetchData(true)} className="mt-4 bg-slate-900 hover:bg-slate-800 rounded-xl">
             <RefreshCw className="w-4 h-4 mr-2" /> Tentar Novamente
           </Button>
         </div>
@@ -236,7 +234,7 @@ function SDRRankingContent() {
             <Link 
               href={getSDRLink(sdr.name)} 
               key={index}
-              className="block outline-none rounded-2xl focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 transition-all cursor-pointer"
+              className="block outline-none rounded-2xl transition-all cursor-pointer"
             >
               <Card className="border-slate-100 shadow-sm hover:border-indigo-300 hover:shadow-md hover:shadow-indigo-50/50 transition-all duration-300 group h-full">
                 <CardContent className="p-6">

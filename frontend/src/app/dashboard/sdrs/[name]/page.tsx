@@ -16,11 +16,10 @@ import {
 } from 'lucide-react';
 import { getInitials } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
-import { useCalls } from '@/hooks/useCalls';
-import type { SDRCall, DashboardSummary } from '@/types';
+import { useCalls } from '@/hooks/useCalls'; // 🚩 2. Instalação do motor novo
+import type { DashboardSummary } from '@/types';
 
 type SortOrder = 'date_desc' | 'score_desc' | 'score_asc';
-
 const BRAZIL_TIMEZONE = 'America/Sao_Paulo';
 
 const getBrazilDateString = (date: Date): string => {
@@ -36,8 +35,10 @@ function SDRDetailContent() {
   const searchParams = useSearchParams();
   const decodedName = decodeURIComponent(name as string);
 
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  // 🚩 1 e 2. Arranque o motor velho e instale o motor novo
+  const { calls, isLoading, error, fetchData, updateFilters, hasMore } = useCalls(10);
   
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [timeFilter, setTimeFilter] = useState(() => {
     return searchParams.get('filter') || searchParams.get('period') || 'today';
   });
@@ -46,12 +47,8 @@ function SDRDetailContent() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('score_desc');
   const [minScore, setMinScore] = useState(0);
 
-  // 🚩 ADICIONADO CONFORME AJUSTE: Limite máximo para o calendário customizado
   const todayMaxDate = useMemo(() => new Date().toISOString().split('T')[0], []);
 
-  // 🚩 HOOK DE CARREGAMENTO
-  const { calls, isLoading, error, fetchData, updateFilters, hasMore } = useCalls(10);
-  
   const updateUrlParams = useCallback((newFilter: string, start?: string, end?: string) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set('filter', newFilter);
@@ -65,7 +62,7 @@ function SDRDetailContent() {
     router.replace(`?${params.toString()}`, { scroll: false });
   }, [searchParams, router]);
 
-  // 🚩 ORQUESTRADOR
+  // 🚩 3. Ligue os fios (useEffect atualizado)
   useEffect(() => {
     const now = new Date();
     let start = '';
@@ -88,7 +85,7 @@ function SDRDetailContent() {
       end = customEndDate;
     }
 
-    // INJEÇÃO DO SDR: Agora o hook SABE que deve buscar as ligações deste SDR
+    // Sincroniza filtros com o Hook (Injetando ownerName para filtrar por SDR)
     updateFilters({
       startDate: start,
       endDate: end,
@@ -97,14 +94,14 @@ function SDRDetailContent() {
       ownerName: decodedName 
     });
 
+    // Dispara a busca inicial de chamadas
     fetchData(true);
 
-    // Busca o Summary (Placar)
+    // Busca o Summary estatístico separadamente
     const fetchSummary = async () => {
       try {
         let url = `/api/stats/summary?t=${Date.now()}`;
         if (start && end) url += `&startDate=${start}&endDate=${end}`;
-        
         const res = await fetch(url);
         if (!res.ok) throw new Error("Erro na rede");
         const data = await res.json();
@@ -114,14 +111,13 @@ function SDRDetailContent() {
       }
     };
     fetchSummary();
-  }, [timeFilter, sortOrder, minScore, customStartDate, customEndDate, decodedName, updateFilters, fetchData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeFilter, sortOrder, minScore, customStartDate, customEndDate, decodedName]);
 
   const sdrStats = useMemo(() => {
     const ranking = summary?.sdr_ranking;
     const stats = ranking ? ranking[decodedName] : null;
-
     if (!stats) return { total: 0, avg: 0, validos: 0 };
-
     return {
       total: Number(stats.calls || 0),
       validos: Number(stats.valid_calls || 0),
@@ -135,11 +131,10 @@ function SDRDetailContent() {
     if (newFilter !== 'custom') updateUrlParams(newFilter);
   };
 
-  // 🚩 FUNÇÃO DE BUSCA CUSTOMIZADA ATUALIZADA
   const handleCustomDateSearch = () => {
     if (customStartDate && customEndDate && customStartDate <= customEndDate) {
       updateUrlParams('custom', customStartDate, customEndDate);
-      fetchData(true); // 🚩 Dispara o reset da busca conforme solicitado
+      fetchData(true);
     }
   };
 
@@ -168,7 +163,7 @@ function SDRDetailContent() {
           </div>
 
           <div className="flex gap-3">
-            <div className="bg-white border border-slate-100 rounded-xl p-4 flex flex-col items-center min-w-[140px] shadow-sm transition-opacity duration-300" style={{ opacity: isLoading ? 0.5 : 1 }}>
+            <div className="bg-white border border-slate-100 rounded-xl p-4 flex flex-col items-center min-w-[140px] shadow-sm">
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
                 <TrendingUp className="w-3 h-3 text-amber-500" /> Média SPIN
               </span>
@@ -177,7 +172,7 @@ function SDRDetailContent() {
               </span>
             </div>
 
-            <div className="bg-white border border-slate-100 rounded-xl p-4 flex flex-col items-center min-w-[140px] shadow-sm transition-opacity duration-300" style={{ opacity: isLoading ? 0.5 : 1 }}>
+            <div className="bg-white border border-slate-100 rounded-xl p-4 flex flex-col items-center min-w-[140px] shadow-sm">
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
                 <PhoneCall className="w-3 h-3 text-emerald-500" /> Analisadas / Volume
               </span>
@@ -205,11 +200,7 @@ function SDRDetailContent() {
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
           <div className="flex items-center bg-white border border-slate-200 rounded-xl px-2 h-9 shadow-sm">
              <ArrowDownUp className="w-3.5 h-3.5 ml-1 text-slate-400" />
-             <select 
-               value={sortOrder}
-               onChange={(e) => setSortOrder(e.target.value as SortOrder)}
-               className="bg-transparent text-xs font-semibold text-slate-600 focus:outline-none p-1.5 cursor-pointer"
-             >
+             <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as SortOrder)} className="bg-transparent text-xs font-semibold text-slate-600 focus:outline-none p-1.5 cursor-pointer">
                <option value="score_desc">Melhores Notas</option>
                <option value="score_asc">Menores Notas</option>
                <option value="date_desc">Mais Recentes</option>
@@ -218,11 +209,7 @@ function SDRDetailContent() {
 
           <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
             <Calendar className="w-3.5 h-3.5 ml-2 text-slate-400" />
-            <select 
-              value={timeFilter}
-              onChange={handleTimeFilterChange}
-              className="bg-transparent text-xs font-semibold text-slate-600 focus:outline-none p-1.5 cursor-pointer"
-            >
+            <select value={timeFilter} onChange={handleTimeFilterChange} className="bg-transparent text-xs font-semibold text-slate-600 focus:outline-none p-1.5 cursor-pointer">
               <option value="today">Hoje</option>
               <option value="7d">Últimos 7 dias</option>
               <option value="month">Mês atual</option>
@@ -232,41 +219,17 @@ function SDRDetailContent() {
             
             {timeFilter === 'custom' && (
               <div className="flex items-center gap-2 sm:ml-2 sm:pl-3 sm:border-l border-slate-100 animate-in zoom-in duration-200">
-                <input 
-                  type="date" 
-                  value={customStartDate} 
-                  max={todayMaxDate}
-                  onChange={e => setCustomStartDate(e.target.value)} 
-                  className="h-8 text-xs font-medium text-slate-600 rounded-lg px-2 outline-none"
-                />
+                <input type="date" value={customStartDate} max={todayMaxDate} onChange={e => setCustomStartDate(e.target.value)} className="h-8 text-xs font-medium text-slate-600 rounded-lg px-2 outline-none" />
                 <span className="text-slate-300 text-[10px] font-bold">ATÉ</span>
-                <input 
-                  type="date" 
-                  value={customEndDate} 
-                  max={todayMaxDate}
-                  onChange={e => setCustomEndDate(e.target.value)} 
-                  className="h-8 text-xs font-medium text-slate-600 rounded-lg px-2 outline-none"
-                />
-                <Button 
-                  size="sm" 
-                  variant="ghost" 
-                  className="h-7 w-7 p-0" 
-                  onClick={handleCustomDateSearch}
-                  disabled={!customStartDate || !customEndDate || customStartDate > customEndDate || isLoading}
-                >
+                <input type="date" value={customEndDate} max={todayMaxDate} onChange={e => setCustomEndDate(e.target.value)} className="h-8 text-xs font-medium text-slate-600 rounded-lg px-2 outline-none" />
+                <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={handleCustomDateSearch} disabled={!customStartDate || !customEndDate || customStartDate > customEndDate || isLoading}>
                   <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`}/>
                 </Button>
               </div>
             )}
           </div>
           
-          <Button 
-            onClick={() => fetchData(true)} 
-            variant="outline" 
-            size="sm"
-            className="h-9 rounded-xl border-slate-200 hover:bg-slate-50"
-            disabled={isLoading}
-          >
+          <Button onClick={() => fetchData(true)} variant="outline" size="sm" className="h-9 rounded-xl" disabled={isLoading}>
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
@@ -310,12 +273,7 @@ function SDRDetailContent() {
 
 export default function SDRDetailPage() {
   return (
-    <Suspense fallback={
-      <div className="flex flex-col items-center justify-center min-h-[400px]">
-        <RefreshCw className="w-6 h-6 animate-spin text-indigo-500 mb-4" />
-        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Carregando Perfil...</p>
-      </div>
-    }>
+    <Suspense fallback={<div className="flex items-center justify-center min-h-[400px]"><RefreshCw className="w-6 h-6 animate-spin text-indigo-500" /></div>}>
       <SDRDetailContent />
     </Suspense>
   );

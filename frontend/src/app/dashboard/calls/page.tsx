@@ -22,36 +22,26 @@ import type { SDRCall } from '@/types';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { useToast } from '@/hooks/use-toast';
+import { useCalls } from '@/hooks/useCalls'; // 🚩 Importação do motor novo
 
 export default function CallsListPage() {
-  const [calls, setCalls] = useState<SDRCall[]>([]);
+  // 🚩 Instalação do motor novo
+  const { calls, isLoading, error, fetchData, updateFilters, hasMore } = useCalls(10);
+  
   const [searchTerm, setSearchTerm] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
 
+  // 🚩 Ligando os fios (useEffect limpo e focado no Hook)
   useEffect(() => {
-    // 🚩 TRAVA DE SEGURANÇA: Se já estiver carregando (após o primeiro disparo), não faz nada.
-    // Como o estado inicial de isLoading é true, precisamos permitir a primeira execução.
-    // Para isso, usamos uma variável de controle local ou confiamos no array vazio [].
-    // Neste caso, como o array é [], ele só roda no mount. A trava protege contra re-renders acidentais.
+    // Como esta página lista o histórico geral, iniciamos com filtros zerados
+    updateFilters({});
     
-    fetch(`/api/calls?t=${Date.now()}`)
-      .then(res => res.json())
-      .then(data => {
-        // Suporte à nova estrutura de paginação do backend
-        const listaChamadas = data.calls || (Array.isArray(data) ? data : []);
-        setCalls(listaChamadas);
-        setIsLoading(false);
-      })
-      .catch((error) => {
-        console.error("Erro ao carregar chamadas:", error);
-        setCalls([]);
-        setIsLoading(false);
-      });
-      
-    // 🚩 IMPORTANTE: Array vazio garante que só rode no mount. 
-    // Não dependemos de 'calls' aqui.
+    // Dispara a busca inicial
+    fetchData(true);
+    
+    // Executa apenas no mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleExportZip = async () => {
@@ -67,14 +57,13 @@ export default function CallsListPage() {
       const content = await zip.generateAsync({ type: 'blob' });
       saveAs(content, `analise-chamadas-export-${new Date().toISOString().split('T')[0]}.zip`);
       toast({ title: "Exportação Concluída", description: `${filteredCalls.length} chamadas exportadas.` });
-    } catch (error) {
+    } catch (err) {
       toast({ variant: "destructive", title: "Erro na Exportação" });
     } finally {
       setIsExporting(false);
     }
   };
 
-  // FUNÇÃO DE BADGE SÊNIOR: Transparência total para o usuário
   const getStatusBadge = (call: SDRCall) => {
     const isDone = call.processingStatus === "DONE";
     const isRotaC = call.status_final === "NAO_SE_APLICA";
@@ -132,16 +121,29 @@ export default function CallsListPage() {
           <h1 className="text-2xl font-headline font-bold text-slate-900">Histórico de Chamadas</h1>
           <p className="text-slate-400 text-sm mt-1">Dados consolidados de todas as avaliações e tentativas.</p>
         </div>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className="h-9 text-xs font-bold uppercase tracking-wider"
-          onClick={handleExportZip}
-          disabled={isExporting || filteredCalls.length === 0}
-        >
-          {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileArchive className="w-4 h-4 mr-2" />}
-          Exportar ZIP
-        </Button>
+        <div className="flex items-center gap-2">
+          {/* 🚩 Botão de Atualizar conectado */}
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="h-9 text-xs font-bold uppercase tracking-wider"
+            onClick={() => fetchData(true)}
+            disabled={isLoading}
+          >
+            {isLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+            Atualizar
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="h-9 text-xs font-bold uppercase tracking-wider"
+            onClick={handleExportZip}
+            disabled={isExporting || filteredCalls.length === 0}
+          >
+            {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileArchive className="w-4 h-4 mr-2" />}
+            Exportar ZIP
+          </Button>
+        </div>
       </div>
 
       <Card className="border-slate-100 shadow-none">
@@ -173,7 +175,7 @@ export default function CallsListPage() {
                   </tr>
                 </thead>
                 <tbody className="[&_tr:last-child]:border-0">
-                  {isLoading ? (
+                  {isLoading && calls.length === 0 ? (
                     <tr><td colSpan={6} className="h-32 text-center text-slate-400 text-xs italic">Carregando chamadas...</td></tr>
                   ) : filteredCalls.length === 0 ? (
                     <tr><td colSpan={6} className="h-32 text-center text-slate-400 text-xs italic">Nenhuma chamada encontrada.</td></tr>
@@ -216,6 +218,20 @@ export default function CallsListPage() {
                 </tbody>
               </table>
             </div>
+            
+            {/* 🚩 Botão Carregar Mais conectado */}
+            {hasMore && (
+              <div className="p-4 border-t border-slate-100 flex justify-center bg-slate-50/50">
+                <Button 
+                  variant="ghost" 
+                  className="w-full max-w-sm py-6 text-slate-400 hover:text-indigo-600 font-bold text-xs tracking-widest uppercase border-2 border-dashed border-slate-200 rounded-xl" 
+                  onClick={() => fetchData(false)}
+                  disabled={isLoading}
+                >
+                  {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : "Carregar mais chamadas"}
+                </Button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>

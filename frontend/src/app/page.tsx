@@ -15,28 +15,21 @@ export default function Home() {
       return;
     }
 
-    // Redireciona para o login do Google no backend
     window.open(loginUrl, '_self');
   };
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center bg-white p-6 animate-in fade-in duration-1000">
       <div className="w-full max-w-sm space-y-12 text-center">
-        
-        {/* ÁREA DA LOGO (O NiboLogo já contém o título em azul) */}
         <div className="space-y-4 flex flex-col items-center">
           <div className="flex items-center justify-center">
-            {/* Aumentei um pouco o tamanho aqui para ficar imponente */}
             <NiboLogo className="text-4xl" />
           </div>
-
-          {/* Mantemos apenas o subtítulo em cinza aqui embaixo */}
           <p className="text-slate-400 text-sm font-medium px-4">
             Inteligência Artificial para gestão de performance SDR.
           </p>
         </div>
 
-        {/* BOTÃO DE ACESSO ÚNICO */}
         <div className="space-y-6">
           <Button
             onClick={login}

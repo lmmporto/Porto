@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -29,8 +29,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import type { SDRCall, StatusFinal } from '@/types';
+import type { StatusFinal } from '@/types';
 import { cn } from '@/lib/utils';
+import { useCalls } from '@/hooks/useCalls'; // 🚩 2. Instale o motor novo
 
 export default function CallDetailPage() {
   const params = useParams();
@@ -39,45 +40,25 @@ export default function CallDetailPage() {
   const rawId = params?.id;
   const routeId = Array.isArray(rawId) ? rawId[0] : String(rawId ?? '');
 
-  const [call, setCall] = useState<SDRCall | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // 🚩 1 e 2. Arranque o motor velho e instale o motor novo
+  const { calls, isLoading, error, fetchData, updateFilters } = useCalls(10);
+  
+  // Como o useCalls retorna um array, derivamos a chamada específica
+  const call = calls.find(c => c.id === routeId) || calls[0] || null;
 
+  // 🚩 3. Ligue os fios (useEffect)
   useEffect(() => {
-    // 🚩 TRAVA DE SEGURANÇA: Se já tiver os dados desta chamada, não busca de novo.
-    if (call && call.id === routeId) return;
+    if (!routeId) return;
 
-    const loadCall = async () => {
-      if (!routeId) return;
-      
-      try {
-        setIsLoading(true);
-        setError(null);
-
-        const res = await fetch(`/api/calls/${encodeURIComponent(routeId)}`, {
-          cache: 'no-store',
-        });
-
-        const data = await res.json();
-
-        if (!res.ok) {
-          throw new Error(data.debug || data.error || 'Não foi possível carregar esta análise.');
-        }
-
-        setCall(data);
-
-      } catch (err: any) {
-        console.error("Erro ao carregar chamada:", err);
-        setError(err.message);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadCall();
-
-    // 🚩 REGRA DE OURO: Depende APENAS do routeId. 
-    // 'call' e 'isLoading' ficam de fora para evitar loop infinito.
+    // Apenas atualiza os filtros que o Hook vai usar (buscando pelo ID da rota)
+    updateFilters({
+      id: routeId
+    });
+    
+    // Dispara a busca inicial
+    fetchData(true);
+    
+    // Dependências: apenas o que o usuário muda na tela (neste caso, a rota)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeId]);
 
@@ -180,12 +161,10 @@ export default function CallDetailPage() {
     );
   }
 
-  // AQUI COMEÇA A PREPARAÇÃO DOS DADOS PRO JSX:
   const status = getStatusConfig(call.status_final);
   const isRotaC = call.status_final === 'NAO_SE_APLICA';
   const durationMin = call.durationMs ? (call.durationMs / 60000).toFixed(1) : '0.0';
 
-  // 🚩 LÓGICA DE RESOLUÇÃO SÊNIOR PARA IDENTIFICADORES HUBSPOT
   const actualHubspotId = call.hubspotCallId || call.callId || call.id;
   const actualPortalId = call.portalId || '1554114'; 
   
@@ -196,15 +175,29 @@ export default function CallDetailPage() {
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in duration-500 pb-20 px-4 md:px-0">
       <div className="flex flex-col gap-6">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => router.push('/dashboard')}
-          className="w-fit -ml-2 text-slate-400 hover:text-indigo-600 transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Voltar para Performance Geral
-        </Button>
+        <div className="flex items-center justify-between">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => router.push('/dashboard')}
+            className="w-fit -ml-2 text-slate-400 hover:text-indigo-600 transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Voltar para Performance Geral
+          </Button>
+
+          {/* 🚩 4. Conecte os botões: Botão de Atualizar adicionado */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => fetchData(true)}
+            disabled={isLoading}
+            className="text-slate-400 hover:text-indigo-600 transition-colors"
+          >
+            {isLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+            Atualizar
+          </Button>
+        </div>
 
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div className="space-y-4">
