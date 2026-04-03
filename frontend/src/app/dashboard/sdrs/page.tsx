@@ -45,7 +45,6 @@ function SDRRankingContent() {
     updateUrlParams(newFilter, customStartDate, customEndDate);
   };
 
-  // 🚩 FUNÇÃO REESCRITA CONFORME AJUSTE SUGERIDO
   const getDateRange = useCallback(() => {
     const now = new Date();
     
@@ -88,7 +87,6 @@ function SDRRankingContent() {
     setError(null);
 
     try {
-      // 🚩 AJUSTE NA CONSTRUÇÃO DA URL CONFORME SUGERIDO
       const { startIso, endIso } = getDateRange();
       let summaryUrl = `/api/stats/summary?t=${Date.now()}`;
       
@@ -126,9 +124,19 @@ function SDRRankingContent() {
     }
   };
 
+  // 🚩 ORQUESTRADOR DE BUSCA COM TRAVA DE SEGURANÇA
   useEffect(() => {
+    // 🚩 TRAVA DE SEGURANÇA: Se já estiver carregando, não faz nada.
+    // Como o estado inicial de isLoading é true, precisamos permitir a primeira execução.
+    // Para isso, verificamos se o ranking já tem dados (se tiver, não busca de novo a menos que force).
+    // Se a lista estiver vazia, deixamos passar para a primeira carga.
+    if (isLoading && ranking.length > 0) return;
+
     fetchData();
-  }, [dateFilter, customStartDate, customEndDate, getDateRange]);
+    
+    // 🚩 IMPORTANTE: Removidas funções da lista de dependências para evitar loops infinitos
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFilter, customStartDate, customEndDate]);
 
   const getInitials = (name: string) => {
     const parts = name.trim().split(' ');
@@ -202,7 +210,7 @@ function SDRRankingContent() {
         </div>
       </div>
 
-      {isLoading ? (
+      {isLoading && ranking.length === 0 ? (
         <div className="flex flex-col items-center justify-center min-h-[300px]">
            <RefreshCw className="w-6 h-6 animate-spin text-indigo-500 mb-2" />
            <p className="text-xs font-bold text-slate-400 tracking-widest uppercase">Processando Ranking...</p>

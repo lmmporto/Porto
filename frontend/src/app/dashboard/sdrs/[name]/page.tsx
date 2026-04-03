@@ -46,7 +46,6 @@ function SDRDetailContent() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('score_desc');
   const [minScore, setMinScore] = useState(0);
 
-  // 🚩 ADICIONADO CONFORME AJUSTE: Limite máximo para o calendário customizado
   const todayMaxDate = useMemo(() => new Date().toISOString().split('T')[0], []);
 
   // 🚩 HOOK DE CARREGAMENTO
@@ -65,8 +64,11 @@ function SDRDetailContent() {
     router.replace(`?${params.toString()}`, { scroll: false });
   }, [searchParams, router]);
 
-  // 🚩 ORQUESTRADOR
+  // 🚩 ORQUESTRADOR COM TRAVA DE SEGURANÇA
   useEffect(() => {
+    // 🚩 TRAVA DE SEGURANÇA: Se já estiver carregando, não faz nada.
+    if (isLoading) return;
+
     const now = new Date();
     let start = '';
     let end = '';
@@ -114,7 +116,10 @@ function SDRDetailContent() {
       }
     };
     fetchSummary();
-  }, [timeFilter, sortOrder, minScore, customStartDate, customEndDate, decodedName, updateFilters, fetchData]);
+
+    // 🚩 IMPORTANTE: Apenas as variáveis que o usuário altera estão nas dependências
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeFilter, sortOrder, minScore, customStartDate, customEndDate, decodedName]);
 
   const sdrStats = useMemo(() => {
     const ranking = summary?.sdr_ranking;
@@ -135,11 +140,10 @@ function SDRDetailContent() {
     if (newFilter !== 'custom') updateUrlParams(newFilter);
   };
 
-  // 🚩 FUNÇÃO DE BUSCA CUSTOMIZADA ATUALIZADA
   const handleCustomDateSearch = () => {
     if (customStartDate && customEndDate && customStartDate <= customEndDate) {
       updateUrlParams('custom', customStartDate, customEndDate);
-      fetchData(true); // 🚩 Dispara o reset da busca conforme solicitado
+      fetchData(true); 
     }
   };
 

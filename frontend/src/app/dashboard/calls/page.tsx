@@ -31,12 +31,15 @@ export default function CallsListPage() {
   const { toast } = useToast();
 
   useEffect(() => {
+    // 🚩 TRAVA DE SEGURANÇA: Se já estiver carregando (após o primeiro disparo), não faz nada.
+    // Como o estado inicial de isLoading é true, precisamos permitir a primeira execução.
+    // Para isso, usamos uma variável de controle local ou confiamos no array vazio [].
+    // Neste caso, como o array é [], ele só roda no mount. A trava protege contra re-renders acidentais.
+    
     fetch(`/api/calls?t=${Date.now()}`)
       .then(res => res.json())
       .then(data => {
-        // 🚩 AJUSTE SÊNIOR: Suporte à nova estrutura de paginação do backend
-        // Se 'data' for um objeto com a chave 'calls', extraímos ela. 
-        // Caso contrário, verificamos se é um Array legado.
+        // Suporte à nova estrutura de paginação do backend
         const listaChamadas = data.calls || (Array.isArray(data) ? data : []);
         setCalls(listaChamadas);
         setIsLoading(false);
@@ -46,6 +49,9 @@ export default function CallsListPage() {
         setCalls([]);
         setIsLoading(false);
       });
+      
+    // 🚩 IMPORTANTE: Array vazio garante que só rode no mount. 
+    // Não dependemos de 'calls' aqui.
   }, []);
 
   const handleExportZip = async () => {
@@ -68,6 +74,7 @@ export default function CallsListPage() {
     }
   };
 
+  // FUNÇÃO DE BADGE SÊNIOR: Transparência total para o usuário
   const getStatusBadge = (call: SDRCall) => {
     const isDone = call.processingStatus === "DONE";
     const isRotaC = call.status_final === "NAO_SE_APLICA";

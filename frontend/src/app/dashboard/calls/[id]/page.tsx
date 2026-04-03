@@ -44,6 +44,9 @@ export default function CallDetailPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    // 🚩 TRAVA DE SEGURANÇA: Se já tiver os dados desta chamada, não busca de novo.
+    if (call && call.id === routeId) return;
+
     const loadCall = async () => {
       if (!routeId) return;
       
@@ -72,6 +75,10 @@ export default function CallDetailPage() {
     };
 
     loadCall();
+
+    // 🚩 REGRA DE OURO: Depende APENAS do routeId. 
+    // 'call' e 'isLoading' ficam de fora para evitar loop infinito.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routeId]);
 
   const formatDate = (dateInput: any) => {

@@ -45,9 +45,11 @@ export default function DashboardPage() {
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
-  // 🚩 3. LÓGICA DE SINCRONIZAÇÃO DE FILTROS E BUSCA (COMENTADA PARA DEBUG)
-  /*
+  // 🚩 3. LÓGICA DE SINCRONIZAÇÃO DE FILTROS E BUSCA (AJUSTADA COM TRAVA SÊNIOR)
   useEffect(() => {
+    // 🚩 TRAVA DE SEGURANÇA: Se já estiver carregando, não faz nada.
+    if (isLoading) return;
+
     const now = new Date();
     let start = '';
     let end = '';
@@ -94,9 +96,9 @@ export default function DashboardPage() {
     };
     fetchSummary();
 
+    // 🚩 AJUSTE: Apenas as variáveis que o usuário altera estão nas dependências
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFilter, sortOrder, customStartDate, customEndDate, minScore]);
-  */
 
   const filteredCalls = useMemo(() => {
     let result = [...calls];

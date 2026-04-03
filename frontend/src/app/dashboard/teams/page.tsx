@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -12,19 +11,29 @@ export default function TeamsPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/calls')
+    // 🚩 TRAVA DE SEGURANÇA: Se já estiver carregando e já tiver dados, não faz nada.
+    // Como o estado inicial de isLoading é true, precisamos permitir a primeira execução.
+    if (isLoading && calls.length > 0) return;
+
+    fetch(`/api/calls?t=${Date.now()}`)
       .then(res => res.json())
       .then(data => {
-        setCalls(Array.isArray(data) ? data : []);
+        // 🚩 AJUSTE SÊNIOR: Suporte à nova estrutura de paginação do backend
+        const listaChamadas = data.calls || (Array.isArray(data) ? data : []);
+        setCalls(listaChamadas);
         setIsLoading(false);
       })
-      .catch(() => {
+      .catch((error) => {
+        console.error("Erro ao carregar chamadas por equipe:", error);
         setCalls([]);
         setIsLoading(false);
       });
+      
+    // 🚩 IMPORTANTE: Array vazio garante que só rode no mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (isLoading) {
+  if (isLoading && calls.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <Loader2 className="w-8 h-8 animate-spin text-primary" />
