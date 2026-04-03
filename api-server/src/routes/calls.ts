@@ -82,11 +82,6 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
 
       let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
       
-      // 🚩 NOVO: Filtro direto no banco para o SDR (Ajuste solicitado)
-      if (ownerNameParam) {
-        query = query.where("ownerName", "==", ownerNameParam);
-      }
-
       // 1. Filtro de Data
       if (startDateParam && endDateParam) {
         const start = new Date(startDateParam);
@@ -100,7 +95,7 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
         query = query.where("nota_spin", ">=", minScore);
       }
 
-      // 3. Ordenação e Paginação
+      // 3. Ordenação e Paginação (Busca ampliada para permitir filtragem posterior)
       query = query.orderBy("updatedAt", "desc");
       
       if (startAfter) {
@@ -110,16 +105,29 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
         }
       }
 
-      const snapshot = await query.limit(limit).get();
+      // Aumentamos o limite da query para 100 para ter margem de manobra com o filtro do SDR
+      const snapshot = await query.limit(100).get(); 
       
-      const calls: CallDocument[] = snapshot.docs.map((doc) => ({
+      let calls: CallDocument[] = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
         nota_spin: Number(doc.data().nota_spin || 0),
       }));
 
+      // 🚩 FILTRO ROBUSTO PARA O SDR (Ajuste solicitado)
+      if (ownerNameParam) {
+        const cleanParam = decodeURIComponent(ownerNameParam).trim().toLowerCase();
+        
+        calls = calls.filter(call => {
+          const callOwner = (call.ownerName || "").trim().toLowerCase();
+          // 🚩 Troca do === pelo .includes() para ser mais permissivo
+          return callOwner.includes(cleanParam); 
+        });
+      }
+
+      // Retorna os dados e o ID do último pra usar na próxima página
       res.json({
-        calls,
+        calls: calls.slice(0, limit),
         lastVisible: snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1].id : null
       });
 
