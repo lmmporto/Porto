@@ -38,11 +38,15 @@ const allowlist = [
 ];
 
 async function buildAll() {
-  const distDir = path.resolve(__dirname, "dist");
+  // 🚩 Ajustado para garantir que a pasta dist fique na raiz do projeto
+  const distDir = path.resolve(__dirname, "../dist");
   await rm(distDir, { recursive: true, force: true });
 
   console.log("building server...");
-  const pkgPath = path.resolve(__dirname, "package.json");
+  
+  // 🚩 Ajustado: Agora o build.ts está em src/, então o package.json está um nível acima
+  const pkgPath = path.resolve(__dirname, "../package.json");
+  
   const pkg = JSON.parse(await readFile(pkgPath, "utf-8"));
   const allDeps = [
     ...Object.keys(pkg.dependencies || {}),
@@ -55,7 +59,8 @@ async function buildAll() {
   );
 
   await esbuild({
-    entryPoints: [path.resolve(__dirname, "src/index.ts")],
+    // 🚩 Ajustado: O index.ts está na mesma pasta (src/) que este script de build
+    entryPoints: [path.resolve(__dirname, "index.ts")],
     platform: "node",
     bundle: true,
     format: "cjs",
@@ -64,8 +69,7 @@ async function buildAll() {
       "process.env.NODE_ENV": '"production"',
     },
     minify: true,
-    // 🚩 AQUI A MÁGICA:
-    // Adicionamos 'react', 'react-dom' e 'lucide-react' na lista de externos forçados
+    // Adicionamos 'react', 'react-dom' e 'lucide-react' na lista de externos forçados para evitar erros de auto-import
     external: [...externals, 'react', 'react-dom', 'lucide-react'], 
     logLevel: "info",
   });
