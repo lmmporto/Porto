@@ -79,6 +79,7 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
       }
 
       const snapshot = await query.limit(limit).get();
+      console.log(`🔎 [QUERY] SDR: ${ownerNameParam} | Encontrados: ${snapshot.size} documentos`);
       
       const calls = snapshot.docs.map((doc) => ({
         id: doc.id,
