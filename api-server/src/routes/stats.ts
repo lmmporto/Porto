@@ -14,10 +14,10 @@ let cachedStats: any = null;
 let lastCacheTime = 0;
 
 /**
- * GET /api/stats/summary
+ * GET /summary (Relativo ao prefixo /api/stats)
  * Retorna o resumo de performance extraído do Placar Consolidado (sdr_stats).
  */
-router.get('/stats/summary', async (req: Request, res: Response) => {
+router.get('/summary', async (req: Request, res: Response) => {
   try {
     const now = Date.now();
     

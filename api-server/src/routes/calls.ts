@@ -71,18 +71,18 @@ async function analyzeCallHandler(req: Request, res: Response, next: NextFunctio
 
 // --- ROTAS ---
 
-router.get("/calls", async (req: Request, res: Response, next: NextFunction) => {
+// 🚩 AJUSTADO: Rota de listagem agora é a raiz do roteador
+router.get("/", async (req: Request, res: Response, next: NextFunction) => {
     try {
       const limit = Math.min(Number(req.query.limit || 10), 50); 
-      const startAfter = req.query.lastVisible as string; // Cursor para paginação
-      const minScore = Number(req.query.minScore);        // Filtro de nota
-      const ownerNameParam = req.query.ownerName as string; // 🚩 Filtro de SDR
+      const startAfter = req.query.lastVisible as string; 
+      const minScore = Number(req.query.minScore);        
+      const ownerNameParam = req.query.ownerName as string; 
       const startDateParam = req.query.startDate as string;
       const endDateParam = req.query.endDate as string;
 
       let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
       
-      // 1. Filtro de Data
       if (startDateParam && endDateParam) {
         const start = new Date(startDateParam);
         const end = new Date(endDateParam);
@@ -90,12 +90,10 @@ router.get("/calls", async (req: Request, res: Response, next: NextFunction) => 
                      .where("updatedAt", "<=", admin.firestore.Timestamp.fromDate(end));
       }
 
-      // 2. Filtro de Nota (Só aceita se for maior ou igual)
       if (!isNaN(minScore)) {
         query = query.where("nota_spin", ">=", minScore);
       }
 
-      // 3. Ordenação e Paginação
       query = query.orderBy("updatedAt", "desc");
       
       if (startAfter) {
@@ -113,7 +111,6 @@ router.get("/calls", async (req: Request, res: Response, next: NextFunction) => 
         nota_spin: Number(doc.data().nota_spin || 0),
       }));
 
-      // 🚩 NOVO: Filtro robusto para o SDR (Ajuste solicitado)
       if (ownerNameParam) {
         const cleanParam = decodeURIComponent(ownerNameParam).trim().toLowerCase();
         
@@ -123,7 +120,6 @@ router.get("/calls", async (req: Request, res: Response, next: NextFunction) => 
         });
       }
 
-      // Retorna os dados e o ID do último pra usar na próxima página
       res.json({
         calls,
         lastVisible: snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1].id : null
@@ -134,7 +130,8 @@ router.get("/calls", async (req: Request, res: Response, next: NextFunction) => 
     }
 });
 
-router.get("/calls/:id", async (req: Request, res: Response, next: NextFunction) => {
+// 🚩 AJUSTADO: Rota de detalhe relativa à raiz
+router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params; 
     const doc = await db.collection(CONFIG.CALLS_COLLECTION).doc(String(id)).get();

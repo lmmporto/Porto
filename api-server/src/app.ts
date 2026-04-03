@@ -4,9 +4,13 @@ import cors from 'cors';
 import session from 'express-session';
 import passport from 'passport';
 import { Strategy as GoogleStrategy, type Profile } from 'passport-google-oauth20';
-import router from './routes/index.js';
 import { CONFIG } from './config.js';
 import { processCall } from './services/processCall.js';
+
+// 🚩 NOVOS IMPORTS DE ROTAS GRANULARES
+import callsRouter from './routes/calls.js';
+import statsRouter from './routes/stats.js';
+import healthRouter from './routes/health.js';
 
 type AuthUser = {
   id: string;
@@ -51,9 +55,9 @@ app.use(
   session({
     name: 'sdr.sid',
     secret: CONFIG.SESSION_SECRET,
-    resave: true,               // Força a sessão a ser salva de volta no store (ajuda a manter logado)
-    saveUninitialized: false,   // Não cria sessão para quem não está logado
-    rolling: true,              // Renova o cookie a cada interação do usuário
+    resave: true,
+    saveUninitialized: false,
+    rolling: true,
     cookie: {
       httpOnly: true,
       secure: CONFIG.NODE_ENV === 'production',
@@ -115,7 +119,6 @@ app.get(
   passport.authenticate('google', {
     scope: ['profile', 'email'],
     session: true,
-    // prompt: 'select_account' REMOVIDO para permitir login automático
     hd: CONFIG.ALLOWED_EMAIL_DOMAIN,
   })
 );
@@ -165,7 +168,10 @@ app.get('/api/debug-reprocess/:id', async (req: any, res: any) => {
   }
 });
 
-app.use('/api', router);
+// 🚩 SUBSTITUIÇÃO DO ROTEADOR CENTRAL PELOS ESPECÍFICOS
+app.use('/api/calls', callsRouter);
+app.use('/api/stats', statsRouter);
+app.use('/api/health', healthRouter);
 
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   console.error('💥 [GLOBAL ERROR HANDLER]:', {
