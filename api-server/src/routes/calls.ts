@@ -71,7 +71,6 @@ async function analyzeCallHandler(req: Request, res: Response, next: NextFunctio
 
 // --- ROTAS ---
 
-// 🚩 AJUSTADO: Rota de listagem agora é a raiz do roteador
 router.get("/", async (req: Request, res: Response, next: NextFunction) => {
     try {
       const limit = Math.min(Number(req.query.limit || 10), 50); 
@@ -83,6 +82,12 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
 
       let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
       
+      // 🚩 NOVO: Filtro direto no banco para o SDR (Ajuste solicitado)
+      if (ownerNameParam) {
+        query = query.where("ownerName", "==", ownerNameParam);
+      }
+
+      // 1. Filtro de Data
       if (startDateParam && endDateParam) {
         const start = new Date(startDateParam);
         const end = new Date(endDateParam);
@@ -90,10 +95,12 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
                      .where("updatedAt", "<=", admin.firestore.Timestamp.fromDate(end));
       }
 
+      // 2. Filtro de Nota
       if (!isNaN(minScore)) {
         query = query.where("nota_spin", ">=", minScore);
       }
 
+      // 3. Ordenação e Paginação
       query = query.orderBy("updatedAt", "desc");
       
       if (startAfter) {
@@ -105,20 +112,11 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
 
       const snapshot = await query.limit(limit).get();
       
-      let calls: CallDocument[] = snapshot.docs.map((doc) => ({
+      const calls: CallDocument[] = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
         nota_spin: Number(doc.data().nota_spin || 0),
       }));
-
-      if (ownerNameParam) {
-        const cleanParam = decodeURIComponent(ownerNameParam).trim().toLowerCase();
-        
-        calls = calls.filter(call => {
-          const callOwner = (call.ownerName || "").trim().toLowerCase();
-          return callOwner === cleanParam;
-        });
-      }
 
       res.json({
         calls,
@@ -130,7 +128,6 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
     }
 });
 
-// 🚩 AJUSTADO: Rota de detalhe relativa à raiz
 router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params; 
