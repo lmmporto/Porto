@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health.js";
 import callsRouter from "./calls.js";
-import statsRouter from "./stats.js"; // 🚩 Garante a conexão com o arquivo de saldos
+import statsRouter from "./stats.js"; // 🚩 IMPORTANTE: Extensão .js para compatibilidade ESM
 
 const router: IRouter = Router();
 
@@ -11,11 +11,11 @@ const router: IRouter = Router();
 router.use(healthRouter);
 
 // 🚩 AJUSTE: Monta o callsRouter no caminho base "/calls"
-// Assim, router.get("/") dentro de calls.ts vira "/api/calls"
+// Endpoints dentro de calls.ts serão prefixados com /calls
 router.use("/calls", callsRouter);
 
 // 🚩 AJUSTE: Monta o statsRouter no caminho base "/stats"
-// Assim, router.get("/summary") dentro de stats.ts vira "/api/stats/summary"
+// Endpoints dentro de stats.ts serão prefixados com /stats (ex: /stats/summary)
 router.use("/stats", statsRouter);
 
 export default router;
