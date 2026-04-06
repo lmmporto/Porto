@@ -7,14 +7,17 @@ import { handleIncomingCall } from "../services/webhook.service.js";
 
 const router = Router();
 
-// 1. LISTAGEM (Filtra direto no banco para não vir dado errado)
+// 1. LISTAGEM COM RASTREADOR DE AUDITORIA
 router.get("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const limit = Math.min(Number(req.query.limit || 10), 50);
     const ownerNameParam = req.query.ownerName as string;
     const startAfter = req.query.lastVisible as string;
-    const startDateParam = req.query.startDate as string; // 🚩 Pega data de início
-    const endDateParam = req.query.endDate as string;     // 🚩 Pega data de fim
+    const startDateParam = req.query.startDate as string;
+    const endDateParam = req.query.endDate as string;
+
+    // 🚩 LOG DE AUDITORIA: Ver o que o site está pedindo
+    console.log(`🔎 [BUSCA] SDR: "${ownerNameParam}" | Datas: ${startDateParam} a ${endDateParam}`);
 
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
 
@@ -27,6 +30,7 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
     if (startDateParam && endDateParam) {
       const start = new Date(startDateParam);
       const end = new Date(endDateParam);
+      
       // Ajusta para pegar o dia inteiro (00:00 até 23:59)
       start.setUTCHours(0, 0, 0, 0);
       end.setUTCHours(23, 59, 59, 999);
@@ -46,14 +50,22 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
     }
 
     const snapshot = await query.limit(limit).get();
+    
+    // 🚩 LOG DE RESULTADO: Ver o que o banco achou
+    console.log(`✅ [BUSCA] Encontrados ${snapshot.size} documentos para o SDR ${ownerNameParam}`);
+
     const calls = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     res.json({
       calls,
       lastVisible: snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1].id : null
     });
-  } catch (error) { next(error); }
+  } catch (error: any) {
+    console.error("❌ [BUSCA ERROR]:", error.message);
+    res.status(500).json({ error: error.message });
+  }
 });
+
 // 2. DETALHE (Busca a ligação exata pelo ID)
 router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
