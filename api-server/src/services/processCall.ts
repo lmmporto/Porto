@@ -46,7 +46,6 @@ export async function processCall(callId: string): Promise<any> {
     const isAllowed = ALLOWED_TEAMS.some(t => teamName.toLowerCase().includes(t.toLowerCase()));
     const isBlocked = BLOCKED_KEYWORDS.some(t => teamName.toLowerCase().includes(t.toLowerCase()));
 
-    // 🚩 LOG DE DEBUG PARA VER O FILTRO DE EQUIPE EM AÇÃO
     console.log(`[DEBUG - TEAM_FILTER] Call ${callId} - Team: "${teamName}"`);
 
     const basePayload = {
@@ -58,13 +57,13 @@ export async function processCall(callId: string): Promise<any> {
       durationMs: Number(call.durationMs || 0),
       wasConnected: call.wasConnected,
       
-      // 🚩 LINHA OBRIGATÓRIA: Transforma a data do HubSpot em data do Firebase
+      // 🚩 TRANSFORMAÇÃO DE DATA: HubSpot String -> Firestore Timestamp
       callTimestamp: admin.firestore.Timestamp.fromDate(new Date(call.timestamp)), 
       
       updatedAt: FieldValue.serverTimestamp(),
     };
 
-    // 🚩 REGISTRO DE VOLUME: Se a equipe é permitida, já registramos o VOLUME no cofre
+    // 🚩 REGISTRO DE VOLUME: Se a equipe é permitida, registramos o VOLUME no cofre
     if (isAllowed && !isBlocked) {
         const mockInitialAnalysis = {
             status_final: 'NAO_IDENTIFICADO',
@@ -129,9 +128,10 @@ export async function processCall(callId: string): Promise<any> {
     call.transcript = transcript;
     const { analysis, rawPrompt, rawResponse } = await analyzeCallWithGemini(call, owner);
 
-    // 🚩 COFRE DE SALDOS: Atualiza nota e status sem incrementar o TOTAL de novo
+    // 🚩 COFRE DE SALDOS: Atualiza nota e status
     await updateDailyStats(basePayload, analysis, true);
 
+    // 🚩 SALVAMENTO FINAL: Garante que TUDO seja persistido
     await callRef.set({
       ...basePayload,
       transcript: transcript,
@@ -144,21 +144,23 @@ export async function processCall(callId: string): Promise<any> {
       ponto_atencao: analysis.ponto_atencao,
       maior_dificuldade: analysis.maior_dificuldade,
       pontos_fortes: analysis.pontos_fortes,
-      perguntas_sugeridas: analysis.perguntas_sugeridas,
+      
+      // 🚩 CAMPOS OBRIGATÓRIOS PARA O FRONTEND
       analise_escuta: analysis.analise_escuta,
+      perguntas_sugeridas: analysis.perguntas_sugeridas,
+
       rawPrompt,
       rawResponse
     }, { merge: true });
 
-    // 🚩 NOVO: Atualiza o Placar Consolidado do SDR após salvar como DONE
+    // 🚩 PLACAR CONSOLIDADO
     await updateSdrGlobalStats(basePayload.ownerName, Number(analysis.nota_spin || 0));
 
-    console.log(`[SUCCESS] 🎉 Call ${callId} finalizada e salva no Cofre.`);
+    console.log(`[SUCCESS] 🎉 Call ${callId} finalizada e salva no banco.`);
     return { success: true, status: "ANALYZED" };
 
   } catch (error: any) {
     console.error(`[ERROR] ❌ Erro na Call ${callId}:`, error.message);
-    // --- LOGICA DE LIMPEZA: Erro na IA/Processamento ---
     console.log(`[CLEANUP] 🧹 Erro no processamento. Removendo registro incompleto: ${callId}`);
     await callRef.delete();
     throw error;
