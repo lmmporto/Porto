@@ -23,7 +23,7 @@ export interface SDRCall {
   // 🚩 ADICIONADO: Pra ler direto do hubspot sem choradeira do TypeScript
   hubspotCallId?: string; 
   portalId?: string;
-
+  callTimestamp?: any;
   createdAt?: any; 
   title: string;
   ownerId: string | null;

@@ -97,7 +97,7 @@ export function CallCard({ call }: CallCardProps) {
               </span>
 
               <span className="text-slate-400">
-                {formatSimpleDate(call.analyzedAt || call.updatedAt)}
+                {formatSimpleDate(call.callTimestamp || call.analyzedAt || call.updatedAt)}
               </span>
             </div>
           </div>

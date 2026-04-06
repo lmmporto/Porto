@@ -237,7 +237,7 @@ export default function CallDetailPage() {
                 <Clock className="w-4 h-4" /> {durationMin} min
               </span>
               <span className="flex items-center gap-2 font-medium">
-                <Calendar className="w-4 h-4" /> {formatDate(call.analyzedAt || call.updatedAt)}
+                <Calendar className="w-4 h-4" /> {formatDate(call.callTimestamp || call.analyzedAt || call.updatedAt)}
               </span>
             </div>
 
