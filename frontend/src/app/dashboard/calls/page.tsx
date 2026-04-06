@@ -22,25 +22,31 @@ import type { SDRCall } from '@/types';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { useToast } from '@/hooks/use-toast';
-import { useCalls } from '@/hooks/useCalls'; // 🚩 Importação do motor novo
+import { useCalls } from '@/hooks/useCalls';
 
 export default function CallsListPage() {
-  // 🚩 Instalação do motor novo
   const { calls, isLoading, error, fetchData, updateFilters, hasMore } = useCalls(10);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
 
-  // 🚩 Ligando os fios (useEffect limpo e focado no Hook)
+  // 🚩 LIGAÇÃO DOS FIOS (Padrão de Busca Atômica)
   useEffect(() => {
-    // Como esta página lista o histórico geral, iniciamos com filtros zerados
-    updateFilters({});
-    
-    // Dispara a busca inicial
-    fetchData(true);
-    
-    // Executa apenas no mount
+    // Como esta é a listagem geral, iniciamos com filtros padrão
+    const filtrosParaEnviar = {
+      startDate: '',
+      endDate: '',
+      sort: 'date_desc',
+      minScore: 0
+    };
+
+    // 1. Guarda na gaveta para uso futuro (paginação)
+    updateFilters(filtrosParaEnviar);
+
+    // 2. 🚩 MANDA BUSCAR NA HORA (Passando o objeto direto para ignorar o delay do React)
+    fetchData(true, filtrosParaEnviar);
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -122,7 +128,6 @@ export default function CallsListPage() {
           <p className="text-slate-400 text-sm mt-1">Dados consolidados de todas as avaliações e tentativas.</p>
         </div>
         <div className="flex items-center gap-2">
-          {/* 🚩 Botão de Atualizar conectado */}
           <Button 
             variant="outline" 
             size="sm" 
@@ -219,12 +224,11 @@ export default function CallsListPage() {
               </table>
             </div>
             
-            {/* 🚩 Botão Carregar Mais conectado */}
             {hasMore && (
               <div className="p-4 border-t border-slate-100 flex justify-center bg-slate-50/50">
                 <Button 
                   variant="ghost" 
-                  className="w-full max-w-sm py-6 text-slate-400 hover:text-indigo-600 font-bold text-xs tracking-widest uppercase border-2 border-dashed border-slate-200 rounded-xl" 
+                  className="w-full max-sm py-6 text-slate-400 hover:text-indigo-600 font-bold text-xs tracking-widest uppercase border-2 border-dashed border-slate-200 rounded-xl" 
                   onClick={() => fetchData(false)}
                   disabled={isLoading}
                 >

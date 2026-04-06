@@ -43,37 +43,43 @@ export default function DashboardPage() {
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
+  // 🚩 ORQUESTRADOR DE BUSCA ATÔMICA
   useEffect(() => {
-    const now = new Date();
+    const agora = new Date();
     let start = '';
     let end = '';
 
     if (dateFilter === 'today') {
-      start = getBrazilDateString(now);
+      start = getBrazilDateString(agora);
       end = start;
     } else if (dateFilter === '7d') {
-      const past = new Date(now);
-      past.setDate(now.getDate() - 7);
+      const past = new Date(agora);
+      past.setDate(agora.getDate() - 7);
       start = getBrazilDateString(past);
-      end = getBrazilDateString(now);
+      end = getBrazilDateString(agora);
     } else if (dateFilter === 'month') {
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      const firstDay = new Date(agora.getFullYear(), agora.getMonth(), 1);
       start = getBrazilDateString(firstDay);
-      end = getBrazilDateString(now);
+      end = getBrazilDateString(agora);
     } else if (dateFilter === 'custom') {
       start = customStartDate;
       end = customEndDate;
     }
 
-    updateFilters({
+    const filtrosParaEnviar = {
       startDate: start,
       endDate: end,
       sort: sortOrder,
       minScore
-    });
+    };
 
-    fetchData(true);
+    // 1. Guarda na gaveta para uso futuro (paginação/refresh)
+    updateFilters(filtrosParaEnviar);
 
+    // 2. 🚩 MANDA BUSCAR NA HORA (Ignora a latência do estado do React)
+    fetchData(true, filtrosParaEnviar);
+
+    // 3. Busca o resumo estatístico (Summary)
     const fetchSummary = async () => {
       try {
         let url = `/api/stats/summary?t=${Date.now()}`;
@@ -86,6 +92,8 @@ export default function DashboardPage() {
       }
     };
     fetchSummary();
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFilter, sortOrder, customStartDate, customEndDate, minScore]);
 
   const filteredCalls = useMemo(() => {
@@ -148,12 +156,14 @@ export default function DashboardPage() {
         <SDRRanking summary={summary} />
         <div className="lg:col-span-3 space-y-6">
           <Input placeholder="Pesquisar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
-          {filteredCalls.map(call => <CallCard key={call.id} call={call} />)}
-          {hasMore && (
-            <Button variant="ghost" className="w-full py-8" onClick={() => fetchData(false)} disabled={isLoading}>
-              {isLoading ? "Carregando..." : "Carregar mais"}
-            </Button>
-          )}
+          <div className="grid gap-4">
+            {filteredCalls.map(call => <CallCard key={call.id} call={call} />)}
+            {hasMore && (
+              <Button variant="ghost" className="w-full py-8 border-2 border-dashed rounded-2xl" onClick={() => fetchData(false)} disabled={isLoading}>
+                {isLoading ? "Carregando..." : "Carregar mais"}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
     </div>

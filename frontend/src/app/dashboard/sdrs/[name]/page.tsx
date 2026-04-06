@@ -35,7 +35,6 @@ function SDRDetailContent() {
   const searchParams = useSearchParams();
   const decodedName = decodeURIComponent(name as string);
 
-  // 🚩 Instalação do motor novo
   const { calls, isLoading, error, fetchData, updateFilters, hasMore } = useCalls(10);
   
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
@@ -62,47 +61,44 @@ function SDRDetailContent() {
     router.replace(`?${params.toString()}`, { scroll: false });
   }, [searchParams, router]);
 
-  // 🚩 LIGAÇÃO DOS FIOS (useEffect Sênior conforme sugestão)
+  // 🚩 LIGAÇÃO DOS FIOS (Padrão de Busca Atômica)
   useEffect(() => {
-    const sdrName = decodedName;
-    const now = new Date();
+    const agora = new Date();
     let start = '';
     let end = '';
 
-    // Cálculo de datas para o objeto de filtros
     if (timeFilter === 'today') {
-      start = getBrazilDateString(now);
+      start = getBrazilDateString(agora);
       end = start;
     } else if (timeFilter === '7d') {
-      const past = new Date(now);
-      past.setDate(now.getDate() - 7);
+      const past = new Date(agora);
+      past.setDate(agora.getDate() - 7);
       start = getBrazilDateString(past);
-      end = getBrazilDateString(now);
+      end = getBrazilDateString(agora);
     } else if (timeFilter === 'month') {
-      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      const firstDay = new Date(agora.getFullYear(), agora.getMonth(), 1);
       start = getBrazilDateString(firstDay);
-      end = getBrazilDateString(now);
+      end = getBrazilDateString(agora);
     } else if (timeFilter === 'custom') {
       start = customStartDate;
       end = customEndDate;
     }
     
-    // 1. Prepara o papel com os dados
-    const novosFiltros = {
-      ownerName: sdrName,
+    const filtrosParaEnviar = {
+      ownerName: decodedName,
       startDate: start,
       endDate: end,
       sort: sortOrder,
       minScore: minScore
     };
 
-    // 2. Guarda na gaveta para o futuro
-    updateFilters(novosFiltros);
+    // 1. Guarda na gaveta para uso futuro (paginação/refresh)
+    updateFilters(filtrosParaEnviar);
 
-    // 3. Manda buscar AGORA passando o papel direto (novosFiltros)
-    fetchData(true, novosFiltros);
+    // 2. 🚩 MANDA BUSCAR NA HORA (Passando o objeto direto para ignorar o delay do React)
+    fetchData(true, filtrosParaEnviar);
 
-    // Busca o Summary estatístico separadamente
+    // 3. Busca o Summary estatístico separadamente
     const fetchSummary = async () => {
       try {
         let url = `/api/stats/summary?t=${Date.now()}`;
@@ -117,7 +113,7 @@ function SDRDetailContent() {
     };
     fetchSummary();
 
-    // 🚩 REGRA DE OURO: Removidos fetchData e updateFilters das dependências
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [decodedName, timeFilter, sortOrder, minScore, customStartDate, customEndDate]);
 
   const sdrStats = useMemo(() => {
