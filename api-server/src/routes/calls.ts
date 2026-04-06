@@ -13,16 +13,33 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
     const limit = Math.min(Number(req.query.limit || 10), 50);
     const ownerNameParam = req.query.ownerName as string;
     const startAfter = req.query.lastVisible as string;
+    const startDateParam = req.query.startDate as string; // 🚩 Pega data de início
+    const endDateParam = req.query.endDate as string;     // 🚩 Pega data de fim
 
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
 
-    // 🚩 FILTRO DIRETO NO BANCO (Evita misturar SDRs)
+    // 1. Filtro de SDR
     if (ownerNameParam) {
       query = query.where("ownerName", "==", ownerNameParam);
     }
 
+    // 2. Filtro de Período Real (Usando callTimestamp)
+    if (startDateParam && endDateParam) {
+      const start = new Date(startDateParam);
+      const end = new Date(endDateParam);
+      // Ajusta para pegar o dia inteiro (00:00 até 23:59)
+      start.setUTCHours(0, 0, 0, 0);
+      end.setUTCHours(23, 59, 59, 999);
+
+      query = query
+        .where("callTimestamp", ">=", admin.firestore.Timestamp.fromDate(start))
+        .where("callTimestamp", "<=", admin.firestore.Timestamp.fromDate(end));
+    }
+
+    // 3. Ordenação por data real
     query = query.orderBy("callTimestamp", "desc");
 
+    // 4. Paginação
     if (startAfter) {
       const lastDoc = await db.collection(CONFIG.CALLS_COLLECTION).doc(startAfter).get();
       if (lastDoc.exists) query = query.startAfter(lastDoc);
@@ -37,7 +54,6 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
     });
   } catch (error) { next(error); }
 });
-
 // 2. DETALHE (Busca a ligação exata pelo ID)
 router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
