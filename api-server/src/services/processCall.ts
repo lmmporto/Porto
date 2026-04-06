@@ -1,3 +1,4 @@
+import admin from "firebase-admin";
 import { FieldValue } from "firebase-admin/firestore";
 import { db } from "../firebase.js";
 import { CONFIG } from "../config.js";
@@ -56,6 +57,8 @@ export async function processCall(callId: string): Promise<any> {
       teamName: teamName,
       durationMs: Number(call.durationMs || 0),
       wasConnected: call.wasConnected,
+      // 🚩 ADICIONADO: Timestamp original da chamada para ordenação no banco
+      callTimestamp: admin.firestore.Timestamp.fromDate(new Date(call.timestamp)), 
       updatedAt: FieldValue.serverTimestamp(),
     };
 
@@ -139,6 +142,8 @@ export async function processCall(callId: string): Promise<any> {
       ponto_atencao: analysis.ponto_atencao,
       maior_dificuldade: analysis.maior_dificuldade,
       pontos_fortes: analysis.pontos_fortes,
+      perguntas_sugeridas: analysis.perguntas_sugeridas,
+      analise_escuta: analysis.analise_escuta,
       rawPrompt,
       rawResponse
     }, { merge: true });

@@ -90,7 +90,6 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
     return call.transcript;
   }
 
-  // --- SE NÃO TIVER TEXTO, SEGUE O PROCESSO NORMAL COM GEMINI ---
   if (!gemini) throw new Error('GEMINI_API_KEY não configurada no cliente.');
   if (!call?.recordingUrl) {
     console.warn(`[TRANSCRIPTION] Call ${call.id} sem URL de gravação.`);
@@ -113,7 +112,6 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
     const ext = detectAudioExtension(contentType);
     const buffer = Buffer.from(audioResponse.data as ArrayBuffer);
     
-    // Se o áudio for muito pequeno, nem tenta transcrever
     if (buffer.byteLength < 3500000) return '';
 
     localFilePath = path.join(os.tmpdir(), `call-${randomUUID()}.${ext}`);
@@ -233,13 +231,17 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
  */
 export async function updateDailyStats(callData: any, analysis: any, isUpdate: boolean = false) {
   try {
+    // 🚩 MUDANÇA: Em vez de usar 'new Date()' (hoje), usamos a data da ligação
+    const callDate = callData.callTimestamp ? callData.callTimestamp.toDate() : new Date();
+    
     const nowInBrazil = new Intl.DateTimeFormat('pt-BR', {
       timeZone: 'America/Sao_Paulo',
       year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(new Date());
-    const today = nowInBrazil.split('/').reverse().join('-');
+    }).format(callDate);
     
-    const statsRef = db.collection('dashboard_stats').doc(today);
+    const dayId = nowInBrazil.split('/').reverse().join('-'); // Gera YYYY-MM-DD
+    
+    const statsRef = db.collection('dashboard_stats').doc(dayId);
     const sdrName = callData.ownerName || "Desconhecido";
 
     const isValidaParaRanking = analysis.status_final !== 'NAO_SE_APLICA' && 
@@ -250,7 +252,7 @@ export async function updateDailyStats(callData: any, analysis: any, isUpdate: b
     const totalIncrement = isUpdate ? 0 : 1;
 
     const updatePayload: any = {
-      date: today,
+      date: dayId,
       updatedAt: FieldValue.serverTimestamp(),
       total_calls: FieldValue.increment(totalIncrement),
       valid_calls: isValidaParaRanking && isUpdate ? FieldValue.increment(1) : FieldValue.increment(0),
