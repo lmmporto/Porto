@@ -41,38 +41,19 @@ const DISPOSITION_MAP: Record<string, string> = {
 // --- FUNÇÕES AUXILIARES ---
 
 /**
- * Tenta buscar a transcrição nativa do HubSpot para economizar tokens de IA
+ * Busca o texto usando o ID específico da transcrição nativa do HubSpot
  */
-async function fetchTranscriptFromHubSpot(callId: string): Promise<string> {
+async function fetchTranscriptFromHubSpot(transcriptId: string): Promise<string> {
   try {
-    console.log(`🔍 [DEBUG-TRANSCRIPT] Procurando texto para a Call: ${callId}`);
-
-    // 1. Busca TODAS as associações para ver onde o texto está escondido
-    const assocRes = await hubspot.get(`/crm/v3/objects/calls/${callId}/associations/transcript`);
-    
-    // 🚩 LOG DE AUDITORIA: Vamos ver o que o HubSpot respondeu aqui
-    console.log(`📦 [DEBUG-TRANSCRIPT] Resposta do HubSpot:`, JSON.stringify(assocRes.data));
-
-    const transcriptId = assocRes.data.results?.[0]?.id;
-
-    if (!transcriptId) {
-      console.log(`⚠️ [DEBUG-TRANSCRIPT] Nenhuma transcrição vinculada encontrada para ${callId}`);
-      return "";
-    }
-
-    console.log(`✅ [DEBUG-TRANSCRIPT] ID da Transcrição encontrado: ${transcriptId}`);
-
-    // 2. Puxa o conteúdo da transcrição encontrada
+    console.log(`✅ [DEBUG-TRANSCRIPT] Baixando texto do ID: ${transcriptId}`);
     const transRes = await hubspot.get(`/crm/v3/extensions/calling/transcripts/${transcriptId}`);
     const utterances = transRes.data.transcriptUtterances || [];
 
-    // 3. Formata o texto (SDR: texto... Cliente: texto...)
     return utterances
       .map((u: any) => `${u.speaker?.name || 'Interlocutor'}: ${u.text}`)
       .join('\n');
   } catch (e: any) {
-    // 🚩 LOG DE ERRO DETALHADO
-    console.error(`❌ [DEBUG-TRANSCRIPT] Erro ao buscar no HubSpot:`, e.response?.data || e.message);
+    console.error(`❌ [DEBUG-TRANSCRIPT] Erro ao baixar texto:`, e.message);
     return "";
   }
 }
@@ -100,8 +81,9 @@ export async function fetchOwnerDetails(ownerId: string | null): Promise<OwnerDe
 }
 
 export async function fetchCall(callId: string): Promise<CallData> {
+  // 🚩 Adicionamos 'hs_analytics_transcript_id' na lista de busca
   const propertiesToFetch = [
-    ...new Set([...Object.values(CONFIG.PROPS).flat(), 'hs_call_disposition', 'hs_portal_id'])
+    ...new Set([...Object.values(CONFIG.PROPS).flat(), 'hs_call_disposition', 'hs_portal_id', 'hs_analytics_transcript_id'])
   ];
 
   const { data } = await hubspot.get(`/crm/v3/objects/calls/${callId}`, {
@@ -114,10 +96,13 @@ export async function fetchCall(callId: string): Promise<CallData> {
   const dispId = String(props.hs_call_disposition || "");
   const recording = firstFilled(props, CONFIG.PROPS.RECORDING) || "";
 
+  // 🚩 PEGA O ID DO TEXTO DIRETO DA PROPRIEDADE
+  const transcriptId = props.hs_analytics_transcript_id;
+
   const wasConnected = duration > 20000 && recording !== "";
 
-  // 🚩 Tenta buscar o texto de graça antes de retornar
-  const transcript = await fetchTranscriptFromHubSpot(callId);
+  // Se achou o ID, tenta baixar o texto. Se não, fica vazio.
+  const transcript = transcriptId ? await fetchTranscriptFromHubSpot(transcriptId) : "";
 
   return {
     id: data.id,
@@ -139,7 +124,9 @@ export async function fetchCall(callId: string): Promise<CallData> {
 }
 
 export async function searchCallsInHubSpot({ limit = 100 }: { limit?: number }) {
-  const properties = [...new Set([...Object.values(CONFIG.PROPS).flat(), 'hs_call_disposition', 'hs_portal_id'])];
+  const properties = [
+    ...new Set([...Object.values(CONFIG.PROPS).flat(), 'hs_call_disposition', 'hs_portal_id', 'hs_analytics_transcript_id'])
+  ];
   
   const body = {
     limit: Number(limit) || 100, 
