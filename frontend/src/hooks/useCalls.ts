@@ -16,6 +16,10 @@ export function useCalls(limit = 10) {
     try {
       // 🚩 Usa os filtros que acabaram de chegar ou os que já estavam salvos
       const currentFilters = overrideFilters || filters;
+
+      // 🚩 LOG DE AUDITORIA: Ver o que o hook está pedindo para a API
+      console.log(`🔎 [BUSCA] SDR: ${currentFilters.ownerName || "TODOS"} | Datas: ${currentFilters.startDate || 'Início'} a ${currentFilters.endDate || 'Fim'}`);
+
       let url = `/api/calls?limit=${limit}`;
       
       Object.entries(currentFilters).forEach(([key, value]) => {
