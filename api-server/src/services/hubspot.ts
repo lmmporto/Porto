@@ -45,11 +45,22 @@ const DISPOSITION_MAP: Record<string, string> = {
  */
 async function fetchTranscriptFromHubSpot(callId: string): Promise<string> {
   try {
-    // 1. Busca se existe uma transcrição associada a esta chamada
+    console.log(`🔍 [DEBUG-TRANSCRIPT] Procurando texto para a Call: ${callId}`);
+
+    // 1. Busca TODAS as associações para ver onde o texto está escondido
     const assocRes = await hubspot.get(`/crm/v3/objects/calls/${callId}/associations/transcript`);
+    
+    // 🚩 LOG DE AUDITORIA: Vamos ver o que o HubSpot respondeu aqui
+    console.log(`📦 [DEBUG-TRANSCRIPT] Resposta do HubSpot:`, JSON.stringify(assocRes.data));
+
     const transcriptId = assocRes.data.results?.[0]?.id;
 
-    if (!transcriptId) return "";
+    if (!transcriptId) {
+      console.log(`⚠️ [DEBUG-TRANSCRIPT] Nenhuma transcrição vinculada encontrada para ${callId}`);
+      return "";
+    }
+
+    console.log(`✅ [DEBUG-TRANSCRIPT] ID da Transcrição encontrado: ${transcriptId}`);
 
     // 2. Puxa o conteúdo da transcrição encontrada
     const transRes = await hubspot.get(`/crm/v3/extensions/calling/transcripts/${transcriptId}`);
@@ -59,8 +70,9 @@ async function fetchTranscriptFromHubSpot(callId: string): Promise<string> {
     return utterances
       .map((u: any) => `${u.speaker?.name || 'Interlocutor'}: ${u.text}`)
       .join('\n');
-  } catch (e) {
-    // Se não tiver transcrição ou der erro, retorna vazio para o sistema usar a IA como fallback
+  } catch (e: any) {
+    // 🚩 LOG DE ERRO DETALHADO
+    console.error(`❌ [DEBUG-TRANSCRIPT] Erro ao buscar no HubSpot:`, e.response?.data || e.message);
     return "";
   }
 }
@@ -120,7 +132,7 @@ export async function fetchCall(callId: string): Promise<CallData> {
     wasConnected,
     timestamp: firstFilled(props, CONFIG.PROPS.TIMESTAMP) || new Date().toISOString(),
     recordingUrl: recording,
-    transcript: transcript, // Agora pode vir preenchido do HubSpot!
+    transcript: transcript,
     transcriptSourceType: transcript ? "HUBSPOT" : "NONE",
     transcriptLength: transcript.length,
   };
