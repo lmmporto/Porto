@@ -69,11 +69,17 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
 // 2. DETALHE (Busca a ligação exata pelo ID)
 router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { id } = req.params;
+    const { id } = req.params; 
     const doc = await db.collection(CONFIG.CALLS_COLLECTION).doc(String(id)).get();
-    if (!doc.exists) return res.status(404).json({ error: "Não encontrada" });
+    
+    if (!doc.exists) {
+      return res.status(404).json({ error: "Ligação não encontrada no banco." });
+    }
+    
     res.json({ id: doc.id, ...doc.data() });
-  } catch (error) { next(error); }
+  } catch (error) {
+    next(error);
+  }
 });
 
 // 3. WEBHOOK E OUTROS
