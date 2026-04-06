@@ -21,7 +21,7 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
       query = query.where("ownerName", "==", ownerNameParam);
     }
 
-    query = query.orderBy("updatedAt", "desc");
+    query = query.orderBy("callTimestamp", "desc");
 
     if (startAfter) {
       const lastDoc = await db.collection(CONFIG.CALLS_COLLECTION).doc(startAfter).get();
