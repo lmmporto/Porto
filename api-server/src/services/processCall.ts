@@ -57,8 +57,10 @@ export async function processCall(callId: string): Promise<any> {
       teamName: teamName,
       durationMs: Number(call.durationMs || 0),
       wasConnected: call.wasConnected,
-      // 🚩 ADICIONADO: Timestamp original da chamada para ordenação no banco
+      
+      // 🚩 LINHA OBRIGATÓRIA: Transforma a data do HubSpot em data do Firebase
       callTimestamp: admin.firestore.Timestamp.fromDate(new Date(call.timestamp)), 
+      
       updatedAt: FieldValue.serverTimestamp(),
     };
 

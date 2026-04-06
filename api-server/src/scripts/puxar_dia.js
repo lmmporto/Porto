@@ -2,20 +2,16 @@ import 'dotenv/config';
 import { searchCallsInHubSpot } from '../services/hubspot.js'; 
 import { handleIncomingCall } from '../services/webhook.service.js';
 
-async function backfillChamadasLongas() {
-  // 1. Calcular o timestamp de 5 dias atrás
-  const cincoDiasAtras = new Date();
-  cincoDiasAtras.setDate(cincoDiasAtras.getDate() - 5);
-  const timestampLimite = cincoDiasAtras.getTime();
+async function backfillChamadasDeHoje() {
+  // 1. Calcular o timestamp do início do dia atual (00:00:00)
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0); 
+  const timestampLimite = hoje.getTime();
 
-  console.log(`🔍 [BACKFILL] Buscando chamadas desde: ${cincoDiasAtras.toLocaleString()}`);
+  console.log(`🔍 [BACKFILL] Buscando chamadas desde: ${hoje.toLocaleString()}`);
   console.log(`⏳ [FILTRO] Duração mínima: 2 minutos (120000ms)`);
 
   try {
-    /**
-     * IMPORTANTE: A função searchCallsInHubSpot precisa estar preparada para 
-     * receber esses filtros e repassá-los para a API de Search do HubSpot.
-     */
     const calls = await searchCallsInHubSpot({
       filters: [
         { propertyName: 'hs_createdate', operator: 'GTE', value: timestampLimite },
@@ -25,22 +21,17 @@ async function backfillChamadasLongas() {
     });
 
     if (!calls || calls.length === 0) {
-      console.log('✅ [BACKFILL] Nenhuma ligação encontrada com esses critérios.');
+      console.log('✅ [BACKFILL] Nenhuma ligação encontrada hoje até o momento.');
       return;
     }
 
-    console.log(`📥 [BACKFILL] Encontradas ${calls.length} ligações. Iniciando processamento...`);
+    console.log(`📥 [BACKFILL] Encontradas ${calls.length} ligações hoje. Iniciando processamento...`);
 
     for (const call of calls) {
-      // Pegamos a duração real vinda do HubSpot para o log e processamento
-      const duracaoReal = call.properties.hs_call_duration || 120000;
+      const duracaoReal = call.properties.hs_call_duration || 119000;
       
       console.log(`⚙️ [PROCESSANDO] ID: ${call.id} | Duração: ${Math.round(duracaoReal / 60000)} min`);
 
-      /**
-       * O handleIncomingCall agora recebe os dados REAIS.
-       * Isso disparará o seu fluxo de transcrição e avaliação por IA.
-       */
       await handleIncomingCall({ 
         callId: call.id, 
         durationMs: parseInt(duracaoReal), 
@@ -50,10 +41,10 @@ async function backfillChamadasLongas() {
       console.log(`✅ [SUCESSO] ID: ${call.id} enviado para o fluxo.`);
     }
 
-    console.log('✨ [BACKFILL] Sincronização e avaliação concluídas!');
+    console.log('✨ [BACKFILL] Sincronização de hoje concluída!');
   } catch (error) {
     console.error('❌ [BACKFILL ERROR]:', error);
   }
 }
 
-backfillChamadasLongas().catch(console.error);
+backfillChamadasDeHoje().catch(console.error);
