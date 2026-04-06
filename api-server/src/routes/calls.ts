@@ -47,6 +47,7 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
       const ownerNameParam = req.query.ownerName as string; 
       const startDateParam = req.query.startDate as string;
       const endDateParam = req.query.endDate as string;
+      const sort = req.query.sort as string; // 🚩 NOVO: Parâmetro de ordenação
 
       let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
       
@@ -68,8 +69,15 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
                      .where("updatedAt", "<=", admin.firestore.Timestamp.fromDate(end));
       }
 
-      // ORDENAÇÃO (Obrigatório para paginação)
-      query = query.orderBy("updatedAt", "desc");
+      // 🚩 NOVO: Ordenação por Nota ou por Data
+      if (sort === 'score_desc') {
+        query = query.orderBy("nota_spin", "desc");
+      } else if (sort === 'score_asc') {
+        query = query.orderBy("nota_spin", "asc");
+      } else {
+        // Se não escolher nada, mostra as mais novas primeiro
+        query = query.orderBy("updatedAt", "desc");
+      }
       
       if (startAfter) {
         const lastDoc = await db.collection(CONFIG.CALLS_COLLECTION).doc(startAfter).get();

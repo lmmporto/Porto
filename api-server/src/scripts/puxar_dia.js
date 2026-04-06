@@ -1,35 +1,59 @@
 import 'dotenv/config';
-import { searchCallsInHubSpot } from '../services/hubspot.js'; // Verifique se o caminho está correto
+import { searchCallsInHubSpot } from '../services/hubspot.js'; 
 import { handleIncomingCall } from '../services/webhook.service.js';
-async function puxarLigacoesDoDia() {
-  console.log('🔍 [BACKFILL] Buscando ligações no HubSpot...');
-  
+
+async function backfillChamadasLongas() {
+  // 1. Calcular o timestamp de 5 dias atrás
+  const cincoDiasAtras = new Date();
+  cincoDiasAtras.setDate(cincoDiasAtras.getDate() - 5);
+  const timestampLimite = cincoDiasAtras.getTime();
+
+  console.log(`🔍 [BACKFILL] Buscando chamadas desde: ${cincoDiasAtras.toLocaleString()}`);
+  console.log(`⏳ [FILTRO] Duração mínima: 2 minutos (120000ms)`);
+
   try {
-    // Busca as últimas 50 ligações
-    const calls = await searchCallsInHubSpot({ limit: 50 });
-    
-    if (calls.length === 0) {
-      console.log('✅ [BACKFILL] Nenhuma ligação encontrada.');
+    /**
+     * IMPORTANTE: A função searchCallsInHubSpot precisa estar preparada para 
+     * receber esses filtros e repassá-los para a API de Search do HubSpot.
+     */
+    const calls = await searchCallsInHubSpot({
+      filters: [
+        { propertyName: 'hs_createdate', operator: 'GTE', value: timestampLimite },
+        { propertyName: 'hs_call_duration', operator: 'GTE', value: '119000' }
+      ],
+      limit: 100 
+    });
+
+    if (!calls || calls.length === 0) {
+      console.log('✅ [BACKFILL] Nenhuma ligação encontrada com esses critérios.');
       return;
     }
 
-    console.log(`📥 [BACKFILL] Encontradas ${calls.length} ligações. Enfileirando...`);
-    
+    console.log(`📥 [BACKFILL] Encontradas ${calls.length} ligações. Iniciando processamento...`);
+
     for (const call of calls) {
-      // O handleIncomingCall já faz a triagem (tempo, áudio, etc)
-      // Passamos o callId para ele.
+      // Pegamos a duração real vinda do HubSpot para o log e processamento
+      const duracaoReal = call.properties.hs_call_duration || 120000;
+      
+      console.log(`⚙️ [PROCESSANDO] ID: ${call.id} | Duração: ${Math.round(duracaoReal / 60000)} min`);
+
+      /**
+       * O handleIncomingCall agora recebe os dados REAIS.
+       * Isso disparará o seu fluxo de transcrição e avaliação por IA.
+       */
       await handleIncomingCall({ 
         callId: call.id, 
-        durationMs: 60000, // Forçamos um valor para passar na triagem inicial
+        durationMs: parseInt(duracaoReal), 
         hasAudio: true 
       });
-      console.log(`✅ [BACKFILL] Enfileirado: ${call.id}`);
+
+      console.log(`✅ [SUCESSO] ID: ${call.id} enviado para o fluxo.`);
     }
-    
-    console.log('✨ [BACKFILL] Todas as chamadas foram enviadas para a fila!');
+
+    console.log('✨ [BACKFILL] Sincronização e avaliação concluídas!');
   } catch (error) {
     console.error('❌ [BACKFILL ERROR]:', error);
   }
 }
 
-puxarLigacoesDoDia().catch(console.error);
+backfillChamadasLongas().catch(console.error);
