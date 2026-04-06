@@ -43,7 +43,7 @@ export default function DashboardPage() {
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
-  // 🚩 ORQUESTRADOR DE BUSCA ATÔMICA
+  // 🚩 ORQUESTRADOR DE BUSCA ATÔMICA (Visão Geral)
   useEffect(() => {
     const agora = new Date();
     let start = '';
@@ -66,20 +66,21 @@ export default function DashboardPage() {
       end = customEndDate;
     }
 
+    // 🚩 FILTROS GERAIS: ownerName removido para pegar todos os SDRs
     const filtrosParaEnviar = {
       startDate: start,
       endDate: end,
       sort: sortOrder,
-      minScore
+      minScore: minScore
     };
 
-    // 1. Guarda na gaveta para uso futuro (paginação/refresh)
+    // 1. Sincroniza o estado interno do Hook
     updateFilters(filtrosParaEnviar);
 
-    // 2. 🚩 MANDA BUSCAR NA HORA (Ignora a latência do estado do React)
+    // 2. Dispara a busca imediata ignorando o delay do React
     fetchData(true, filtrosParaEnviar);
 
-    // 3. Busca o resumo estatístico (Summary)
+    // 3. Busca o resumo estatístico
     const fetchSummary = async () => {
       try {
         let url = `/api/stats/summary?t=${Date.now()}`;

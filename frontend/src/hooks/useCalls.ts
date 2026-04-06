@@ -19,7 +19,8 @@ export function useCalls(limit = 10) {
       let url = `/api/calls?limit=${limit}`;
       
       Object.entries(currentFilters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== '') {
+        // 🚩 TRAVA DE SEGURANÇA: Só adiciona se o valor existir e não for a palavra "undefined"
+        if (value !== undefined && value !== null && value !== '' && value !== 'undefined') {
           url += `&${key}=${encodeURIComponent(String(value))}`;
         }
       });
@@ -37,6 +38,7 @@ export function useCalls(limit = 10) {
       setLastVisible(data.lastVisible || null);
       
     } catch (err: any) {
+      console.error("❌ [useCalls Error]:", err.message);
       setError(err.message);
     } finally {
       setIsLoading(false);
@@ -46,7 +48,6 @@ export function useCalls(limit = 10) {
   const updateFilters = useCallback((newFilters: any) => {
     setFilters(newFilters);
     setLastVisible(null);
-    // 🚩 DICA: Agora você pode chamar fetchData(true, newFilters) direto no seu page.tsx
   }, []);
 
   return { 
