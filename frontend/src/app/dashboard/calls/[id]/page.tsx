@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft,
@@ -29,9 +29,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import type { StatusFinal } from '@/types';
+import type { SDRCall, StatusFinal } from '@/types';
 import { cn } from '@/lib/utils';
-import { useCalls } from '@/hooks/useCalls'; // 🚩 2. Instale o motor novo
 
 export default function CallDetailPage() {
   const params = useParams();
@@ -40,26 +39,35 @@ export default function CallDetailPage() {
   const rawId = params?.id;
   const routeId = Array.isArray(rawId) ? rawId[0] : String(rawId ?? '');
 
-  // 🚩 1 e 2. Arranque o motor velho e instale o motor novo
-  const { calls, isLoading, error, fetchData, updateFilters } = useCalls(10);
-  
-  // Como o useCalls retorna um array, derivamos a chamada específica
-  const call = calls.find(c => c.id === routeId) || calls[0] || null;
+  // 🚩 CORREÇÃO: Voltamos para o estado simples. Não use 'useCalls' aqui.
+  const [call, setCall] = useState<SDRCall | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // 🚩 3. Ligue os fios (useEffect)
   useEffect(() => {
-    if (!routeId) return;
+    const loadCall = async () => {
+      if (!routeId) return;
+      
+      try {
+        setIsLoading(true);
+        setError(null);
 
-    // Apenas atualiza os filtros que o Hook vai usar (buscando pelo ID da rota)
-    updateFilters({
-      id: routeId
-    });
-    
-    // Dispara a busca inicial
-    fetchData(true);
-    
-    // Dependências: apenas o que o usuário muda na tela (neste caso, a rota)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+        // 🚩 BUSCA DIRETA: Pede apenas o ID que você clicou
+        const res = await fetch(`/api/calls/${routeId}`);
+        const data = await res.json();
+
+        if (!res.ok) throw new Error(data.error || 'Falha ao carregar');
+
+        setCall(data); // Salva a ligação exata
+      } catch (err: any) {
+        console.error("Erro:", err);
+        setError(err.message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadCall();
   }, [routeId]);
 
   const formatDate = (dateInput: any) => {
@@ -186,15 +194,14 @@ export default function CallDetailPage() {
             Voltar para Performance Geral
           </Button>
 
-          {/* 🚩 4. Conecte os botões: Botão de Atualizar adicionado */}
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => fetchData(true)}
+            onClick={() => window.location.reload()}
             disabled={isLoading}
             className="text-slate-400 hover:text-indigo-600 transition-colors"
           >
-            {isLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+            <RefreshCw className="w-4 h-4 mr-2" />
             Atualizar
           </Button>
         </div>
