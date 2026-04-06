@@ -78,14 +78,26 @@ function cleanGeminiResponse(text: string): string {
 }
 
 // --- FUNÇÕES PRINCIPAIS ---
+
+/**
+ * 🎙️ TRANSCRIÇÃO DE ÁUDIO
+ * Implementa atalho para transcrição nativa do HubSpot para economia de tokens.
+ */
 export async function transcribeRecordingFromHubSpot(call: CallData): Promise<string> {
+  // 🚩 ATALHO DE ECONOMIA: Se o HubSpot já mandou o texto, usa ele e não gasta IA!
+  if (call.transcript && call.transcript.length > 100) {
+    console.log(`\n--- ✅ USANDO TRANSCRIÇÃO NATIVA HUBSPOT (Call: ${call.id}) ---`);
+    return call.transcript;
+  }
+
+  // --- SE NÃO TIVER TEXTO, SEGUE O PROCESSO NORMAL COM GEMINI ---
   if (!gemini) throw new Error('GEMINI_API_KEY não configurada no cliente.');
   if (!call?.recordingUrl) {
     console.warn(`[TRANSCRIPTION] Call ${call.id} sem URL de gravação.`);
     return '';
   }
 
-  console.log(`\n--- 🎙️ INICIANDO TRANSCRIÇÃO (Call: ${call.id}) ---`);
+  console.log(`\n--- 🎙️ INICIANDO TRANSCRIÇÃO POR IA (Call: ${call.id}) ---`);
   
   let localFilePath = '';
   let uploadedFile: { name?: string; uri?: string; mimeType?: string } | null = null;
@@ -101,6 +113,7 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
     const ext = detectAudioExtension(contentType);
     const buffer = Buffer.from(audioResponse.data as ArrayBuffer);
     
+    // Se o áudio for muito pequeno, nem tenta transcrever
     if (buffer.byteLength < 3500000) return '';
 
     localFilePath = path.join(os.tmpdir(), `call-${randomUUID()}.${ext}`);
@@ -217,7 +230,6 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
 
 /**
  * 📊 ATUALIZAÇÃO DO COFRE DE SALDOS
- * @param isUpdate - Se for true, não incrementa o total_calls (apenas atualiza notas/status)
  */
 export async function updateDailyStats(callData: any, analysis: any, isUpdate: boolean = false) {
   try {
@@ -265,7 +277,6 @@ export async function updateDailyStats(callData: any, analysis: any, isUpdate: b
 export async function updateSdrGlobalStats(ownerName: string, nota: number) {
   if (!ownerName || ownerName === "Não identificado") return;
   
-  // Limpa o nome para virar um ID válido no banco (tira espaços e caracteres especiais)
   const safeId = ownerName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
   const sdrRef = db.collection('sdr_stats').doc(safeId);
   

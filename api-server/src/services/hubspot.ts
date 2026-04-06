@@ -15,8 +15,8 @@ export interface OwnerDetails {
 export interface CallData {
   id: string;
   portalId: string;
-  hubspotCallId?: string; // 🚩 ID específico para link de review do HubSpot
-  callId?: string;        // 🚩 ID de referência redundante
+  hubspotCallId?: string; 
+  callId?: string;        
   title: string;
   ownerId: string;
   durationMs: number;
@@ -30,7 +30,6 @@ export interface CallData {
   transcriptLength: number;
 }
 
-// Mapa para traduzir os IDs do HubSpot
 const DISPOSITION_MAP: Record<string, string> = {
   'f2473a22-7177-4401-b261-2745e4d063b9': 'Connected',
   '9d6f194e-9407-497d-b48c-e8369376663f': 'Busy',
@@ -39,7 +38,34 @@ const DISPOSITION_MAP: Record<string, string> = {
   '73a0d17f-1163-4515-bc05-161f9da8d211': 'Wrong Number',
 };
 
-// --- FUNÇÕES ---
+// --- FUNÇÕES AUXILIARES ---
+
+/**
+ * Tenta buscar a transcrição nativa do HubSpot para economizar tokens de IA
+ */
+async function fetchTranscriptFromHubSpot(callId: string): Promise<string> {
+  try {
+    // 1. Busca se existe uma transcrição associada a esta chamada
+    const assocRes = await hubspot.get(`/crm/v3/objects/calls/${callId}/associations/transcript`);
+    const transcriptId = assocRes.data.results?.[0]?.id;
+
+    if (!transcriptId) return "";
+
+    // 2. Puxa o conteúdo da transcrição encontrada
+    const transRes = await hubspot.get(`/crm/v3/extensions/calling/transcripts/${transcriptId}`);
+    const utterances = transRes.data.transcriptUtterances || [];
+
+    // 3. Formata o texto (SDR: texto... Cliente: texto...)
+    return utterances
+      .map((u: any) => `${u.speaker?.name || 'Interlocutor'}: ${u.text}`)
+      .join('\n');
+  } catch (e) {
+    // Se não tiver transcrição ou der erro, retorna vazio para o sistema usar a IA como fallback
+    return "";
+  }
+}
+
+// --- FUNÇÕES PRINCIPAIS ---
 
 export async function fetchOwnerDetails(ownerId: string | null): Promise<OwnerDetails> {
   try {
@@ -78,6 +104,9 @@ export async function fetchCall(callId: string): Promise<CallData> {
 
   const wasConnected = duration > 20000 && recording !== "";
 
+  // 🚩 Tenta buscar o texto de graça antes de retornar
+  const transcript = await fetchTranscriptFromHubSpot(callId);
+
   return {
     id: data.id,
     hubspotCallId: data.id, 
@@ -91,9 +120,9 @@ export async function fetchCall(callId: string): Promise<CallData> {
     wasConnected,
     timestamp: firstFilled(props, CONFIG.PROPS.TIMESTAMP) || new Date().toISOString(),
     recordingUrl: recording,
-    transcript: "",
-    transcriptSourceType: "NONE",
-    transcriptLength: 0,
+    transcript: transcript, // Agora pode vir preenchido do HubSpot!
+    transcriptSourceType: transcript ? "HUBSPOT" : "NONE",
+    transcriptLength: transcript.length,
   };
 }
 
@@ -101,11 +130,9 @@ export async function searchCallsInHubSpot({ limit = 100 }: { limit?: number }) 
   const properties = [...new Set([...Object.values(CONFIG.PROPS).flat(), 'hs_call_disposition', 'hs_portal_id'])];
   
   const body = {
-    // 🚩 Ajuste: Removemos as travas de Math.min do config
     limit: Number(limit) || 100, 
     sorts: [{ propertyName: "hs_timestamp", direction: "DESCENDING" }],
     properties,
-    // 🚩 Ajuste: Filtro de duração mínima direto na API do HubSpot
     filterGroups: [
       {
         filters: [
