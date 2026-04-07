@@ -108,7 +108,8 @@ export default function DashboardPage() {
 
   const stats = summary as any;
   const isSummaryEmpty = stats?.empty === true || !stats; 
-  const avgSpin = stats && !isSummaryEmpty && stats.valid_calls > 0 ? (stats.sum_notes / stats.valid_calls) : 0;
+  // 🚩 MUDANÇA: Agora o Dashboard usa a média geral que o Backend já calculou com o novo peso
+  const avgSpin = stats?.media_geral || 0;
   const totalCalls = stats?.total_calls || 0;
   const analyzedCount = stats?.valid_calls || 0; 
   const activeSDRsCount = stats?.sdr_ranking ? Object.keys(stats.sdr_ranking).length : 0;

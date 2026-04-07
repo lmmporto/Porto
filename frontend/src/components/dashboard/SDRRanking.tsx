@@ -24,6 +24,7 @@ interface SDRRankingProps {
 }
 
 export function SDRRanking({ summary }: SDRRankingProps) {
+  // 🚩 1. useMemo ATUALIZADO: Consome nota_media do Backend
   const ranking = useMemo(() => {
     const entries = Object.entries(summary?.sdr_ranking ?? {});
 
@@ -31,9 +32,7 @@ export function SDRRanking({ summary }: SDRRankingProps) {
       .map(([name, stats]: [string, any]) => {
         const totalCalls = Number(stats.calls || 0);
         const validCount = Number(stats.valid_calls || 0);
-        
-        // 🚩 AJUSTE CIRÚRGICO: Removemos o cálculo manual e usamos o valor do Backend
-        const avgSpin = Number(stats.nota_media || 0);
+        const avgSpin = Number(stats.nota_media || 0); // 🚩 Valor exato do Backend
 
         return {
           name,
@@ -45,7 +44,13 @@ export function SDRRanking({ summary }: SDRRankingProps) {
       .sort((a, b) => b.avgSpin - a.avgSpin);
   }, [summary]);
 
-  // 🚩 LÓGICA DE COR ATUALIZADA CONFORME NOVA RÉGUA
+  // 🚩 2. LÓGICA DE CORES DO TEXTO
+  const getScoreColor = (score: number) => {
+    if (score >= 8) return "text-emerald-600"; // Verde
+    if (score >= 5) return "text-sky-500";     // Azul Bebê
+    return "text-rose-600";                    // Vermelho
+  };
+
   const getStatusConfig = (avg: number, hasAnalyzed: boolean) => {
     if (!hasAnalyzed) {
       return { 
@@ -55,12 +60,8 @@ export function SDRRanking({ summary }: SDRRankingProps) {
       };
     }
     
-    if (avg >= 8) {
-      return { color: "text-emerald-500", bg: "bg-emerald-50", icon: <CheckCircle2 className="w-3 h-3" /> };
-    }
-    if (avg >= 5) {
-      return { color: "text-sky-500", bg: "bg-sky-50", icon: <AlertCircle className="w-3 h-3" /> };
-    }
+    if (avg >= 8) return { color: "text-emerald-500", bg: "bg-emerald-50", icon: <CheckCircle2 className="w-3 h-3" /> };
+    if (avg >= 5) return { color: "text-sky-500", bg: "bg-sky-50", icon: <AlertCircle className="w-3 h-3" /> };
     
     return { 
       color: "text-rose-500", 
@@ -137,11 +138,13 @@ export function SDRRanking({ summary }: SDRRankingProps) {
                 <div className="text-right">
                   <div className={cn(
                     "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md font-bold text-xs mb-0.5",
-                    status.color,
                     status.bg
                   )}>
                     {status.icon}
-                    {hasAnalyzed ? sdr.avgSpin.toFixed(1) : "--"}
+                    {/* 🚩 3. EXIBIÇÃO DA NOTA COM COR DINÂMICA */}
+                    <span className={cn("font-bold", getScoreColor(sdr.avgSpin))}>
+                      {hasAnalyzed ? sdr.avgSpin.toFixed(1) : "--"}
+                    </span>
                   </div>
                   <p className="text-[8px] text-slate-400 font-bold uppercase tracking-tighter">Nota Spin</p>
                 </div>
