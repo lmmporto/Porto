@@ -78,10 +78,14 @@ export default function DashboardPage() {
 
     const fetchSummary = async () => {
       try {
-        let url = `/api/stats/summary?t=${Date.now()}`;
+        // 🚩 DECLARAÇÃO DA BASE URL
+        const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
+        
+        // 🚩 PREFIXO DA URL COM BASEURL
+        let url = `${baseUrl}/api/stats/summary?t=${Date.now()}`;
         if (start && end) url += `&startDate=${start}&endDate=${end}`;
         
-        // 🚩 CREDENTIALS: 'INCLUDE' adicionado para persistência de sessão
+        // 🚩 FETCH COM CREDENTIALS
         const res = await fetch(url, { credentials: 'include' });
         const data = await res.json();
         setSummary(data);

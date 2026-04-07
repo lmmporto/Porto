@@ -92,12 +92,16 @@ function SDRRankingContent() {
       if (dateFilter === 'custom' && (!customStartDate || !customEndDate)) return;
       
       try {
-        let summaryUrl = `/api/stats/summary?t=${Date.now()}`;
+        // 🚩 DECLARAÇÃO DA BASE URL
+        const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
+        
+        // 🚩 PREFIXO DA URL COM BASEURL
+        let summaryUrl = `${baseUrl}/api/stats/summary?t=${Date.now()}`;
         if (dateFilter !== 'all' && startIso && endIso) {
           summaryUrl += `&startDate=${startIso}&endDate=${endIso}`;
         }
 
-        // 🚩 CREDENTIALS: 'INCLUDE' adicionado para persistência de sessão cross-origin
+        // 🚩 FETCH COM CREDENTIALS
         const res = await fetch(summaryUrl, { credentials: 'include' });
         const data = await res.json();
         

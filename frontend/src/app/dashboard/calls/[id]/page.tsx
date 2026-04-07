@@ -28,10 +28,15 @@ export default function CallDetailPage() {
       if (!routeId) return;
       try {
         setIsLoading(true);
-        // 🚩 CREDENTIALS: 'INCLUDE' habilitado para persistência de sessão cross-origin
-        const res = await fetch(`/api/calls/${routeId}`, { 
+
+        // 🚩 DECLARAÇÃO DA BASE URL
+        const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
+
+        // 🚩 FETCH PARA URL ABSOLUTA COM CREDENTIALS
+        const res = await fetch(`${baseUrl}/api/calls/${routeId}`, { 
           credentials: 'include' 
         });
+        
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Falha ao carregar');
         setCall(data);

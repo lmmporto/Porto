@@ -97,10 +97,14 @@ function SDRDetailContent() {
 
     const fetchSummary = async () => {
       try {
-        let url = `/api/stats/summary?t=${Date.now()}`;
+        // 🚩 DECLARAÇÃO DA BASE URL
+        const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
+        
+        // 🚩 PREFIXO DA URL COM BASEURL
+        let url = `${baseUrl}/api/stats/summary?t=${Date.now()}`;
         if (start && end) url += `&startDate=${start}&endDate=${end}`;
         
-        // 🚩 CREDENTIALS: 'INCLUDE' adicionado para persistência de sessão cross-origin
+        // 🚩 FETCH COM CREDENTIALS
         const res = await fetch(url, { credentials: 'include' });
         if (!res.ok) throw new Error("Erro na rede");
         const data = await res.json();

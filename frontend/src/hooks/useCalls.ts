@@ -14,16 +14,19 @@ export function useCalls(limit = 10) {
     setError(null);
 
     try {
-      // 🚩 Usa os filtros que acabaram de chegar ou os que já estavam salvos
       const currentFilters = overrideFilters || filters;
 
-      // 🚩 LOG DE AUDITORIA: Ver o que o hook está pedindo para a API
-      console.log(`🔎 [BUSCA] SDR: ${currentFilters.ownerName || "TODOS"} | Datas: ${currentFilters.startDate || 'Início'} a ${currentFilters.endDate || 'Fim'}`);
+      // 🚩 DECLARAÇÃO DA BASE URL (Puxa do .env e limpa a barra final)
+      const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
+      
+      // 🚩 MONTAGEM DA URL USANDO A VARIÁVEL DECLARADA
+      let url = `${baseUrl}/api/calls?limit=${limit}`;
 
-      let url = `/api/calls?limit=${limit}`;
+      // LOG DE AUDITORIA
+      console.log(`🔎 [BUSCA] SDR: ${currentFilters.ownerName || "TODOS"} | Datas: ${currentFilters.startDate || 'Início'} a ${currentFilters.endDate || 'Fim'}`);
       
       Object.entries(currentFilters).forEach(([key, value]) => {
-        // 🚩 TRAVA DE SEGURANÇA: Só adiciona se o valor existir e não for a palavra "undefined"
+        // TRAVA DE SEGURANÇA: Ignora valores inválidos ou a string 'undefined'
         if (value !== undefined && value !== null && value !== '' && value !== 'undefined') {
           url += `&${key}=${encodeURIComponent(String(value))}`;
         }
@@ -33,6 +36,7 @@ export function useCalls(limit = 10) {
         url += `&lastVisible=${lastVisible}`;
       }
 
+      // 🚩 FETCH DIRETO PARA O RENDER COM CREDENTIALS (Sessão Passport)
       const res = await fetch(url, { credentials: 'include' });
       const data = await res.json();
 
