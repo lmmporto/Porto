@@ -66,7 +66,6 @@ export default function DashboardPage() {
       end = customEndDate;
     }
 
-    // 🚩 FILTROS GERAIS: ownerName removido para pegar todos os SDRs
     const filtrosParaEnviar = {
       startDate: start,
       endDate: end,
@@ -74,18 +73,16 @@ export default function DashboardPage() {
       minScore: minScore
     };
 
-    // 1. Sincroniza o estado interno do Hook
     updateFilters(filtrosParaEnviar);
-
-    // 2. Dispara a busca imediata ignorando o delay do React
     fetchData(true, filtrosParaEnviar);
 
-    // 3. Busca o resumo estatístico
     const fetchSummary = async () => {
       try {
         let url = `/api/stats/summary?t=${Date.now()}`;
         if (start && end) url += `&startDate=${start}&endDate=${end}`;
-        const res = await fetch(url);
+        
+        // 🚩 CREDENTIALS: 'INCLUDE' adicionado para persistência de sessão
+        const res = await fetch(url, { credentials: 'include' });
         const data = await res.json();
         setSummary(data);
       } catch (e) {
@@ -107,8 +104,6 @@ export default function DashboardPage() {
   }, [calls, searchTerm]);
 
   const stats = summary as any;
-  const isSummaryEmpty = stats?.empty === true || !stats; 
-  // 🚩 MUDANÇA: Agora o Dashboard usa a média geral que o Backend já calculou com o novo peso
   const avgSpin = stats?.media_geral || 0;
   const totalCalls = stats?.total_calls || 0;
   const analyzedCount = stats?.valid_calls || 0; 

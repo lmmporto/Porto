@@ -33,7 +33,7 @@ export function useCalls(limit = 10) {
         url += `&lastVisible=${lastVisible}`;
       }
 
-      const res = await fetch(url);
+      const res = await fetch(url, { credentials: 'include' });
       const data = await res.json();
 
       if (!res.ok) throw new Error(data.error || 'Erro ao buscar chamadas');

@@ -13,7 +13,6 @@ export async function GET(request: Request) {
   // 2. Preparação da URL e Parâmetros
   const { searchParams } = new URL(request.url);
   const cleanBaseUrl = baseUrl.replace(/\/$/, '');
-  // No seu backend Express, a rota correta está sob o prefixo /api
   const url = `${cleanBaseUrl}/api/calls?${searchParams.toString()}`;
 
   try {
@@ -25,7 +24,8 @@ export async function GET(request: Request) {
         'Content-Type': 'application/json',
         'x-webhook-secret': process.env.WEBHOOK_SECRET || '' 
       },
-      next: { revalidate: 0 } // Garante que o Next.js não use cache antigo
+      credentials: 'include', // 🚩 Habilita o envio de cookies para persistência da sessão
+      next: { revalidate: 0 }
     });
 
     // 3. Captura da resposta bruta para diagnóstico
@@ -40,7 +40,6 @@ export async function GET(request: Request) {
     // 4. Tratamento de Erro vindo do Backend (Render)
     if (!res.ok) {
       console.error(`🚨 [BACKEND ERROR] Status ${res.status}:`, data);
-      // Repassamos o status e o erro real para o seu console F12
       return NextResponse.json(
         { 
           error: 'O Backend Render retornou um erro', 
@@ -51,12 +50,12 @@ export async function GET(request: Request) {
       );
     }
 
-    // 5. Sucesso: Retorno dos dados (Lista de Chamadas)
+    // 5. Sucesso: Retorno dos dados
     console.log(`✅ [PROXY] Dados recebidos com sucesso de ${url}`);
     return NextResponse.json(data);
 
   } catch (err: any) {
-    // 6. Falha de Conexão (Render Offline ou Timeout)
+    // 6. Falha de Conexão
     console.error(`❌ [NETWORK ERROR] Falha ao conectar no Render:`, err.message);
     return NextResponse.json(
       { 

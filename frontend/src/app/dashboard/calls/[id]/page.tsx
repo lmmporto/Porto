@@ -28,7 +28,10 @@ export default function CallDetailPage() {
       if (!routeId) return;
       try {
         setIsLoading(true);
-        const res = await fetch(`/api/calls/${routeId}`);
+        // 🚩 CREDENTIALS: 'INCLUDE' habilitado para persistência de sessão cross-origin
+        const res = await fetch(`/api/calls/${routeId}`, { 
+          credentials: 'include' 
+        });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Falha ao carregar');
         setCall(data);
@@ -53,7 +56,13 @@ export default function CallDetailPage() {
       case 'APROVADO': 
         return { icon: <CheckCircle2 className="w-4 h-4" />, color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-100', label: 'Aprovado' };
       case 'ATENCAO':
-        return { icon: <AlertTriangle className="w-4 h-4" />, color: 'text-sky-600', bg: 'bg-sky-50', border: 'border-sky-100', label: 'Atenção' };
+        return {
+          icon: <AlertTriangle className="w-4 h-4" />,
+          color: 'text-sky-600',
+          bg: 'bg-sky-50',
+          border: 'border-sky-100',
+          label: 'Atenção'
+        };
       case 'REPROVADO': 
         return { icon: <XCircle className="w-4 h-4" />, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-100', label: 'Reprovado' };
       case 'NAO_SE_APLICA': 
@@ -69,7 +78,6 @@ export default function CallDetailPage() {
   const status = getStatusConfig(call.status_final);
   const isRotaC = call.status_final === 'NAO_SE_APLICA';
 
-  // 🚩 LÓGICA PARA MONTAR O LINK DO HUBSPOT
   const actualHubspotId = call.hubspotCallId || call.callId || call.id;
   const actualPortalId = call.portalId || '1554114'; 
   
@@ -103,8 +111,6 @@ export default function CallDetailPage() {
                   </a>
                 </Button>
               )}
-
-              {/* 🚩 NOVO: Botão Ver no HubSpot */}
               {hubspotReviewUrl && (
                 <Button asChild variant="outline" size="sm" className="border-orange-100 bg-orange-50/30 text-orange-600 hover:bg-orange-600 hover:text-white h-9 rounded-xl">
                   <a href={hubspotReviewUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 font-bold uppercase tracking-wider text-[9px]">

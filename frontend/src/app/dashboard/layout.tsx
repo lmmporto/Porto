@@ -34,16 +34,15 @@ export default function DashboardLayout({
       }
 
       try {
+        // 🚩 CREDENTIALS: 'INCLUDE' é obrigatório para persistência de sessão cross-origin
         const res = await fetch(`${apiBaseUrl}/auth/me`, {
-          credentials: 'include',
+          credentials: 'include', 
           cache: 'no-store',
           headers: {
             'Cache-Control': 'no-cache',
-            Pragma: 'no-cache',
+            'Pragma': 'no-cache',
           },
         });
-
-        console.log('[LAYOUT AUTH] status:', res.status);
 
         if (res.status === 401) {
           router.push('/login');
@@ -51,8 +50,6 @@ export default function DashboardLayout({
         }
 
         if (!res.ok) {
-          const text = await res.text();
-          console.error('[LAYOUT AUTH] resposta inesperada:', res.status, text);
           router.push('/login');
           return;
         }

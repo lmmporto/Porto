@@ -27,7 +27,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   // 1. Pergunta quem é o usuário e quais os poderes dele
   const checkUser = useCallback(async () => {
     try {
-      const res = await fetch('/auth/me');
+      // 🚩 CREDENTIALS: 'INCLUDE' habilitado para persistência de sessão cross-origin
+      const res = await fetch('/auth/me', { 
+        credentials: 'include' 
+      });
       const data = await res.json();
       
       if (data.authenticated) {

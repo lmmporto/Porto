@@ -15,7 +15,6 @@ export async function GET(request: Request) {
   targetUrl.search = searchParams.toString();
 
   // 🚩 CONFIGURAÇÃO DE TIMEOUT (30 segundos)
-  // 30s é o tempo necessário para cobrir o "acordar" do Render Free Tier.
   const controller = new AbortController();
   const TIMEOUT_MS = 30000; 
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -29,6 +28,7 @@ export async function GET(request: Request) {
         'Content-Type': 'application/json',
         'x-webhook-secret': process.env.WEBHOOK_SECRET || '' 
       },
+      credentials: 'include', // 🚩 Habilita o envio de cookies para persistência da sessão
       signal: controller.signal,
       cache: 'no-store',
     });

@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { RefreshCw, Trophy, Target, PhoneCall, AlertCircle, Calendar } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useCalls } from '@/hooks/useCalls'; // 🚩 2. Instalação do motor novo
+import { useCalls } from '@/hooks/useCalls';
 
 interface API_SDRStats {
   nota_media?: string | number;
@@ -25,8 +25,6 @@ function SDRRankingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // 🚩 1 e 2. Arranque o motor velho e instale o motor novo
-  // Removidos useState locais de isLoading e error pois agora vêm do hook
   const { isLoading, error, fetchData, updateFilters } = useCalls(10);
   
   const [ranking, setRanking] = useState<SDRRankingItem[]>([]);
@@ -80,20 +78,16 @@ function SDRRankingContent() {
     return { startIso, endIso };
   }, [dateFilter, customStartDate, customEndDate]);
 
-  // 🚩 3. Ligue os fios (useEffect atualizado)
   useEffect(() => {
     const { startIso, endIso } = getDateRange();
 
-    // 🚩 Sincroniza filtros com o Hook
     updateFilters({
       startDate: startIso,
       endDate: endIso,
     });
     
-    // 🚩 Dispara a busca inicial de chamadas
     fetchData(true);
 
-    // Busca o sumário do ranking (Stats) separadamente conforme lógica de negócio
     const fetchRankingSummary = async () => {
       if (dateFilter === 'custom' && (!customStartDate || !customEndDate)) return;
       
@@ -103,7 +97,8 @@ function SDRRankingContent() {
           summaryUrl += `&startDate=${startIso}&endDate=${endIso}`;
         }
 
-        const res = await fetch(summaryUrl);
+        // 🚩 CREDENTIALS: 'INCLUDE' adicionado para persistência de sessão cross-origin
+        const res = await fetch(summaryUrl, { credentials: 'include' });
         const data = await res.json();
         
         if (data.sdr_ranking) {
@@ -195,7 +190,6 @@ function SDRRankingContent() {
             )}
           </div>
           
-          {/* 🚩 4. Conecte os botões */}
           <Button 
             onClick={() => fetchData(true)} 
             variant="outline" 

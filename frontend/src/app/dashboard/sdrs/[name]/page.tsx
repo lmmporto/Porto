@@ -92,18 +92,16 @@ function SDRDetailContent() {
       minScore: minScore
     };
 
-    // 1. Guarda na gaveta para uso futuro (paginação/refresh)
     updateFilters(filtrosParaEnviar);
-
-    // 2. 🚩 MANDA BUSCAR NA HORA (Passando o objeto direto para ignorar o delay do React)
     fetchData(true, filtrosParaEnviar);
 
-    // 3. Busca o Summary estatístico separadamente
     const fetchSummary = async () => {
       try {
         let url = `/api/stats/summary?t=${Date.now()}`;
         if (start && end) url += `&startDate=${start}&endDate=${end}`;
-        const res = await fetch(url);
+        
+        // 🚩 CREDENTIALS: 'INCLUDE' adicionado para persistência de sessão cross-origin
+        const res = await fetch(url, { credentials: 'include' });
         if (!res.ok) throw new Error("Erro na rede");
         const data = await res.json();
         setSummary(data);
