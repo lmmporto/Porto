@@ -54,6 +54,24 @@ router.get('/summary', async (req: Request, res: Response) => {
       sum_notes += Number(data.totalScore || 0);
     });
 
+    // 🚩 NOVA MATEMÁTICA: MÉDIA BAYESIANA
+    // Evita que SDRs com 1 única ligação nota 10 fiquem no topo injustamente.
+    const C = 5; // Peso de confiança (mínimo de ligações para a nota ser "real")
+    const N = 6; // Nota média esperada (ponto de partida)
+
+    Object.keys(sdr_ranking).forEach(name => {
+      const s = sdr_ranking[name];
+      
+      if (s.valid_calls > 0) {
+        // Fórmula: ((Volume * Média) + (Peso * NotaBase)) / (Volume + Peso)
+        // Como (Volume * Média) é igual a 'sum_notes', simplificamos:
+        const mediaCalculada = (s.sum_notes + (C * N)) / (s.valid_calls + C);
+        s.nota_media = Number(mediaCalculada.toFixed(1));
+      } else {
+        s.nota_media = 0;
+      }
+    });
+
     // 🚩 EMPACOTANDO O RESULTADO PARA SALVAR NO CACHE
     const resultado = {
       total_calls,
@@ -61,7 +79,7 @@ router.get('/summary', async (req: Request, res: Response) => {
       sum_notes,
       media_geral: total_calls > 0 ? Number((sum_notes / total_calls).toFixed(2)) : 0,
       sdr_ranking: sdr_ranking,
-      version: "V4_SDR_STATS_CACHED"
+      version: "V5_BAYESIAN_STATS_CACHED"
     };
 
     // Atualiza as variáveis globais de cache
