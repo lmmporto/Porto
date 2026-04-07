@@ -31,8 +31,9 @@ export function SDRRanking({ summary }: SDRRankingProps) {
       .map(([name, stats]: [string, any]) => {
         const totalCalls = Number(stats.calls || 0);
         const validCount = Number(stats.valid_calls || 0);
-        const sumNotes = Number(stats.sum_notes || 0);
-        const avgSpin = validCount > 0 ? sumNotes / validCount : 0;
+        
+        // 🚩 AJUSTE CIRÚRGICO: Removemos o cálculo manual e usamos o valor do Backend
+        const avgSpin = Number(stats.nota_media || 0);
 
         return {
           name,
