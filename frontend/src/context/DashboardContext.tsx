@@ -1,43 +1,76 @@
 "use client";
-import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 
-const DashboardContext = createContext<any>(null);
+// --- INTERFACES ---
+interface User {
+  email: string;
+  name?: string;
+  picture?: string;
+}
 
-export function DashboardProvider({ children }: { children: React.ReactNode }) {
-  const [calls, setCalls] = useState([]);
-  const [user, setUser] = useState(null);
+interface DashboardContextType {
+  user: User | null;
+  isAdmin: boolean;
+  isLoading: boolean;
+  isInitialized: boolean;
+  checkUser: () => Promise<void>;
+}
+
+const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
+
+export function DashboardProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false); // 🚩 Trava de inicialização
 
-  // Pergunta quem é o usuário assim que abre o site
+  // 1. Pergunta quem é o usuário e quais os poderes dele
   const checkUser = useCallback(async () => {
     try {
       const res = await fetch('/auth/me');
       const data = await res.json();
-      if (data.authenticated) setUser(data.user);
-    } catch (e) { console.error("Erro ao checar usuário"); }
+      
+      if (data.authenticated) {
+        setUser(data.user);
+        setIsAdmin(data.isAdmin || false); // O servidor já responde isso no /me
+      } else {
+        setUser(null);
+        setIsAdmin(false);
+      }
+    } catch (e) {
+      console.error("🚨 [AUTH ERROR]: Falha ao validar sessão.");
+    } finally {
+      setIsInitialized(true);
+    }
   }, []);
 
-  const fetchData = useCallback(async (filters = {}) => {
-    setIsLoading(true);
-    try {
-      let url = `/api/calls?limit=10`;
-      // Adiciona filtros na URL se existirem...
-      const res = await fetch(url);
-      const data = await res.json();
-      setCalls(data.calls || []);
-      setIsAdmin(data.isAdmin || false); // O servidor diz se ele é admin
-    } catch (e) { console.error(e); } 
-    finally { setIsLoading(false); }
-  }, []);
-
-  useEffect(() => { checkUser(); }, [checkUser]);
+  // Inicializa o sistema uma única vez
+  useEffect(() => {
+    checkUser();
+  }, [checkUser]);
 
   return (
-    <DashboardContext.Provider value={{ calls, user, isAdmin, isLoading, fetchData }}>
-      {children}
+    <DashboardContext.Provider value={{ 
+      user, 
+      isAdmin, 
+      isLoading, 
+      isInitialized, 
+      checkUser 
+    }}>
+      {/* 🚩 Só mostra o app quando terminar de checar o usuário */}
+      {isInitialized ? children : (
+        <div className="min-h-screen flex items-center justify-center bg-white">
+           <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+        </div>
+      )}
     </DashboardContext.Provider>
   );
 }
 
-export const useDashboard = () => useContext(DashboardContext);
+export const useDashboard = () => {
+  const context = useContext(DashboardContext);
+  if (context === undefined) {
+    throw new Error('useDashboard deve ser usado dentro de um DashboardProvider');
+  }
+  return context;
+};
