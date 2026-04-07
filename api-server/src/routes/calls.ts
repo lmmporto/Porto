@@ -2,36 +2,55 @@ import { Router, type Request, type Response, type NextFunction } from "express"
 import admin from "firebase-admin";
 import { db } from "../firebase.js";
 import { CONFIG } from "../config.js";
-import { processCall } from "../services/processCall.js";
 import { handleIncomingCall } from "../services/webhook.service.js";
 
 const router = Router();
 
-// 1. LISTAGEM COM RASTREADOR DE AUDITORIA
-router.get("/", async (req: Request, res: Response, next: NextFunction) => {
+// Função auxiliar para saber se é Admin
+async function checkIfAdmin(email: string) {
   try {
+    const doc = await db.collection("configuracoes").doc("gerais").get();
+    const admins = doc.data()?.admins || [];
+    return admins.includes(email);
+  } catch {
+    return false;
+  }
+}
+
+// 1. LISTAGEM COM TRAVA DE SEGURANÇA E AUDITORIA
+router.get("/", async (req: Request, res: Response) => {
+  try {
+    // Trava de Autenticação
+    if (!req.isAuthenticated() || !req.user) {
+      return res.status(401).json({ error: "Não autorizado" });
+    }
+
+    const userEmail = (req.user as any).email;
+    const isAdmin = await checkIfAdmin(userEmail);
+    
     const limit = Math.min(Number(req.query.limit || 10), 50);
-    const ownerNameParam = req.query.ownerName as string;
     const startAfter = req.query.lastVisible as string;
     const startDateParam = req.query.startDate as string;
     const endDateParam = req.query.endDate as string;
 
-    // 🚩 LOG DE AUDITORIA: Ver o que o site está pedindo
-    console.log(`🔎 [BUSCA] SDR: "${ownerNameParam}" | Datas: ${startDateParam} a ${endDateParam}`);
+    // 🚩 LOG DE AUDITORIA
+    console.log(`🔎 [BUSCA] User: ${userEmail} | Admin: ${isAdmin} | Datas: ${startDateParam} a ${endDateParam}`);
 
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
 
-    // 1. Filtro de SDR
-    if (ownerNameParam) {
-      query = query.where("ownerName", "==", ownerNameParam);
+    // 🚩 A TRAVA: Se não for admin, SÓ vê as próprias ligações pelo e-mail
+    if (!isAdmin) {
+      query = query.where("ownerEmail", "==", userEmail);
+    } else {
+      // Se for admin, ele pode filtrar por e-mail de outros via query param
+      const filterEmail = req.query.ownerEmail as string;
+      if (filterEmail) query = query.where("ownerEmail", "==", filterEmail);
     }
 
-    // 2. Filtro de Período Real (Usando callTimestamp)
+    // Filtros de Período Real (Usando callTimestamp)
     if (startDateParam && endDateParam) {
       const start = new Date(startDateParam);
       const end = new Date(endDateParam);
-      
-      // Ajusta para pegar o dia inteiro (00:00 até 23:59)
       start.setUTCHours(0, 0, 0, 0);
       end.setUTCHours(23, 59, 59, 999);
 
@@ -40,24 +59,21 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
         .where("callTimestamp", "<=", admin.firestore.Timestamp.fromDate(end));
     }
 
-    // 3. Ordenação por data real
     query = query.orderBy("callTimestamp", "desc");
 
-    // 4. Paginação
     if (startAfter) {
       const lastDoc = await db.collection(CONFIG.CALLS_COLLECTION).doc(startAfter).get();
       if (lastDoc.exists) query = query.startAfter(lastDoc);
     }
 
     const snapshot = await query.limit(limit).get();
-    
-    // 🚩 LOG DE RESULTADO: Ver o que o banco achou
-    console.log(`✅ [BUSCA] Encontrados ${snapshot.size} documentos para o SDR ${ownerNameParam}`);
+    console.log(`✅ [BUSCA] Encontrados ${snapshot.size} documentos para ${userEmail}`);
 
     const calls = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     res.json({
       calls,
+      isAdmin,
       lastVisible: snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1].id : null
     });
   } catch (error: any) {
@@ -66,23 +82,44 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
-// 2. DETALHE (Busca a ligação exata pelo ID)
-router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
+// 2. DETALHE DA LIGAÇÃO COM VALIDAÇÃO DE PERMISSÃO E BLINDAGEM DE ID
+router.get("/:id", async (req: Request, res: Response) => {
   try {
-    const { id } = req.params; 
-    const doc = await db.collection(CONFIG.CALLS_COLLECTION).doc(String(id)).get();
+    if (!req.isAuthenticated() || !req.user) {
+      return res.status(401).json({ error: "Não autorizado" });
+    }
+
+    // 🚩 SOLUÇÃO DO ERRO: Extração e validação rigorosa do ID
+    const callId = req.params.id ? String(req.params.id).trim() : null;
+
+    if (!callId || callId === 'undefined' || callId === 'null') {
+      return res.status(400).json({ error: "ID da ligação inválido ou não fornecido." });
+    }
+    
+    // Agora o Firestore garante que o caminho é uma string válida
+    const doc = await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).get();
     
     if (!doc.exists) {
       return res.status(404).json({ error: "Ligação não encontrada no banco." });
     }
     
-    res.json({ id: doc.id, ...doc.data() });
-  } catch (error) {
-    next(error);
+    const callData = doc.data();
+    const userEmail = (req.user as any).email;
+    const isAdmin = await checkIfAdmin(userEmail);
+
+    // 🚩 TRAVA DE PRIVACIDADE
+    if (!isAdmin && callData?.ownerEmail !== userEmail) {
+      return res.status(403).json({ error: "Você não tem permissão para ver esta ligação." });
+    }
+
+    res.json({ id: doc.id, ...callData });
+  } catch (error: any) {
+    console.error("❌ [DETAIL ERROR]:", error.message);
+    res.status(500).json({ error: "Erro interno ao buscar detalhes", details: error.message });
   }
 });
 
-// 3. WEBHOOK E OUTROS
+// 3. WEBHOOK (Vital para entrada de dados)
 router.post("/hubspot-webhook", async (req: Request, res: Response) => {
   try {
     const body = req.body;

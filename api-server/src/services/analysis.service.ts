@@ -166,15 +166,15 @@ PASSO 1: CLASSIFICAÇÃO DA ROTA (OBRIGATÓRIO)
 
 PASSO 2: CRITÉRIOS DE PONTUAÇÃO (TOTAL 10 PONTOS)
 
---- SE ROTA A (Reagendamento) ---
-1. Conexão e Contexto (+3,0 pts): Retomou sem parecer cobrador e validou o motivo do reagendamento?
-2. Re-ancoragem da Dor (+4,0 pts): Relembrou os problemas que motivaram o interesse original?
-3. Fechamento e Compromisso (+3,0 pts): Garantiu novo horário e próximo passo claro?
-
---- SE ROTA B (Novo Agendamento) ---
+--- SE ROTA A (Novo Agendamento) ---
 1. Rapport e Quebra de Gelo (+3,0 pts): Conexão real e abertura personalizada?
 2. Diagnóstico e Implicação (+4,0 pts): Mapeou dor, insatisfação ou ponto cego? "Apertou" o cliente?
 3. Agendamento e Decisores (+3,0 pts): Marcou data/hora e confirmou presença de sócios/decisores?
+
+--- SE ROTA B (Reagendamento) ---
+1. Conexão e Contexto (+3,0 pts): Retomou sem parecer cobrador e validou o motivo do reagendamento?
+2. Re-ancoragem da Dor (+4,0 pts): Relembrou os problemas que motivaram o interesse original?
+3. Fechamento e Compromisso (+3,0 pts): Garantiu novo horário e próximo passo claro?
 
 --- SE ROTA C (Gatekeeper) ---
 1. Posicionamento e Autoridade (+3,0 pts): Falou de igual para igual? Evitou parecer telemarketing?
