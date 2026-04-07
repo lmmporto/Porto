@@ -54,7 +54,7 @@ export function SDRRanking({ summary }: SDRRankingProps) {
       };
     }
     
-    if (avg > 8) {
+    if (avg >= 8) {
       return { color: "text-emerald-500", bg: "bg-emerald-50", icon: <CheckCircle2 className="w-3 h-3" /> };
     }
     if (avg >= 5) {

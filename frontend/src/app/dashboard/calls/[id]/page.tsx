@@ -52,13 +52,13 @@ export default function CallDetailPage() {
     switch (status) {
       case 'APROVADO': 
         return { icon: <CheckCircle2 className="w-4 h-4" />, color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-100', label: 'Aprovado' };
-      case 'ATENCAO': 
-        return { 
-          icon: <AlertTriangle className="w-4 h-4" />, 
-          color: 'text-sky-600', // Azul
-          bg: 'bg-sky-50',       // Azul Bebê
-          border: 'border-sky-100', 
-          label: 'Atenção' 
+      case 'ATENCAO':
+        return {
+          icon: <AlertTriangle className="w-4 h-4" />,
+          color: 'text-sky-600',
+          bg: 'bg-sky-50',
+          border: 'border-sky-100',
+          label: 'Atenção'
         };
       case 'REPROVADO': 
         return { icon: <XCircle className="w-4 h-4" />, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-100', label: 'Reprovado' };

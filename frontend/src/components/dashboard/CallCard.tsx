@@ -29,7 +29,7 @@ export function CallCard({ call }: CallCardProps) {
   const getTheme = () => {
     if (!isDone || isRotaC || isSkipped) return { bg: "bg-slate-200", text: "text-slate-400" };
     const score = Number(call.nota_spin || 0);
-    if (score > 8) return { bg: "bg-emerald-500", text: "text-emerald-600" }; // Verde
+    if (score >= 8) return { bg: "bg-emerald-500", text: "text-emerald-600" }; // Verde
     if (score >= 5) return { bg: "bg-sky-300", text: "text-sky-500" };      // Azul Bebê
     return { bg: "bg-rose-500", text: "text-rose-600" };                   // Vermelho
   };

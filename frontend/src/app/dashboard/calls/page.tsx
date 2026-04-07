@@ -89,7 +89,7 @@ export default function CallsListPage() {
     }
 
     // 🚩 AJUSTE DE CORES E REGRAS DE NOTA
-    if (nota > 8) {
+    if (nota >= 8) {
       return (
         <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 shadow-none uppercase text-[9px] font-bold">
           <CheckCircle2 className="w-3 h-3 mr-1" /> Aprovado
