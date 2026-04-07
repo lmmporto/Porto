@@ -7,7 +7,6 @@ import { Strategy as GoogleStrategy, type Profile } from 'passport-google-oauth2
 import { CONFIG } from './config.js';
 import { processCall } from './services/processCall.js';
 
-// 🚩 NOVOS IMPORTS DE ROTAS GRANULARES
 import callsRouter from './routes/calls.js';
 import statsRouter from './routes/stats.js';
 import healthRouter from './routes/health.js';
@@ -39,18 +38,15 @@ app.use(
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Log de requisições
 app.use((req: Request, _res: Response, next: NextFunction) => {
   console.log(`[HTTP] ${new Date().toISOString()} ${req.method} ${req.originalUrl}`);
   next();
 });
 
-// Verificação de variáveis de ambiente
 if (!CONFIG.SESSION_SECRET || !CONFIG.GOOGLE_CLIENT_ID || !CONFIG.GOOGLE_CLIENT_SECRET || !CONFIG.GOOGLE_CALLBACK_URL || !CONFIG.ALLOWED_EMAIL_DOMAIN || !CONFIG.FRONTEND_URL) {
   throw new Error('Variáveis de ambiente de configuração (Auth/URL) faltando.');
 }
 
-// --- CONFIGURAÇÃO DE SESSÃO OTIMIZADA ---
 app.use(
   session({
     name: 'sdr.sid',
@@ -62,7 +58,7 @@ app.use(
       httpOnly: true,
       secure: CONFIG.NODE_ENV === 'production',
       sameSite: CONFIG.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 dias de duração
+      maxAge: 1000 * 60 * 60 * 24 * 7,
     },
   })
 );
@@ -112,8 +108,6 @@ passport.use(
   )
 );
 
-// --- ROTAS DE AUTENTICAÇÃO ---
-
 app.get(
   '/auth/google',
   passport.authenticate('google', {
@@ -134,12 +128,32 @@ app.get(
   }
 );
 
-app.get('/auth/me', (req: any, res: Response) => {
+// 🚩 ROTA ATUALIZADA COM VERIFICAÇÃO DE ADMIN
+app.get('/auth/me', async (req: any, res: Response) => {
   if (req.isAuthenticated && req.isAuthenticated()) {
-    return res.status(200).json({
-      authenticated: true,
-      user: req.user,
-    });
+    try {
+      const userEmail = req.user.email;
+      
+      // Busca na gaveta de configurações se esse e-mail é Admin
+      const { db } = await import('./firebase.js');
+      const doc = await db.collection("configuracoes").doc("gerais").get();
+      const admins = doc.data()?.admins || [];
+      const isAdmin = admins.includes(userEmail);
+
+      return res.status(200).json({
+        authenticated: true,
+        user: req.user,
+        isAdmin: isAdmin
+      });
+    } catch (error) {
+      console.error("❌ [AUTH ME ERROR]:", error);
+      // Fallback seguro: autenticado, mas sem poderes de admin em caso de erro no banco
+      return res.status(200).json({
+        authenticated: true,
+        user: req.user,
+        isAdmin: false
+      });
+    }
   }
   return res.status(401).json({ authenticated: false });
 });
@@ -154,8 +168,6 @@ app.post('/auth/logout', (req: any, res: Response) => {
   });
 });
 
-// --- RESTO DAS ROTAS (Health, API, Debug) ---
-
 app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 app.get('/api/debug-reprocess/:id', async (req: any, res: any) => {
@@ -168,7 +180,6 @@ app.get('/api/debug-reprocess/:id', async (req: any, res: any) => {
   }
 });
 
-// 🚩 SUBSTITUIÇÃO DO ROTEADOR CENTRAL PELOS ESPECÍFICOS
 app.use('/api/calls', callsRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/health', healthRouter);
