@@ -50,11 +50,22 @@ export default function CallDetailPage() {
 
   const getStatusConfig = (status: StatusFinal | "NAO_SE_APLICA") => {
     switch (status) {
-      case 'APROVADO': return { icon: <CheckCircle2 className="w-4 h-4" />, color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-100', label: 'Aprovado' };
-      case 'ATENCAO': return { icon: <AlertTriangle className="w-4 h-4" />, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-100', label: 'Atenção' };
-      case 'REPROVADO': return { icon: <XCircle className="w-4 h-4" />, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-100', label: 'Reprovado' };
-      case 'NAO_SE_APLICA': return { icon: <MinusCircle className="w-4 h-4" />, color: 'text-slate-500', bg: 'bg-slate-100', border: 'border-slate-200', label: 'Descarte' };
-      default: return { icon: <Zap className="w-4 h-4" />, color: 'text-slate-400', bg: 'bg-slate-50', border: 'border-slate-100', label: 'Pendente' };
+      case 'APROVADO': 
+        return { icon: <CheckCircle2 className="w-4 h-4" />, color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-100', label: 'Aprovado' };
+      case 'ATENCAO': 
+        return { 
+          icon: <AlertTriangle className="w-4 h-4" />, 
+          color: 'text-sky-600', // Azul
+          bg: 'bg-sky-50',       // Azul Bebê
+          border: 'border-sky-100', 
+          label: 'Atenção' 
+        };
+      case 'REPROVADO': 
+        return { icon: <XCircle className="w-4 h-4" />, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-100', label: 'Reprovado' };
+      case 'NAO_SE_APLICA': 
+        return { icon: <MinusCircle className="w-4 h-4" />, color: 'text-slate-500', bg: 'bg-slate-100', border: 'border-slate-200', label: 'Descarte' };
+      default: 
+        return { icon: <Zap className="w-4 h-4" />, color: 'text-slate-400', bg: 'bg-slate-50', border: 'border-slate-100', label: 'Pendente' };
     }
   };
 

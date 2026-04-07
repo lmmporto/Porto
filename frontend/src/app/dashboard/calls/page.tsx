@@ -31,9 +31,7 @@ export default function CallsListPage() {
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
 
-  // 🚩 LIGAÇÃO DOS FIOS (Padrão de Busca Atômica)
   useEffect(() => {
-    // Como esta é a listagem geral, iniciamos com filtros padrão
     const filtrosParaEnviar = {
       startDate: '',
       endDate: '',
@@ -41,10 +39,7 @@ export default function CallsListPage() {
       minScore: 0
     };
 
-    // 1. Guarda na gaveta para uso futuro (paginação)
     updateFilters(filtrosParaEnviar);
-
-    // 2. 🚩 MANDA BUSCAR NA HORA (Passando o objeto direto para ignorar o delay do React)
     fetchData(true, filtrosParaEnviar);
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -93,7 +88,8 @@ export default function CallsListPage() {
       );
     }
 
-    if (nota >= 7.5) {
+    // 🚩 AJUSTE DE CORES E REGRAS DE NOTA
+    if (nota > 8) {
       return (
         <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 shadow-none uppercase text-[9px] font-bold">
           <CheckCircle2 className="w-3 h-3 mr-1" /> Aprovado
@@ -102,7 +98,7 @@ export default function CallsListPage() {
     } 
     if (nota >= 5) {
       return (
-        <Badge className="bg-amber-50 text-amber-700 border-amber-200 shadow-none uppercase text-[9px] font-bold">
+        <Badge className="bg-sky-50 text-sky-700 border-sky-200 shadow-none uppercase text-[9px] font-bold">
           <AlertCircle className="w-3 h-3 mr-1" /> Atenção
         </Badge>
       );

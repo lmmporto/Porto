@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from 'react';
-import { Trophy, ArrowRight, CheckCircle2, MinusCircle, Phone, Timer, Users } from 'lucide-react';
+import { Trophy, ArrowRight, CheckCircle2, AlertCircle, Phone, Timer, Users } from 'lucide-react';
 import Link from 'next/link';
 import type { DashboardSummary } from '@/types';
 import { cn } from '@/lib/utils';
@@ -24,15 +24,12 @@ interface SDRRankingProps {
 }
 
 export function SDRRanking({ summary }: SDRRankingProps) {
-  // 🚩 REVISÃO DE LÓGICA SÊNIOR: Garantindo que o objeto nunca seja null/undefined antes da iteração
   const ranking = useMemo(() => {
-    const entries = Object.entries(summary?.sdr_ranking ?? {}); // 🚩 ?? {} garante a segurança técnica
+    const entries = Object.entries(summary?.sdr_ranking ?? {});
 
     return entries
       .map(([name, stats]: [string, any]) => {
-        // VOLUME: Todas as chamadas registradas no banco
         const totalCalls = Number(stats.calls || 0);
-        // AVALIADAS: Apenas as que passaram pela IA
         const validCount = Number(stats.valid_calls || 0);
         const sumNotes = Number(stats.sum_notes || 0);
         const avgSpin = validCount > 0 ? sumNotes / validCount : 0;
@@ -47,6 +44,7 @@ export function SDRRanking({ summary }: SDRRankingProps) {
       .sort((a, b) => b.avgSpin - a.avgSpin);
   }, [summary]);
 
+  // 🚩 LÓGICA DE COR ATUALIZADA CONFORME NOVA RÉGUA
   const getStatusConfig = (avg: number, hasAnalyzed: boolean) => {
     if (!hasAnalyzed) {
       return { 
@@ -56,8 +54,12 @@ export function SDRRanking({ summary }: SDRRankingProps) {
       };
     }
     
-    if (avg >= 7.5) return { color: "text-emerald-500", bg: "bg-emerald-50", icon: <CheckCircle2 className="w-3 h-3" /> };
-    if (avg >= 5) return { color: "text-amber-500", bg: "bg-amber-50", icon: <MinusCircle className="w-3 h-3" /> };
+    if (avg > 8) {
+      return { color: "text-emerald-500", bg: "bg-emerald-50", icon: <CheckCircle2 className="w-3 h-3" /> };
+    }
+    if (avg >= 5) {
+      return { color: "text-sky-500", bg: "bg-sky-50", icon: <AlertCircle className="w-3 h-3" /> };
+    }
     
     return { 
       color: "text-rose-500", 
@@ -66,7 +68,6 @@ export function SDRRanking({ summary }: SDRRankingProps) {
     };
   };
 
-  // 🚩 FALLBACK: Se não houver entradas no ranking após o processamento
   if (ranking.length === 0) {
     return (
       <div className="bg-white border border-slate-100 rounded-xl p-8 text-center">

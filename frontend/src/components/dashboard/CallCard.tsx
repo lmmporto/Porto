@@ -17,7 +17,6 @@ export function CallCard({ call }: CallCardProps) {
   
   const displayScore = isDone && !isRotaC ? Number(call.nota_spin || 0).toFixed(1) : '--';
   
-  // 🚩 AJUSTE DE STATUS TEXT (CONFORME SOLICITADO)
   const statusText = isRotaC 
     ? 'ROTA C' 
     : isSkipped 
@@ -26,27 +25,23 @@ export function CallCard({ call }: CallCardProps) {
         ? 'NOTA SPIN' 
         : 'PROCESSANDO';
 
-  // 🚩 SISTEMA DE CORES
+  // 🚩 SISTEMA DE CORES ATUALIZADO
   const getTheme = () => {
     if (!isDone || isRotaC || isSkipped) return { bg: "bg-slate-200", text: "text-slate-400" };
     const score = Number(call.nota_spin || 0);
-    if (score >= 7.5) return { bg: "bg-emerald-500", text: "text-emerald-600" };
-    if (score >= 5) return { bg: "bg-amber-500", text: "text-amber-600" };
-    return { bg: "bg-rose-500", text: "text-rose-600" };
+    if (score > 8) return { bg: "bg-emerald-500", text: "text-emerald-600" }; // Verde
+    if (score >= 5) return { bg: "bg-sky-300", text: "text-sky-500" };      // Azul Bebê
+    return { bg: "bg-rose-500", text: "text-rose-600" };                   // Vermelho
   };
 
   const theme = getTheme();
 
-  // 🚩 FORMATADOR DE DATA ROBUSTO (CONFORME SOLICITADO)
   const formatSimpleDate = (dateInput: any) => {
     if (!dateInput) return '--/--';
-    
     const seconds = dateInput?._seconds || dateInput?.seconds || (typeof dateInput === 'number' ? dateInput : null);
-    
     try {
       const date = seconds ? new Date(seconds * 1000) : new Date(dateInput);
       if (isNaN(date.getTime())) return '--/--';
-      
       return date.toLocaleDateString('pt-BR', { 
         day: '2-digit', 
         month: '2-digit', 
@@ -112,7 +107,6 @@ export function CallCard({ call }: CallCardProps) {
             
             <span className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1.5">
               {statusText}
-              {/* 🚩 FEEDBACK DE PROCESSAMENTO ATUALIZADO */}
               {call.processingStatus === 'PROCESSING' && <Hourglass className="w-3 h-3 text-slate-300 animate-spin" />}
               {isRotaC && <MinusCircle className="w-3 h-3 text-slate-300" />}
             </span>
