@@ -1,30 +1,40 @@
 "use client";
-import { createContext, useContext, useState, useCallback } from 'react';
-import type { SDRCall } from '@/types';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 
 const DashboardContext = createContext<any>(null);
 
 export function DashboardProvider({ children }: { children: React.ReactNode }) {
-  const [calls, setCalls] = useState<SDRCall[]>([]);
+  const [calls, setCalls] = useState([]);
+  const [user, setUser] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [filters, setFilters] = useState({ minScore: 0, startDate: '', endDate: '', ownerName: '' });
 
-  const fetchData = useCallback(async (isReset = false) => {
+  // Pergunta quem é o usuário assim que abre o site
+  const checkUser = useCallback(async () => {
+    try {
+      const res = await fetch('/auth/me');
+      const data = await res.json();
+      if (data.authenticated) setUser(data.user);
+    } catch (e) { console.error("Erro ao checar usuário"); }
+  }, []);
+
+  const fetchData = useCallback(async (filters = {}) => {
     setIsLoading(true);
     try {
-      let url = `/api/calls?limit=10&minScore=${filters.minScore}`;
-      if (filters.startDate) url += `&startDate=${filters.startDate}&endDate=${filters.endDate}`;
-      if (filters.ownerName) url += `&ownerName=${encodeURIComponent(filters.ownerName)}`;
-      
+      let url = `/api/calls?limit=10`;
+      // Adiciona filtros na URL se existirem...
       const res = await fetch(url);
       const data = await res.json();
-      setCalls(isReset ? data.calls : [...calls, ...data.calls]);
+      setCalls(data.calls || []);
+      setIsAdmin(data.isAdmin || false); // O servidor diz se ele é admin
     } catch (e) { console.error(e); } 
     finally { setIsLoading(false); }
-  }, [filters, calls]);
+  }, []);
+
+  useEffect(() => { checkUser(); }, [checkUser]);
 
   return (
-    <DashboardContext.Provider value={{ calls, isLoading, fetchData, setFilters }}>
+    <DashboardContext.Provider value={{ calls, user, isAdmin, isLoading, fetchData }}>
       {children}
     </DashboardContext.Provider>
   );
