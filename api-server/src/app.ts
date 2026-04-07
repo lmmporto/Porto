@@ -26,11 +26,12 @@ declare global {
 
 const app: Express = express();
 
+// 🚩 Configuração vital para proxies (Render/Heroku/Cloudflare)
 app.set('trust proxy', 1);
 
 app.use(
   cors({
-    origin: CONFIG.FRONTEND_URL,
+    origin: CONFIG.FRONTEND_URL, // 🚩 Certifique-se que não tem "/" no final no .env
     credentials: true,
   })
 );
@@ -47,18 +48,20 @@ if (!CONFIG.SESSION_SECRET || !CONFIG.GOOGLE_CLIENT_ID || !CONFIG.GOOGLE_CLIENT_
   throw new Error('Variáveis de ambiente de configuração (Auth/URL) faltando.');
 }
 
+// --- CONFIGURAÇÃO DE SESSÃO BLINDADA PARA CROSS-ORIGIN ---
 app.use(
   session({
     name: 'sdr.sid',
     secret: CONFIG.SESSION_SECRET,
-    resave: true,
+    resave: false, // 🚩 Recomendado: evita salvar sessões sem alteração
     saveUninitialized: false,
     rolling: true,
+    proxy: true, // 🚩 Informa ao session que ele está atrás de um proxy
     cookie: {
       httpOnly: true,
-      secure: CONFIG.NODE_ENV === 'production',
-      sameSite: CONFIG.NODE_ENV === 'production' ? 'none' : 'lax',
-      maxAge: 1000 * 60 * 60 * 24 * 7,
+      secure: true, // 🚩 Obrigatório para sameSite: 'none'
+      sameSite: 'none', // 🚩 Permite envio de cookies entre domínios diferentes (Vercel -> Render)
+      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 dias
     },
   })
 );
@@ -108,6 +111,8 @@ passport.use(
   )
 );
 
+// --- ROTAS DE AUTENTICAÇÃO ---
+
 app.get(
   '/auth/google',
   passport.authenticate('google', {
@@ -128,13 +133,10 @@ app.get(
   }
 );
 
-// 🚩 ROTA ATUALIZADA COM VERIFICAÇÃO DE ADMIN
 app.get('/auth/me', async (req: any, res: Response) => {
   if (req.isAuthenticated && req.isAuthenticated()) {
     try {
       const userEmail = req.user.email;
-      
-      // Busca na gaveta de configurações se esse e-mail é Admin
       const { db } = await import('./firebase.js');
       const doc = await db.collection("configuracoes").doc("gerais").get();
       const admins = doc.data()?.admins || [];
@@ -146,13 +148,7 @@ app.get('/auth/me', async (req: any, res: Response) => {
         isAdmin: isAdmin
       });
     } catch (error) {
-      console.error("❌ [AUTH ME ERROR]:", error);
-      // Fallback seguro: autenticado, mas sem poderes de admin em caso de erro no banco
-      return res.status(200).json({
-        authenticated: true,
-        user: req.user,
-        isAdmin: false
-      });
+      return res.status(200).json({ authenticated: true, user: req.user, isAdmin: false });
     }
   }
   return res.status(401).json({ authenticated: false });
@@ -162,7 +158,11 @@ app.post('/auth/logout', (req: any, res: Response) => {
   req.logout((logoutErr: any) => {
     if (logoutErr) return res.status(500).json({ success: false });
     req.session.destroy(() => {
-      res.clearCookie('sdr.sid');
+      res.clearCookie('sdr.sid', {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none'
+      });
       return res.status(200).json({ success: true });
     });
   });
@@ -170,25 +170,12 @@ app.post('/auth/logout', (req: any, res: Response) => {
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
-app.get('/api/debug-reprocess/:id', async (req: any, res: any) => {
-  try {
-    const callId = req.params.id;
-    const result = await processCall(callId);
-    res.json({ message: "Re-processamento concluído!", result });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
 app.use('/api/calls', callsRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/health', healthRouter);
 
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
-  console.error('💥 [GLOBAL ERROR HANDLER]:', {
-    message: err.message,
-    path: req.originalUrl,
-  });
+  console.error('💥 [GLOBAL ERROR HANDLER]:', err.message);
   res.status(500).json({ success: false, error: err.message });
 });
 
