@@ -53,13 +53,7 @@ export default function CallDetailPage() {
       case 'APROVADO': 
         return { icon: <CheckCircle2 className="w-4 h-4" />, color: 'text-green-600', bg: 'bg-green-50', border: 'border-green-100', label: 'Aprovado' };
       case 'ATENCAO':
-        return {
-          icon: <AlertTriangle className="w-4 h-4" />,
-          color: 'text-sky-600',
-          bg: 'bg-sky-50',
-          border: 'border-sky-100',
-          label: 'Atenção'
-        };
+        return { icon: <AlertTriangle className="w-4 h-4" />, color: 'text-sky-600', bg: 'bg-sky-50', border: 'border-sky-100', label: 'Atenção' };
       case 'REPROVADO': 
         return { icon: <XCircle className="w-4 h-4" />, color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-100', label: 'Reprovado' };
       case 'NAO_SE_APLICA': 
@@ -74,6 +68,14 @@ export default function CallDetailPage() {
 
   const status = getStatusConfig(call.status_final);
   const isRotaC = call.status_final === 'NAO_SE_APLICA';
+
+  // 🚩 LÓGICA PARA MONTAR O LINK DO HUBSPOT
+  const actualHubspotId = call.hubspotCallId || call.callId || call.id;
+  const actualPortalId = call.portalId || '1554114'; 
+  
+  const hubspotReviewUrl = actualHubspotId 
+    ? `https://app.hubspot.com/calls/${actualPortalId}/review/${actualHubspotId}`
+    : null;
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-20 px-4 md:px-0 animate-in fade-in duration-500">
@@ -91,6 +93,25 @@ export default function CallDetailPage() {
               <span className="flex items-center gap-2"><User className="w-4 h-4" /><span className="font-bold text-slate-700">{call.ownerName}</span></span>
               <span className="flex items-center gap-2 font-medium"><Clock className="w-4 h-4" /> {(call.durationMs / 60000).toFixed(1)} min</span>
               <span className="flex items-center gap-2 font-medium"><Calendar className="w-4 h-4" /> {formatDate(call.callTimestamp || call.analyzedAt)}</span>
+            </div>
+
+            <div className="flex gap-2 pt-2"> 
+              {call.recordingUrl && (
+                <Button asChild variant="outline" size="sm" className="border-indigo-100 bg-indigo-50/30 text-indigo-600 hover:bg-indigo-600 hover:text-white h-9 rounded-xl">
+                  <a href={call.recordingUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 font-bold uppercase tracking-wider text-[9px]">
+                    <Mic className="w-3.5 h-3.5" /> Ouvir Gravação
+                  </a>
+                </Button>
+              )}
+
+              {/* 🚩 NOVO: Botão Ver no HubSpot */}
+              {hubspotReviewUrl && (
+                <Button asChild variant="outline" size="sm" className="border-orange-100 bg-orange-50/30 text-orange-600 hover:bg-orange-600 hover:text-white h-9 rounded-xl">
+                  <a href={hubspotReviewUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 font-bold uppercase tracking-wider text-[9px]">
+                    <ExternalLink className="w-3.5 h-3.5" /> Ver no HubSpot
+                  </a>
+                </Button>
+              )}
             </div>
           </div>
           <div className="bg-white border border-slate-100 rounded-2xl p-6 flex flex-col items-center justify-center min-w-[150px] shadow-sm">
