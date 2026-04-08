@@ -6,7 +6,7 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy, type Profile } from 'passport-google-oauth20';
 import { CONFIG } from './config.js';
 import { processCall } from './services/processCall.js';
-import sdrRegistryRouter from './routes/sdr-registro.js'; // Verifique o nome exato do arquivo
+import sdrRegistryRouter from './routes/sdr-registro.js';
 import callsRouter from './routes/calls.js';
 import statsRouter from './routes/stats.js';
 import healthRouter from './routes/health.js';
@@ -29,9 +29,14 @@ const app: Express = express();
 // 🚩 Configuração vital para proxies (Render/Heroku/Cloudflare)
 app.set('trust proxy', 1);
 
+// 🚩 AJUSTE DE CORS: Suporte a múltiplos ambientes
 app.use(
   cors({
-    origin: CONFIG.FRONTEND_URL, // 🚩 Certifique-se que não tem "/" no final no .env
+    origin: [
+      'http://localhost:3001',      // Seu Front local (porta 3001)
+      'http://localhost:3000',      // Seu Front local (porta 3000)
+      'https://sdr-pjt.vercel.app'  // Seu Front produção
+    ],
     credentials: true,
   })
 );
@@ -53,14 +58,14 @@ app.use(
   session({
     name: 'sdr.sid',
     secret: CONFIG.SESSION_SECRET,
-    resave: false, // 🚩 Recomendado: evita salvar sessões sem alteração
+    resave: false,
     saveUninitialized: false,
     rolling: true,
-    proxy: true, // 🚩 Informa ao session que ele está atrás de um proxy
+    proxy: true,
     cookie: {
       httpOnly: true,
-      secure: true, // 🚩 Obrigatório para sameSite: 'none'
-      sameSite: 'none', // 🚩 Permite envio de cookies entre domínios diferentes (Vercel -> Render)
+      secure: true, 
+      sameSite: 'none', 
       maxAge: 1000 * 60 * 60 * 24 * 7, // 7 dias
     },
   })
