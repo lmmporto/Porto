@@ -1,20 +1,27 @@
 import { useState, useCallback, useRef } from 'react';
-// 🚩 IMPORTANTE: Use o tipo global que definimos antes para manter a consistência
 import type { SDRCall, CallFilters } from '@/types';
+import { useDashboard } from '@/context/DashboardContext'; 
 
 export function useCalls(limit = 10) {
+  const { user } = useDashboard(); 
+
   const [calls, setCalls] = useState<SDRCall[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastVisible, setLastVisible] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  
-  // Inicializamos com um objeto vazio tipado
   const [filters, setFilters] = useState<CallFilters>({});
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchData = useCallback(async (isReset = false, overrideFilters?: CallFilters) => {
-    // 🚩 Lógica de AbortController (Muito boa, mantida)
+    // 🚩 PROTEÇÃO: Se não temos o usuário logado ainda e nenhum filtro específico, não buscamos nada!
+    const activeFilters = overrideFilters || filters;
+    if (!user?.email && !activeFilters.ownerEmail) {
+      console.warn("⚠️ [useCalls] Busca bloqueada: Usuário não autenticado e sem filtro de e-mail.");
+      return;
+    }
+
+    // Lógica de AbortController (Evita Race Conditions)
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -26,16 +33,14 @@ export function useCalls(limit = 10) {
     setError(null);
 
     try {
-      const activeFilters = overrideFilters || filters;
       const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
       
       const params = new URLSearchParams();
       params.append('limit', String(limit));
 
-      // 🚩 Limpeza de filtros: Removendo o 'any' e usando tipagem segura
+      // 1. Aplica filtros ativos limpos
       Object.entries(activeFilters).forEach(([key, value]) => {
         if (value !== undefined && value !== null && value !== '' && value !== 'undefined') {
-          // Se o valor for um array (ex: statusFinal), enviamos como string separada por vírgula ou múltiplos campos
           if (Array.isArray(value)) {
             params.append(key, value.join(','));
           } else {
@@ -44,11 +49,17 @@ export function useCalls(limit = 10) {
         }
       });
 
+      // 2. 🚩 BLINDAGEM: Injeta o e-mail do usuário logado se não houver filtro específico
+      if (!activeFilters.ownerEmail && user?.email) {
+        params.set('ownerEmail', user.email);
+      }
+
       if (!isReset && lastVisible) {
         params.append('lastVisible', lastVisible);
       }
 
       const url = `${baseUrl}/api/calls?${params.toString()}`;
+      
       console.log(`🔎 [BUSCA ATÔMICA] URL: ${url}`);
 
       const res = await fetch(url, { 
@@ -75,22 +86,18 @@ export function useCalls(limit = 10) {
         setIsLoading(false);
       }
     }
-    // 🚩 Removi 'lastVisible' e 'filters' das dependências para evitar loop infinito
-    // se o fetchData for chamado dentro de um useEffect que reage a eles.
-  }, [limit]); 
+  }, [limit, lastVisible, filters, user]);
 
   const updateFilters = useCallback((newFilters: CallFilters) => {
     setFilters(newFilters);
     setLastVisible(null);
-    // Dica Sênior: Geralmente, ao dar update nos filtros, 
-    // queremos disparar o fetchData(true, newFilters) imediatamente
   }, []);
 
   return { 
     calls, 
     isLoading, 
     error, 
-    filters, // 🚩 AQUI ESTAVA O ERRO: Agora o context consegue enxergar os filtros!
+    filters, 
     fetchData, 
     updateFilters, 
     hasMore: !!lastVisible 

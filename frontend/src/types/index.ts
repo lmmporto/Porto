@@ -12,9 +12,6 @@ export type CallSource = "HUBSPOT" | "MANUAL";
 
 /**
  * Status de processamento no Backend.
- * DONE: Processado com sucesso.
- * SKIPPED_*: Motivos pelos quais a call foi ignorada.
- * FAILED_ANALYSIS: Erro técnico no processamento.
  */
 export type ProcessingStatus = 
   | 'DONE' 
@@ -31,26 +28,24 @@ export type ProcessingStatus =
 
 /**
  * Filtros globais para listagem de ligações e dashboards.
- * Adicionado para resolver o erro de importação no Context.
+ * 🚩 ALINHADO COM BACKEND (ownerName)
  */
 export interface CallFilters {
+  ownerName?: string;     // Identificador do SDR no Firestore
   startDate?: string;
   endDate?: string;
-  searchTerm?: string;
-  statusFinal?: StatusFinal[];
-  ownerIds?: string[];
-  teamIds?: string[];
   minScore?: number;
+  sort?: string;
+  [key: string]: any;     // Flexibilidade controlada
 }
 
 /**
- * Entidade principal representativa de uma ligação (SDR Call).
+ * Entidade principal representativa de uma ligação.
  */
 export interface SDRCall {
   id: string;
   callId: string;
   
-  // Integração HubSpot - Tipado como string (ISO) ou Date para evitar 'any'
   hubspotCallId?: string; 
   portalId?: string;
   callTimestamp: string; 
@@ -61,7 +56,7 @@ export interface SDRCall {
   title: string;
   ownerId: string | null;
   ownerName: string;
-  ownerUserId: string | null;
+  ownerEmail: string; // E-mail usado para a trava de segurança
   teamId: string | null;
   teamName: string;
   durationMs: number;
@@ -84,7 +79,7 @@ export interface SDRCall {
 }
 
 /**
- * Entrada de dados para o ranking de performance por SDR.
+ * Entrada de dados para o ranking de performance.
  */
 export interface SDRRankingEntry {
   calls: number;         
@@ -102,9 +97,5 @@ export interface DashboardSummary {
   sum_notes: number;
   media_geral: number;
   sdr_ranking: Record<string, SDRRankingEntry>;
-  
-  // Metadados de controle
   empty?: boolean;
-  message?: string;
-  _debug_version?: string;
 }
