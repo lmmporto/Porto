@@ -312,4 +312,66 @@ export async function updateSdrGlobalStats(ownerName: string, nota: number) {
   } catch (error) {
     console.error(`❌ [ERRO NO PLACAR] Falha ao atualizar ${ownerName}:`, error);
   }
+}/**
+ * 🔍 BUSCA PAGINADA DE ANÁLISES (Data Access Layer)
+ * Implementada com suporte ao índice composto (ownerEmail + callTimestamp)
+ */
+export async function listAnalyses(filters: any, limitCount: number = 10) {
+  try {
+    console.log(`\n--- 🔍 BUSCA DE ANÁLISES: limit=${limitCount} ---`);
+
+    // 1. Referência base com a ordenação obrigatória do índice composto
+    let query: FirebaseFirestore.Query = db.collection('calls_analysis')
+      .orderBy('callTimestamp', 'desc')
+      .orderBy('__name__', 'asc'); // Desempate obrigatório para paginação estável
+
+    // 2. Filtros Dinâmicos (Cláusulas WHERE)
+    // Nota: O índice composto suporta (ownerEmail == '...') + (callTimestamp DESC)
+    if (filters.ownerEmail) {
+      query = query.where('ownerEmail', '==', filters.ownerEmail);
+    }
+
+    if (filters.status_final) {
+      query = query.where('status_final', '==', filters.status_final);
+    }
+
+    // 3. Paginação por Cursor (Performance Sênior)
+    // Em vez de 'offset' (lento), usamos 'startAfter' com o último ID processado
+    if (filters.lastVisible) {
+      const lastDoc = await db.collection('calls_analysis').doc(filters.lastVisible).get();
+      if (lastDoc.exists) {
+        query = query.startAfter(lastDoc);
+      }
+    }
+
+    // 4. Execução da Query
+    const snapshot = await query.limit(limitCount).get();
+
+    if (snapshot.empty) {
+      return { calls: [], lastVisible: null };
+    }
+
+    // 5. Mapeamento e Formatação
+    const calls = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        ...data,
+        // Garante que timestamps do Firestore virem ISO strings para o Frontend
+        callTimestamp: data.callTimestamp?.toDate?.()?.toISOString() || data.callTimestamp,
+        createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
+      };
+    });
+
+    const lastVisible = snapshot.docs[snapshot.docs.length - 1].id;
+
+    return {
+      calls,
+      lastVisible
+    };
+
+  } catch (error: any) {
+    console.error("❌ [LIST_ANALYSES ERROR]:", error.message);
+    throw new Error(`Erro ao listar análises: ${error.message}`);
+  }
 }
