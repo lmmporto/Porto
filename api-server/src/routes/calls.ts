@@ -32,19 +32,19 @@ router.get("/", async (req: Request, res: Response) => {
     const startAfter = req.query.lastVisible as string;
     const startDateParam = req.query.startDate as string;
     const endDateParam = req.query.endDate as string;
+    const filterEmail = req.query.ownerEmail as string; // 🚩 Parâmetro vindo do hook
 
-    // 🚩 LOG DE AUDITORIA
-    console.log(`🔎 [BUSCA] User: ${userEmail} | Admin: ${isAdmin} | Datas: ${startDateParam} a ${endDateParam}`);
+    console.log(`🔎 [BUSCA] User: ${userEmail} | Admin: ${isAdmin} | Filtro Email: ${filterEmail} | Datas: ${startDateParam} a ${endDateParam}`);
 
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
 
-    // 🚩 A TRAVA: Se não for admin, SÓ vê as próprias ligações pelo e-mail
-    if (!isAdmin) {
+    // 🚩 LÓGICA DE FILTRAGEM ROBUSTA
+    if (filterEmail) {
+      // Se o front pediu um e-mail específico, usa ele (Admin ou SDR buscando o seu)
+      query = query.where("ownerEmail", "==", filterEmail);
+    } else if (!isAdmin) {
+      // Se não pediu e não é admin, força o e-mail do usuário logado
       query = query.where("ownerEmail", "==", userEmail);
-    } else {
-      // Se for admin, ele pode filtrar por e-mail de outros via query param
-      const filterEmail = req.query.ownerEmail as string;
-      if (filterEmail) query = query.where("ownerEmail", "==", filterEmail);
     }
 
     // Filtros de Período Real (Usando callTimestamp)
@@ -67,7 +67,7 @@ router.get("/", async (req: Request, res: Response) => {
     }
 
     const snapshot = await query.limit(limit).get();
-    console.log(`✅ [BUSCA] Encontrados ${snapshot.size} documentos para ${userEmail}`);
+    console.log(`✅ [BUSCA] Encontrados ${snapshot.size} documentos`);
 
     const calls = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
@@ -82,44 +82,37 @@ router.get("/", async (req: Request, res: Response) => {
   }
 });
 
-// 2. DETALHE DA LIGAÇÃO COM VALIDAÇÃO DE PERMISSÃO E BLINDAGEM DE ID
+// 2. DETALHE DA LIGAÇÃO COM VALIDAÇÃO DE PERMISSÃO
 router.get("/:id", async (req: Request, res: Response) => {
   try {
     if (!req.isAuthenticated() || !req.user) {
       return res.status(401).json({ error: "Não autorizado" });
     }
 
-    // 🚩 SOLUÇÃO DO ERRO: Extração e validação rigorosa do ID
     const callId = req.params.id ? String(req.params.id).trim() : null;
-
     if (!callId || callId === 'undefined' || callId === 'null') {
-      return res.status(400).json({ error: "ID da ligação inválido ou não fornecido." });
+      return res.status(400).json({ error: "ID inválido." });
     }
     
-    // Agora o Firestore garante que o caminho é uma string válida
     const doc = await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).get();
-    
-    if (!doc.exists) {
-      return res.status(404).json({ error: "Ligação não encontrada no banco." });
-    }
+    if (!doc.exists) return res.status(404).json({ error: "Ligação não encontrada." });
     
     const callData = doc.data();
     const userEmail = (req.user as any).email;
     const isAdmin = await checkIfAdmin(userEmail);
 
-    // 🚩 TRAVA DE PRIVACIDADE
     if (!isAdmin && callData?.ownerEmail !== userEmail) {
-      return res.status(403).json({ error: "Você não tem permissão para ver esta ligação." });
+      return res.status(403).json({ error: "Permissão negada." });
     }
 
     res.json({ id: doc.id, ...callData });
   } catch (error: any) {
     console.error("❌ [DETAIL ERROR]:", error.message);
-    res.status(500).json({ error: "Erro interno ao buscar detalhes", details: error.message });
+    res.status(500).json({ error: "Erro interno" });
   }
 });
 
-// 3. WEBHOOK (Vital para entrada de dados)
+// 3. WEBHOOK
 router.post("/hubspot-webhook", async (req: Request, res: Response) => {
   try {
     const body = req.body;
@@ -130,7 +123,7 @@ router.post("/hubspot-webhook", async (req: Request, res: Response) => {
     const result = await handleIncomingCall({ ...body, callId: String(callId).trim() });
     res.status(202).json(result);
   } catch (error) {
-    res.status(500).json({ success: false, error: "Erro no processamento do webhook" });
+    res.status(500).json({ success: false, error: "Erro no webhook" });
   }
 });
 
