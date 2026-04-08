@@ -14,8 +14,9 @@ export function useCalls(limit = 10) {
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchData = useCallback(async (isReset = false, overrideFilters?: CallFilters) => {
-    // 🚩 PROTEÇÃO: Se não temos o usuário logado ainda e nenhum filtro específico, não buscamos nada!
     const activeFilters = overrideFilters || filters;
+    
+    // 🚩 PROTEÇÃO: Se não temos o usuário logado ainda e nenhum filtro específico, não buscamos nada!
     if (!user?.email && !activeFilters.ownerEmail) {
       console.warn("⚠️ [useCalls] Busca bloqueada: Usuário não autenticado e sem filtro de e-mail.");
       return;
@@ -88,18 +89,22 @@ export function useCalls(limit = 10) {
     }
   }, [limit, lastVisible, filters, user]);
 
+  // 🚩 LIMPEZA AGRESSIVA: Reseta estado ao aplicar novos filtros
   const updateFilters = useCallback((newFilters: CallFilters) => {
     setFilters(newFilters);
     setLastVisible(null);
+    setCalls([]); 
   }, []);
 
-  return { 
-    calls, 
-    isLoading, 
-    error, 
-    filters, 
-    fetchData, 
-    updateFilters, 
-    hasMore: !!lastVisible 
-  };
+  // No final do useCallsEngine.ts, altere o return:
+return { 
+  calls, 
+  setCalls, // 🚩 Adicionado para o Provider poder limpar
+  isLoading, 
+  error, 
+  filters, 
+  fetchData, 
+  updateFilters, 
+  hasMore: !!lastVisible 
+};
 }

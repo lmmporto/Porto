@@ -1,6 +1,6 @@
 "use client";
 import { createContext, useContext, ReactNode, useCallback } from 'react';
-import { useCalls } from '@/hooks/useCallsEngine'; // O hook motor que refatoramos
+import { useCalls } from '@/hooks/useCallsEngine';
 import type { SDRCall, CallFilters } from '@/types';
 
 interface CallContextType {
@@ -17,17 +17,18 @@ interface CallContextType {
 const CallContext = createContext<CallContextType | undefined>(undefined);
 
 export function CallProvider({ children }: { children: ReactNode }) {
-  const { calls, isLoading, error, filters, fetchData, updateFilters, hasMore } = useCalls();
+  // 🚩 Agora recebemos o setCalls do hook
+  const { calls, setCalls, isLoading, error, filters, fetchData, updateFilters, hasMore } = useCalls();
 
-  // Abstração para facilitar o uso nos componentes
   const applyFilter = useCallback((newFilters: CallFilters) => {
+    setCalls([]); // 🚩 LIMPEZA AGRESSIVA: A lista antiga some instantaneamente
     updateFilters(newFilters);
-    fetchData(true, newFilters); // Reset e busca atômica
-  }, [updateFilters, fetchData]);
+    fetchData(true, newFilters); 
+  }, [updateFilters, fetchData, setCalls]);
 
   const loadMore = useCallback(() => {
     if (!isLoading && hasMore) {
-      fetchData(false); // Paginação
+      fetchData(false);
     }
   }, [isLoading, hasMore, fetchData]);
 
