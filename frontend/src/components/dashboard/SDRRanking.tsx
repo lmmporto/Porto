@@ -21,7 +21,6 @@ export function SDRRanking({ summary }: SDRRankingProps) {
       .map(([key, stats]: [string, any]) => {
         return {
           name: stats.ownerName || key, 
-          // 🚩 AGORA ISSO VEM DO BACKEND (stats.ownerEmail)
           email: stats.ownerEmail || key, 
           totalCalls: Number(stats.calls || 0),
           validCount: Number(stats.valid_calls || 0),
@@ -46,11 +45,11 @@ export function SDRRanking({ summary }: SDRRankingProps) {
     return { color: "text-rose-500", bg: "bg-rose-50", icon: <ArrowRight className="w-3 h-3 rotate-45" /> };
   };
 
-  // 🚩 AÇÃO DE FILTRO SÊNIOR COM DEBUG
+  // 🚩 AÇÃO DE FILTRO SÊNIOR: Dispara busca pelo NOME (Backend traduzirá para e-mail)
   const handleSdrClick = (sdr: any) => {
     console.log("🔎 [DEBUG] SDR Ranking Click - Objeto SDR:", sdr);
-    console.log("🔎 [DEBUG] E-mail sendo enviado para filtro:", sdr.email);
-    applyFilter({ ownerEmail: sdr.email });
+    console.log("🔎 [DEBUG] Nome sendo enviado para filtro:", sdr.name);
+    applyFilter({ ownerName: sdr.name });
   };
 
   if (ranking.length === 0) {
