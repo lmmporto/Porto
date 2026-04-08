@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 import './globals.css';
-// 🚩 IMPORTANTE: Importe seus Providers aqui
-import { DashboardProvider } from '@/contexts/DashboardContext'; 
-import { CallProvider } from '@/contexts/CallContext';
+// 🚩 IMPORTANTE: Caminho corrigido para 'context' (singular)
+import { DashboardProvider } from '@/context/DashboardContext'; 
+import { CallProvider } from '@/context/CallContext';
 
 export const metadata: Metadata = {
   title: 'Análise de chamadas | Inteligência SDR',
@@ -16,8 +16,8 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR">
-      <body>
-        {/* 🚩 Ordem de Precedência: Autenticação envolve Dados de Negócio */}
+      <body className="font-body antialiased bg-background text-foreground min-h-screen">
+        {/* 🚩 Ordem de Precedência: Dashboard (Auth) envolve Call (Dados) */}
         <DashboardProvider>
           <CallProvider>
             {children}
