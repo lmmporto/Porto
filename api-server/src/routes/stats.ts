@@ -13,25 +13,49 @@ const BRAZIL_TIMEZONE = 'America/Sao_Paulo';
 let cachedStats: any = null;
 let lastCacheTime = 0;
 
+// Função auxiliar para saber se é Admin
+async function checkIfAdmin(email: string) {
+  try {
+    const doc = await db.collection("configuracoes").doc("gerais").get();
+    const admins = doc.data()?.admins || [];
+    return admins.includes(email);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * GET /summary (Relativo ao prefixo /api/stats)
  * Retorna o resumo de performance extraído do Placar Consolidado (sdr_stats).
  */
 router.get('/summary', async (req: Request, res: Response) => {
   try {
+    if (!req.isAuthenticated() || !req.user) {
+      return res.status(401).json({ error: "Não autorizado" });
+    }
+
+    const userEmail = (req.user as any).email;
+    const isAdmin = await checkIfAdmin(userEmail);
+
     const now = Date.now();
     
-    // 🚩 LÓGICA DE CACHE: Retorna o cache se tiver menos de 1 minuto
-    if (cachedStats && (now - lastCacheTime < 60000)) {
-      console.log(`📊 [STATS] Retornando resumo de performance do CACHE.`);
+    // 🚩 LÓGICA DE CACHE: Apenas para Admins para evitar vazamento entre SDRs
+    if (isAdmin && cachedStats && (now - lastCacheTime < 60000)) {
+      console.log(`📊 [STATS] Retornando resumo de performance do CACHE (Admin).`);
       return res.json(cachedStats);
     }
 
-    console.log(`📊 [STATS] Buscando resumo de performance do FIRESTORE...`);
+    console.log(`📊 [STATS] Buscando resumo de performance do FIRESTORE para: ${userEmail}`);
 
-    const snapshot = await db.collection('sdr_stats')
-      .orderBy('averageScore', 'desc')
-      .get();
+    // 🚩 REMOVIDO ORDER BY: Evita erro de índice composto quando filtrado por e-mail
+    let query: FirebaseFirestore.Query = db.collection('sdr_stats');
+
+    // 🚩 SEGURANÇA ABSOLUTA: Se não for Admin, filtra o ranking apenas para o e-mail dele
+    if (!isAdmin) {
+      query = query.where("ownerEmail", "==", userEmail);
+    }
+
+    const snapshot = await query.get();
 
     const sdr_ranking: Record<string, any> = {};
     let total_calls = 0;
@@ -59,6 +83,7 @@ router.get('/summary', async (req: Request, res: Response) => {
     const sdrNames = Object.keys(sdr_ranking);
     const totalSDRs = sdrNames.length || 1;
 
+    // Âncoras Dinâmicas (Médias do Time)
     const v_bar = total_calls / totalSDRs; 
     const m_bar = total_calls > 0 ? (sum_notes / total_calls) : 0; 
 
@@ -68,7 +93,9 @@ router.get('/summary', async (req: Request, res: Response) => {
       const M = s.valid_calls > 0 ? (s.sum_notes / s.valid_calls) : 0;
 
       if (V > 0) {
+        // 1. Qualidade Bayesiana (Puxa para a média se tiver pouco volume)
         const qualidade = (V * M + v_bar * m_bar) / (V + v_bar);
+        // 2. Fator de Tração (sqrt para suavizar prêmio por volume)
         const tracao = Math.sqrt(V / (v_bar || 1));
         s.nota_media = Number((qualidade * tracao).toFixed(1));
       } else {
@@ -82,11 +109,13 @@ router.get('/summary', async (req: Request, res: Response) => {
       sum_notes,
       media_geral: total_calls > 0 ? Number((sum_notes / total_calls).toFixed(2)) : 0,
       sdr_ranking: sdr_ranking,
-      version: "V6_TURBO_SCORE_DYNAMIC"
+      version: "V6_TURBO_SCORE_DYNAMIC_SECURE_NO_ORDER"
     };
 
-    cachedStats = resultado;
-    lastCacheTime = now;
+    if (isAdmin) {
+      cachedStats = resultado;
+      lastCacheTime = now;
+    }
 
     return res.json(resultado);
 
@@ -123,8 +152,6 @@ router.post("/rebuild-today-stats", async (req: Request, res: Response) => {
     let count = 0;
     for (const doc of snapshot.docs) {
       const callData = doc.data();
-      
-      // 🚩 GARANTIA: Identificador único para o rebuild
       const sdrIdentifier = callData.ownerEmail || callData.ownerName || "Desconhecido";
       
       const mockInitial = { status_final: 'NAO_IDENTIFICADO', nota_spin: null };

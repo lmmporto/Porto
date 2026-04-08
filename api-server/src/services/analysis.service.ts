@@ -155,10 +155,10 @@ export async function analyzeCallWithGemini(call: CallData, ownerDetails: OwnerD
   const prompt = `
 OBJETIVO: Especialista Sênior em SDR. Avaliação ADITIVA (0 a 10).
 FOCO: Ser construtivo, mas rigoroso. Identificar passividade e falta de "aperto" no cliente.
-
+ 
 PASSO 1: CLASSIFICAÇÃO DA ROTA (OBRIGATÓRIO)
-- ROTA A: Reagendamento / Follow-up (Lead que não apareceu ou pediu retorno).
-- ROTA B: Prospecção / Novo Agendamento (Primeiro contato/Filtro com Decisor).
+- ROTA A:Prospecção / Novo Agendamento (Primeiro contato/Filtro com Decisor).
+- ROTA B: Reagendamento / Follow-up (Lead que não apareceu ou pediu retorno).
 - ROTA C: Gatekeeper / Navegação (Falou com secretária/assistente para chegar no decisor).
 - ROTA D: Outros / Descarte (Número errado, spam, ligação caiu). Nota técnica = null.
 

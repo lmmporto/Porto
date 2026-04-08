@@ -37,23 +37,14 @@ router.get("/", async (req: Request, res: Response) => {
 
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
 
-    // 🚩 LÓGICA DE FILTRAGEM INTELIGENTE (E-mail ou Nome)
-    if (filterEmail) {
-      // Tenta verificar se o filtro passado existe como ownerEmail
-      const snapshotByEmail = await db.collection(CONFIG.CALLS_COLLECTION)
-        .where("ownerEmail", "==", filterEmail)
-        .limit(1)
-        .get();
-
-      if (!snapshotByEmail.empty) {
-        query = query.where("ownerEmail", "==", filterEmail);
-      } else {
-        // Se não achou por e-mail, tenta buscar pelo nome (fallback)
-        query = query.where("ownerName", "==", filterEmail);
-      }
-    } else if (!isAdmin) {
-      // Se não pediu filtro e não é admin, força o e-mail do usuário logado
+    // 🚩 SEGURANÇA ABSOLUTA: Se não for Admin, o filtro é FORÇADO para o e-mail do usuário
+    if (!isAdmin) {
       query = query.where("ownerEmail", "==", userEmail);
+    } else {
+      // Se for Admin, ele pode filtrar, mas se não enviar nada, vê tudo.
+      if (filterEmail) {
+        query = query.where("ownerEmail", "==", filterEmail);
+      }
     }
 
     // Filtros de Período Real (Usando callTimestamp)
