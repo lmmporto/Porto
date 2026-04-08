@@ -61,6 +61,7 @@ function SDRDetailContent() {
     router.replace(`?${params.toString()}`, { scroll: false });
   }, [searchParams, router]);
 
+  // 🚩 LIGAÇÃO DOS FIOS (Padrão de Busca Atômica)
   useEffect(() => {
     const agora = new Date();
     let start = '';
@@ -83,8 +84,9 @@ function SDRDetailContent() {
       end = customEndDate;
     }
     
+    // 🚩 FILTRO POR E-MAIL (decodedName é o e-mail vindo da rota)
     applyFilter({
-      ownerName: decodedName,
+      ownerEmail: decodedName, 
       startDate: start,
       endDate: end,
       sort: sortOrder,
@@ -252,7 +254,6 @@ function SDRDetailContent() {
           </div>
         )}
 
-        {/* 🚩 CORREÇÃO DE SINTAXE JSX AQUI */}
         {hasMore && (
           <div className="pt-4">
             <Button 

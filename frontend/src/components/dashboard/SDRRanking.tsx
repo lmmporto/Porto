@@ -6,25 +6,11 @@ import Link from 'next/link';
 import type { DashboardSummary } from '@/types';
 import { cn } from '@/lib/utils';
 
-// --- UTILS ---
-
-export const formatDate = (dateInput: any) => {
-  if (!dateInput) return '--/--';
-  const seconds = dateInput?._seconds || dateInput?.seconds;
-  if (seconds) {
-    return new Date(seconds * 1000).toLocaleDateString('pt-BR');
-  }
-  return new Date(dateInput).toLocaleDateString('pt-BR');
-};
-
-// --- COMPONENTE ---
-
 interface SDRRankingProps {
   summary: DashboardSummary | null;
 }
 
 export function SDRRanking({ summary }: SDRRankingProps) {
-  // 🚩 1. useMemo ATUALIZADO: Consome nota_media do Backend
   const ranking = useMemo(() => {
     const entries = Object.entries(summary?.sdr_ranking ?? {});
 
@@ -32,7 +18,7 @@ export function SDRRanking({ summary }: SDRRankingProps) {
       .map(([name, stats]: [string, any]) => {
         const totalCalls = Number(stats.calls || 0);
         const validCount = Number(stats.valid_calls || 0);
-        const avgSpin = Number(stats.nota_media || 0); // 🚩 Valor exato do Backend
+        const avgSpin = Number(stats.nota_media || 0); 
 
         return {
           name,
@@ -44,30 +30,19 @@ export function SDRRanking({ summary }: SDRRankingProps) {
       .sort((a, b) => b.avgSpin - a.avgSpin);
   }, [summary]);
 
-  // 🚩 2. LÓGICA DE CORES DO TEXTO
   const getScoreColor = (score: number) => {
-    if (score >= 8) return "text-emerald-600"; // Verde
-    if (score >= 5) return "text-sky-500";     // Azul Bebê
-    return "text-rose-600";                    // Vermelho
+    if (score >= 8) return "text-emerald-600";
+    if (score >= 5) return "text-sky-500";
+    return "text-rose-600";
   };
 
   const getStatusConfig = (avg: number, hasAnalyzed: boolean) => {
     if (!hasAnalyzed) {
-      return { 
-        color: "text-slate-400", 
-        bg: "bg-slate-50", 
-        icon: <Timer className="w-3 h-3" /> 
-      };
+      return { color: "text-slate-400", bg: "bg-slate-50", icon: <Timer className="w-3 h-3" /> };
     }
-    
     if (avg >= 8) return { color: "text-emerald-500", bg: "bg-emerald-50", icon: <CheckCircle2 className="w-3 h-3" /> };
     if (avg >= 5) return { color: "text-sky-500", bg: "bg-sky-50", icon: <AlertCircle className="w-3 h-3" /> };
-    
-    return { 
-      color: "text-rose-500", 
-      bg: "bg-rose-50", 
-      icon: <ArrowRight className="w-3 h-3 rotate-45" /> 
-    };
+    return { color: "text-rose-500", bg: "bg-rose-50", icon: <ArrowRight className="w-3 h-3 rotate-45" /> };
   };
 
   if (ranking.length === 0) {
@@ -141,7 +116,6 @@ export function SDRRanking({ summary }: SDRRankingProps) {
                     status.bg
                   )}>
                     {status.icon}
-                    {/* 🚩 3. EXIBIÇÃO DA NOTA COM COR DINÂMICA */}
                     <span className={cn("font-bold", getScoreColor(sdr.avgSpin))}>
                       {hasAnalyzed ? sdr.avgSpin.toFixed(1) : "--"}
                     </span>
