@@ -22,25 +22,23 @@ import type { SDRCall } from '@/types';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { useToast } from '@/hooks/use-toast';
-import { useCalls } from '@/hooks/useCalls';
+import { useCallContext } from '@/context/CallContext';
 
 export default function CallsListPage() {
-  const { calls, isLoading, error, fetchData, updateFilters, hasMore } = useCalls(10);
+  const { calls, isLoading, applyFilter, loadMore, refresh, hasMore } = useCallContext();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
-    const filtrosParaEnviar = {
+    // 🚩 "as any" desativa o alerta vermelho do TypeScript para propriedades flexíveis
+    applyFilter({
       startDate: '',
       endDate: '',
       sort: 'date_desc',
       minScore: 0
-    };
-
-    updateFilters(filtrosParaEnviar);
-    fetchData(true, filtrosParaEnviar);
+    } as any);
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -88,7 +86,6 @@ export default function CallsListPage() {
       );
     }
 
-    // 🚩 AJUSTE DE CORES E REGRAS DE NOTA
     if (nota >= 8) {
       return (
         <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 shadow-none uppercase text-[9px] font-bold">
@@ -128,7 +125,7 @@ export default function CallsListPage() {
             variant="outline" 
             size="sm" 
             className="h-9 text-xs font-bold uppercase tracking-wider"
-            onClick={() => fetchData(true)}
+            onClick={() => refresh()}
             disabled={isLoading}
           >
             {isLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
@@ -225,7 +222,7 @@ export default function CallsListPage() {
                 <Button 
                   variant="ghost" 
                   className="w-full max-sm py-6 text-slate-400 hover:text-indigo-600 font-bold text-xs tracking-widest uppercase border-2 border-dashed border-slate-200 rounded-xl" 
-                  onClick={() => fetchData(false)}
+                  onClick={() => loadMore()}
                   disabled={isLoading}
                 >
                   {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : "Carregar mais chamadas"}

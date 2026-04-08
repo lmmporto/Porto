@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { getInitials } from '@/lib/utils';
 import { Separator } from '@/components/ui/separator';
-import { useCalls } from '@/hooks/useCalls';
+import { useCallContext } from '@/context/CallContext';
 import type { DashboardSummary } from '@/types';
 
 type SortOrder = 'date_desc' | 'score_desc' | 'score_asc';
@@ -35,7 +35,7 @@ function SDRDetailContent() {
   const searchParams = useSearchParams();
   const decodedName = decodeURIComponent(name as string);
 
-  const { calls, isLoading, error, fetchData, updateFilters, hasMore } = useCalls(10);
+  const { calls, isLoading, error, applyFilter, loadMore, refresh, hasMore } = useCallContext();
   
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [timeFilter, setTimeFilter] = useState(() => {
@@ -61,7 +61,6 @@ function SDRDetailContent() {
     router.replace(`?${params.toString()}`, { scroll: false });
   }, [searchParams, router]);
 
-  // 🚩 LIGAÇÃO DOS FIOS (Padrão de Busca Atômica)
   useEffect(() => {
     const agora = new Date();
     let start = '';
@@ -84,27 +83,21 @@ function SDRDetailContent() {
       end = customEndDate;
     }
     
-    const filtrosParaEnviar = {
+    applyFilter({
       ownerName: decodedName,
       startDate: start,
       endDate: end,
       sort: sortOrder,
       minScore: minScore
-    };
-
-    updateFilters(filtrosParaEnviar);
-    fetchData(true, filtrosParaEnviar);
+    } as any);
 
     const fetchSummary = async () => {
       try {
-        // 🚩 DECLARAÇÃO DA BASE URL
         const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
         
-        // 🚩 PREFIXO DA URL COM BASEURL
         let url = `${baseUrl}/api/stats/summary?t=${Date.now()}`;
         if (start && end) url += `&startDate=${start}&endDate=${end}`;
         
-        // 🚩 FETCH COM CREDENTIALS
         const res = await fetch(url, { credentials: 'include' });
         if (!res.ok) throw new Error("Erro na rede");
         const data = await res.json();
@@ -232,7 +225,7 @@ function SDRDetailContent() {
             )}
           </div>
           
-          <Button onClick={() => fetchData(true)} variant="outline" size="sm" className="h-9 rounded-xl" disabled={isLoading}>
+          <Button onClick={() => refresh()} variant="outline" size="sm" className="h-9 rounded-xl" disabled={isLoading}>
             <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
@@ -259,15 +252,18 @@ function SDRDetailContent() {
           </div>
         )}
 
+        {/* 🚩 CORREÇÃO DE SINTAXE JSX AQUI */}
         {hasMore && (
-          <Button 
-            variant="ghost" 
-            className="w-full py-8 text-slate-400 hover:text-indigo-600 font-bold text-xs tracking-widest uppercase border-2 border-dashed border-slate-100 rounded-2xl mt-4" 
-            onClick={() => fetchData(false)}
-            disabled={isLoading}
-          >
-            {isLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : "Carregar mais chamadas"}
-          </Button>
+          <div className="pt-4">
+            <Button 
+              variant="ghost" 
+              className="w-full py-8 text-slate-400 hover:text-indigo-600 font-bold text-xs tracking-widest uppercase border-2 border-dashed border-slate-100 rounded-2xl" 
+              onClick={loadMore}
+              disabled={isLoading}
+            >
+              {isLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : "Carregar mais chamadas"}
+            </Button>
+          </div>
         )}
       </div>
     </div>

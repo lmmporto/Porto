@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { RefreshCw, Trophy, Target, PhoneCall, AlertCircle, Calendar } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { useCalls } from '@/hooks/useCalls';
+import { useCallContext } from '@/context/CallContext'; // 🚩 Passo 1: O Import Correto
 
 interface API_SDRStats {
   nota_media?: string | number;
@@ -25,7 +25,8 @@ function SDRRankingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const { isLoading, error, fetchData, updateFilters } = useCalls(10);
+  // 🚩 Passo 2: A Desestruturação Correta
+  const { isLoading, error, applyFilter, refresh } = useCallContext();
   
   const [ranking, setRanking] = useState<SDRRankingItem[]>([]);
   const [dateFilter, setDateFilter] = useState(searchParams.get('filter') || 'today');
@@ -81,27 +82,23 @@ function SDRRankingContent() {
   useEffect(() => {
     const { startIso, endIso } = getDateRange();
 
-    updateFilters({
+    // 🚩 Passo 3: O Disparo da Busca (Busca Atômica)
+    applyFilter({
       startDate: startIso,
       endDate: endIso,
-    });
-    
-    fetchData(true);
+    } as any);
 
     const fetchRankingSummary = async () => {
       if (dateFilter === 'custom' && (!customStartDate || !customEndDate)) return;
       
       try {
-        // 🚩 DECLARAÇÃO DA BASE URL
         const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
         
-        // 🚩 PREFIXO DA URL COM BASEURL
         let summaryUrl = `${baseUrl}/api/stats/summary?t=${Date.now()}`;
         if (dateFilter !== 'all' && startIso && endIso) {
           summaryUrl += `&startDate=${startIso}&endDate=${endIso}`;
         }
 
-        // 🚩 FETCH COM CREDENTIALS
         const res = await fetch(summaryUrl, { credentials: 'include' });
         const data = await res.json();
         
@@ -194,8 +191,9 @@ function SDRRankingContent() {
             )}
           </div>
           
+          {/* 🚩 Passo 4: Botão de Atualizar */}
           <Button 
-            onClick={() => fetchData(true)} 
+            onClick={() => refresh()} 
             variant="outline" 
             className="h-11 rounded-xl border-slate-200 hover:bg-slate-50"
             disabled={isLoading}
@@ -218,7 +216,8 @@ function SDRRankingContent() {
           </div>
           <h2 className="text-xl font-headline font-bold text-slate-800">Problema de Conexão</h2>
           <p className="text-sm text-slate-500 text-center max-w-md bg-white border border-slate-200 p-4 rounded-xl shadow-sm">{error}</p>
-          <Button onClick={() => fetchData(true)} className="mt-4 bg-slate-900 hover:bg-slate-800 rounded-xl">
+          {/* 🚩 Passo 4: Botão de Atualizar no Erro */}
+          <Button onClick={() => refresh()} className="mt-4 bg-slate-900 hover:bg-slate-800 rounded-xl">
             <RefreshCw className="w-4 h-4 mr-2" /> Tentar Novamente
           </Button>
         </div>

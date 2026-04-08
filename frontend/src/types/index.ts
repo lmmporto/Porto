@@ -1,7 +1,21 @@
-export type StatusFinal = "APROVADO" | "ATENCAO" | "REPROVADO" | "NAO_IDENTIFICADO" | "NAO_SE_APLICA";
+/**
+ * Tipos de status final de uma análise.
+ */
+export type StatusFinal = 
+  | "APROVADO" 
+  | "ATENCAO" 
+  | "REPROVADO" 
+  | "NAO_IDENTIFICADO" 
+  | "NAO_SE_APLICA";
+
 export type CallSource = "HUBSPOT" | "MANUAL";
 
-// 🚩 ATUALIZADO: Todos os status possíveis que o seu backend pode cuspir agora
+/**
+ * Status de processamento no Backend.
+ * DONE: Processado com sucesso.
+ * SKIPPED_*: Motivos pelos quais a call foi ignorada.
+ * FAILED_ANALYSIS: Erro técnico no processamento.
+ */
 export type ProcessingStatus = 
   | 'DONE' 
   | 'PROCESSING'
@@ -15,16 +29,35 @@ export type ProcessingStatus =
   | 'SKIPPED_EMPTY_TRANSCRIPT'
   | 'FAILED_ANALYSIS';
 
-// --- INTERFACE PARA AS LIGAÇÕES INDIVIDUAIS ---
+/**
+ * Filtros globais para listagem de ligações e dashboards.
+ * Adicionado para resolver o erro de importação no Context.
+ */
+export interface CallFilters {
+  startDate?: string;
+  endDate?: string;
+  searchTerm?: string;
+  statusFinal?: StatusFinal[];
+  ownerIds?: string[];
+  teamIds?: string[];
+  minScore?: number;
+}
+
+/**
+ * Entidade principal representativa de uma ligação (SDR Call).
+ */
 export interface SDRCall {
   id: string;
   callId: string;
   
-  // 🚩 ADICIONADO: Pra ler direto do hubspot sem choradeira do TypeScript
+  // Integração HubSpot - Tipado como string (ISO) ou Date para evitar 'any'
   hubspotCallId?: string; 
   portalId?: string;
-  callTimestamp?: any;
-  createdAt?: any; 
+  callTimestamp: string; 
+  createdAt: string; 
+  updatedAt: string;
+  analyzedAt: string | null;
+
   title: string;
   ownerId: string | null;
   ownerName: string;
@@ -33,13 +66,13 @@ export interface SDRCall {
   teamName: string;
   durationMs: number;
   recordingUrl: string | null;
-  updatedAt: any;
-  analyzedAt: any;
+  
   status_final: StatusFinal;
   nota_spin: number;
   source?: CallSource; 
   processingStatus?: ProcessingStatus;
   
+  // Conteúdo da análise
   resumo: string;
   alertas: string[];
   ponto_atencao: string;
@@ -50,16 +83,19 @@ export interface SDRCall {
   perguntas_sugeridas?: string[];
 }
 
-// --- NOVOS TIPOS: ESTRUTURA DO COFRE DE SALDOS ---
-
+/**
+ * Entrada de dados para o ranking de performance por SDR.
+ */
 export interface SDRRankingEntry {
-  calls: number;        
+  calls: number;         
   valid_calls: number;  
   sum_notes: number;    
   nota_media: number;   
 }
 
-// 🚩 ATUALIZADO: Reflete EXATAMENTE o que o /api/stats/summary devolve hoje
+/**
+ * Resumo estatístico do Dashboard.
+ */
 export interface DashboardSummary {
   total_calls: number;
   valid_calls: number;
@@ -67,7 +103,7 @@ export interface DashboardSummary {
   media_geral: number;
   sdr_ranking: Record<string, SDRRankingEntry>;
   
-  // Opcionais para tratamento de erro/vazio e debug
+  // Metadados de controle
   empty?: boolean;
   message?: string;
   _debug_version?: string;

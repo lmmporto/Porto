@@ -1,6 +1,9 @@
 "use client";
 
+// 1. Imports do React
 import { useState, useEffect, useMemo } from 'react';
+
+// 2. Imports de Ícones (Lucide)
 import { 
   TrendingUp, 
   PhoneCall, 
@@ -11,13 +14,19 @@ import {
   ArrowDownUp,
   AlertCircle
 } from 'lucide-react';
+
+// 3. Imports de UI (Shadcn/UI ou seus componentes)
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { CallCard } from '@/components/dashboard/CallCard';
 import { SDRRanking } from '@/components/dashboard/SDRRanking';
-import { useCalls } from '@/hooks/useCalls';
-import type { DashboardSummary } from '@/types';
+
+// 4. Import do nosso NOVO CONTEXTO (Verifique se é 'context' ou 'contexts')
+import { useCallContext } from '@/context/CallContext'; 
+
+// 5. Tipos
+import type { DashboardSummary, SDRCall } from '@/types';
 
 type SortOrder = 'date_desc' | 'score_desc' | 'score_asc';
 const BRAZIL_TIMEZONE = 'America/Sao_Paulo';
@@ -33,7 +42,8 @@ const getBrazilDateString = (date: Date): string => {
 };
 
 export default function DashboardPage() {
-  const { calls, isLoading, fetchData, updateFilters, hasMore } = useCalls(10);
+  // 🚩 Consumindo do Contexto Global (Nomes exatos conforme definimos no CallContext)
+  const { calls, isLoading, applyFilter, loadMore, refresh, hasMore } = useCallContext();
   
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -43,7 +53,6 @@ export default function DashboardPage() {
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
-  // 🚩 ORQUESTRADOR DE BUSCA ATÔMICA (Visão Geral)
   useEffect(() => {
     const agora = new Date();
     let start = '';
@@ -73,19 +82,15 @@ export default function DashboardPage() {
       minScore: minScore
     };
 
-    updateFilters(filtrosParaEnviar);
-    fetchData(true, filtrosParaEnviar);
+    // 🚩 Disparo Atômico via Contexto
+    applyFilter(filtrosParaEnviar);
 
     const fetchSummary = async () => {
       try {
-        // 🚩 DECLARAÇÃO DA BASE URL
         const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
-        
-        // 🚩 PREFIXO DA URL COM BASEURL
         let url = `${baseUrl}/api/stats/summary?t=${Date.now()}`;
         if (start && end) url += `&startDate=${start}&endDate=${end}`;
         
-        // 🚩 FETCH COM CREDENTIALS
         const res = await fetch(url, { credentials: 'include' });
         const data = await res.json();
         setSummary(data);
@@ -95,8 +100,7 @@ export default function DashboardPage() {
     };
     fetchSummary();
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFilter, sortOrder, customStartDate, customEndDate, minScore]);
+  }, [dateFilter, sortOrder, customStartDate, customEndDate, minScore, applyFilter]);
 
   const filteredCalls = useMemo(() => {
     if (!searchTerm) return calls;
@@ -107,23 +111,25 @@ export default function DashboardPage() {
     );
   }, [calls, searchTerm]);
 
-  const stats = summary as any;
+  // Auxiliares para evitar erros de undefined
+  const stats = (summary as any) || {};
   const avgSpin = stats?.media_geral || 0;
   const totalCalls = stats?.total_calls || 0;
-  const analyzedCount = stats?.valid_calls || 0; 
   const activeSDRsCount = stats?.sdr_ranking ? Object.keys(stats.sdr_ranking).length : 0;
 
   return (
     <div className="space-y-10 pb-20 animate-in fade-in duration-700">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-3xl font-headline font-bold text-slate-900 tracking-tight">Performance Geral</h1>
-        </div>
+        <h1 className="text-3xl font-bold text-slate-900 tracking-tight">Performance Geral</h1>
         
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-1.5 shadow-sm">
             <Calendar className="w-4 h-4 text-slate-400" />
-            <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="text-sm font-bold text-slate-700 bg-transparent outline-none cursor-pointer">
+            <select 
+              value={dateFilter} 
+              onChange={(e) => setDateFilter(e.target.value)} 
+              className="text-sm font-bold text-slate-700 bg-transparent outline-none cursor-pointer"
+            >
               <option value="today">Hoje</option>
               <option value="7d">Últimos 7 dias</option>
               <option value="month">Mês atual</option>
@@ -131,7 +137,7 @@ export default function DashboardPage() {
             </select>
           </div>
           
-          <Button onClick={() => fetchData(true)} variant="outline" disabled={isLoading} className="h-11 rounded-xl">
+          <Button onClick={() => refresh()} variant="outline" disabled={isLoading} className="h-11 rounded-xl">
             {isLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
             Atualizar
           </Button>
@@ -139,15 +145,15 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="border-slate-100 shadow-sm"><CardContent className="p-6">
+        <Card><CardContent className="p-6">
           <p className="text-[10px] font-bold text-slate-400 uppercase">Média SPIN</p>
-          <p className="text-3xl font-bold">{analyzedCount > 0 ? avgSpin.toFixed(1) : "--"}</p>
+          <p className="text-3xl font-bold">{avgSpin.toFixed(1)}</p>
         </CardContent></Card>
-        <Card className="border-slate-100 shadow-sm"><CardContent className="p-6">
+        <Card><CardContent className="p-6">
           <p className="text-[10px] font-bold text-slate-400 uppercase">Volume Total</p>
           <p className="text-3xl font-bold">{totalCalls}</p>
         </CardContent></Card>
-        <Card className="border-slate-100 shadow-sm"><CardContent className="p-6">
+        <Card><CardContent className="p-6">
           <p className="text-[10px] font-bold text-slate-400 uppercase">SDRs Ativos</p>
           <p className="text-3xl font-bold">{activeSDRsCount}</p>
         </CardContent></Card>
@@ -156,11 +162,21 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         <SDRRanking summary={summary} />
         <div className="lg:col-span-3 space-y-6">
-          <Input placeholder="Pesquisar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+          <Input 
+            placeholder="Pesquisar..." 
+            value={searchTerm} 
+            onChange={(e) => setSearchTerm(e.target.value)} 
+          />
           <div className="grid gap-4">
             {filteredCalls.map(call => <CallCard key={call.id} call={call} />)}
+            
             {hasMore && (
-              <Button variant="ghost" className="w-full py-8 border-2 border-dashed rounded-2xl" onClick={() => fetchData(false)} disabled={isLoading}>
+              <Button 
+                variant="ghost" 
+                className="w-full py-8 border-2 border-dashed rounded-2xl" 
+                onClick={loadMore} 
+                disabled={isLoading}
+              >
                 {isLoading ? "Carregando..." : "Carregar mais"}
               </Button>
             )}

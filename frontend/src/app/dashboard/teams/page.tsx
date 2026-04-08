@@ -5,19 +5,15 @@ import { TeamCard } from '@/components/dashboard/TeamCard';
 import { groupCallsByTeam } from '@/lib/groupers';
 import { Loader2, Users, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useCalls } from '@/hooks/useCalls'; // 🚩 2. Instalação do motor novo
+import { useCallContext } from '@/context/CallContext'; // 🚩 Passo 1: O Import Correto
 
 export default function TeamsPage() {
-  // 🚩 1 e 2. Arranque o motor velho e instale o motor novo
-  const { calls, isLoading, error, fetchData, updateFilters, hasMore } = useCalls(20);
+  // 🚩 Passo 2: A Desestruturação Correta
+  const { calls, isLoading, error, applyFilter, refresh, loadMore, hasMore } = useCallContext();
 
-  // 🚩 3. Ligue os fios (useEffect)
   useEffect(() => {
-    // Sincroniza filtros (vazio para pegar o histórico geral inicial)
-    updateFilters({});
-    
-    // Dispara a busca inicial
-    fetchData(true);
+    // 🚩 Passo 3: O Disparo da Busca (Busca Atômica)
+    applyFilter({});
 
     // Executa apenas no mount para carregar o buffer inicial
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -31,7 +27,7 @@ export default function TeamsPage() {
     );
   }
 
-  // A função de agrupamento agora processa o que vem do hook
+  // A função de agrupamento agora processa o que vem do contexto global
   const grouped = groupCallsByTeam(calls);
 
   return (
@@ -42,9 +38,9 @@ export default function TeamsPage() {
           <p className="text-muted-foreground mt-1">Visão agregada de resultados técnicos de cada time.</p>
         </div>
 
-        {/* 🚩 4. Conecte os botões: Atualizar */}
+        {/* 🚩 Passo 4: Botão de Atualizar */}
         <Button 
-          onClick={() => fetchData(true)} 
+          onClick={() => refresh()} 
           variant="outline" 
           disabled={isLoading}
           className="h-11 rounded-xl border-slate-200"
@@ -70,13 +66,13 @@ export default function TeamsPage() {
             ))}
           </div>
 
-          {/* 🚩 4. Conecte os botões: Carregar Mais */}
+          {/* 🚩 Passo 4: Botão de Carregar Mais */}
           {hasMore && (
             <div className="flex justify-center pt-8">
               <Button 
                 variant="ghost" 
                 className="w-full max-w-md py-8 text-slate-400 hover:text-indigo-600 font-bold text-xs tracking-widest uppercase border-2 border-dashed border-slate-100 rounded-2xl" 
-                onClick={() => fetchData(false)}
+                onClick={loadMore}
                 disabled={isLoading}
               >
                 {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : "Carregar mais chamadas para o grupo"}
