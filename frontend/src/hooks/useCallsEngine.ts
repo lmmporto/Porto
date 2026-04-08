@@ -61,6 +61,7 @@ export function useCalls(limit = 10) {
 
       const url = `${baseUrl}/api/calls?${params.toString()}`;
       
+      // 🚩 LOG DE AUDITORIA: Rastreamento da URL final
       console.log(`🔎 [BUSCA ATÔMICA] URL: ${url}`);
 
       const res = await fetch(url, { 
@@ -96,15 +97,14 @@ export function useCalls(limit = 10) {
     setCalls([]); 
   }, []);
 
-  // No final do useCallsEngine.ts, altere o return:
-return { 
-  calls, 
-  setCalls, // 🚩 Adicionado para o Provider poder limpar
-  isLoading, 
-  error, 
-  filters, 
-  fetchData, 
-  updateFilters, 
-  hasMore: !!lastVisible 
-};
+  return { 
+    calls, 
+    setCalls, // 🚩 Exposto para o Provider/Componente poder limpar
+    isLoading, 
+    error, 
+    filters, 
+    fetchData, 
+    updateFilters, 
+    hasMore: !!lastVisible 
+  };
 }
