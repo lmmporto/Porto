@@ -21,7 +21,7 @@ export function SDRRanking({ summary }: SDRRankingProps) {
       .map(([key, stats]: [string, any]) => {
         return {
           name: stats.ownerName || key, 
-          email: stats.ownerEmail || key, 
+          email: stats.ownerEmail || key, // 🚩 Chave única para o filtro
           totalCalls: Number(stats.calls || 0),
           validCount: Number(stats.valid_calls || 0),
           avgSpin: Number(stats.nota_media || 0)
@@ -45,10 +45,11 @@ export function SDRRanking({ summary }: SDRRankingProps) {
     return { color: "text-rose-500", bg: "bg-rose-50", icon: <ArrowRight className="w-3 h-3 rotate-45" /> };
   };
 
-  // 🚩 AÇÃO DE FILTRO SÊNIOR COM LOG DE AUDITORIA
-  const handleSdrClick = (sdrEmail: string) => {
-    console.log(`🔎 [RANKING CLICK] SDR selecionado: ${sdrEmail}`);
-    applyFilter({ ownerEmail: sdrEmail });
+  // 🚩 AÇÃO DE FILTRO SÊNIOR COM DEBUG
+  const handleSdrClick = (sdr: any) => {
+    console.log("🔎 [DEBUG] SDR Ranking Click - Objeto SDR:", sdr);
+    console.log("🔎 [DEBUG] E-mail sendo enviado para filtro:", sdr.email);
+    applyFilter({ ownerEmail: sdr.email });
   };
 
   if (ranking.length === 0) {
@@ -80,7 +81,7 @@ export function SDRRanking({ summary }: SDRRankingProps) {
             <Link 
               key={sdr.email} 
               href={`/dashboard/sdrs/${encodeURIComponent(sdr.name)}`}
-              onClick={() => handleSdrClick(sdr.email)}
+              onClick={() => handleSdrClick(sdr)} // 🚩 Dispara filtro com E-MAIL e loga no console
               className={cn(
                 "flex items-center justify-between p-4 transition-all group",
                 sdr.totalCalls > 0 ? "hover:bg-slate-50" : "opacity-60 grayscale-[0.5]"
