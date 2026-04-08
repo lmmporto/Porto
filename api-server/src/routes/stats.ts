@@ -41,9 +41,12 @@ router.get('/summary', async (req: Request, res: Response) => {
     snapshot.docs.forEach(doc => {
       const data = doc.data();
       const name = data.ownerName || "SDR Desconhecido";
+      const email = data.ownerEmail || "sem-email@nibo.com.br"; // 🚩 CAPTURA O E-MAIL
       
       // Mapeamento direto do documento consolidado do SDR
       sdr_ranking[name] = {
+        ownerName: name,
+        ownerEmail: email, // 🚩 ADICIONADO AO OBJETO
         calls: data.totalCalls || 0,
         valid_calls: data.totalCalls || 0,
         sum_notes: data.totalScore || 0,
@@ -59,8 +62,8 @@ router.get('/summary', async (req: Request, res: Response) => {
     const totalSDRs = sdrNames.length || 1;
 
     // Âncoras Dinâmicas (Médias do Time)
-    const v_bar = total_calls / totalSDRs; // Média de volume do time (V-barra)
-    const m_bar = total_calls > 0 ? (sum_notes / total_calls) : 0; // Média de nota do time (M-barra)
+    const v_bar = total_calls / totalSDRs; 
+    const m_bar = total_calls > 0 ? (sum_notes / total_calls) : 0; 
 
     sdrNames.forEach(name => {
       const s = sdr_ranking[name];
@@ -68,13 +71,11 @@ router.get('/summary', async (req: Request, res: Response) => {
       const M = s.valid_calls > 0 ? (s.sum_notes / s.valid_calls) : 0;
 
       if (V > 0) {
-        // 1. Qualidade Bayesiana (Puxa para a média se tiver pouco volume)
+        // 1. Qualidade Bayesiana
         const qualidade = (V * M + v_bar * m_bar) / (V + v_bar);
-
-        // 2. Fator de Tração (Premia quem tem mais volume que a média do time)
+        // 2. Fator de Tração
         const tracao = Math.sqrt(V / (v_bar || 1));
-
-        // Resultado Final: Qualidade x Tração
+        // Resultado Final
         s.nota_media = Number((qualidade * tracao).toFixed(1));
       } else {
         s.nota_media = 0;
@@ -91,7 +92,6 @@ router.get('/summary', async (req: Request, res: Response) => {
       version: "V6_TURBO_SCORE_DYNAMIC"
     };
 
-    // Atualiza as variáveis globais de cache
     cachedStats = resultado;
     lastCacheTime = now;
 
