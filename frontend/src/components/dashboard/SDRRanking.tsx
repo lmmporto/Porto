@@ -5,29 +5,28 @@ import { Trophy, ArrowRight, CheckCircle2, AlertCircle, Phone, Timer, Users } fr
 import Link from 'next/link';
 import type { DashboardSummary } from '@/types';
 import { cn } from '@/lib/utils';
-import { useCallContext } from '@/context/CallContext'; // 🚩 Importação do Contexto
+import { useCallContext } from '@/context/CallContext';
 
 interface SDRRankingProps {
   summary: DashboardSummary | null;
 }
 
 export function SDRRanking({ summary }: SDRRankingProps) {
-  const { applyFilter } = useCallContext(); // 🚩 Acesso ao contexto para filtrar
+  const { applyFilter } = useCallContext();
 
   const ranking = useMemo(() => {
     const entries = Object.entries(summary?.sdr_ranking ?? {});
 
     return entries
-      .map(([name, stats]: [string, any]) => {
-        const totalCalls = Number(stats.calls || 0);
-        const validCount = Number(stats.valid_calls || 0);
-        const avgSpin = Number(stats.nota_media || 0); 
-
+      .map(([key, stats]: [string, any]) => {
+        // 🚩 Se a chave 'key' for o e-mail, usamos ela. 
+        // Se for nome, certifique-se que o backend envia o e-mail dentro de 'stats'
         return {
-          name, // Este é o identificador (e-mail ou nome)
-          totalCalls,
-          validCount,
-          avgSpin
+          name: stats.ownerName || key, // Nome para exibição
+          email: stats.ownerEmail || key, // 🚩 E-mail para filtro (Chave única)
+          totalCalls: Number(stats.calls || 0),
+          validCount: Number(stats.valid_calls || 0),
+          avgSpin: Number(stats.nota_media || 0)
         };
       })
       .sort((a, b) => b.avgSpin - a.avgSpin);
@@ -48,9 +47,9 @@ export function SDRRanking({ summary }: SDRRankingProps) {
     return { color: "text-rose-500", bg: "bg-rose-50", icon: <ArrowRight className="w-3 h-3 rotate-45" /> };
   };
 
-  // 🚩 AÇÃO DE FILTRO SÊNIOR
-  const handleSdrClick = (sdrName: string) => {
-    applyFilter({ ownerEmail: sdrName });
+  // 🚩 AÇÃO DE FILTRO SÊNIOR: Dispara busca pelo E-MAIL
+  const handleSdrClick = (sdrEmail: string) => {
+    applyFilter({ ownerEmail: sdrEmail });
   };
 
   if (ranking.length === 0) {
@@ -80,9 +79,9 @@ export function SDRRanking({ summary }: SDRRankingProps) {
           
           return (
             <Link 
-              key={sdr.name} 
+              key={sdr.email} 
               href={`/dashboard/sdrs/${encodeURIComponent(sdr.name)}`}
-              onClick={() => handleSdrClick(sdr.name)} // 🚩 Dispara o filtro ao clicar
+              onClick={() => handleSdrClick(sdr.email)} // 🚩 Dispara filtro com E-MAIL
               className={cn(
                 "flex items-center justify-between p-4 transition-all group",
                 sdr.totalCalls > 0 ? "hover:bg-slate-50" : "opacity-60 grayscale-[0.5]"
