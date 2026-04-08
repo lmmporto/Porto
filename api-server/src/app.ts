@@ -6,7 +6,7 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy, type Profile } from 'passport-google-oauth20';
 import { CONFIG } from './config.js';
 import { processCall } from './services/processCall.js';
-
+import sdrRegistryRouter from './routes/sdr-registro.js'; // Verifique o nome exato do arquivo
 import callsRouter from './routes/calls.js';
 import statsRouter from './routes/stats.js';
 import healthRouter from './routes/health.js';
@@ -172,6 +172,7 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date()
 
 app.use('/api/calls', callsRouter);
 app.use('/api/stats', statsRouter);
+app.use('/api/sdr-registry', sdrRegistryRouter); 
 app.use('/api/health', healthRouter);
 
 app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {

@@ -48,3 +48,5 @@ async function fixSdrStats() {
 }
 
 fixSdrStats();
+
+//pnpm tsx src/scripts/fix-sdr-stats.ts
