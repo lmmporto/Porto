@@ -20,7 +20,6 @@ async function checkIfAdmin(email: string) {
 // 1. LISTAGEM COM TRAVA DE SEGURANÇA E AUDITORIA
 router.get("/", async (req: Request, res: Response) => {
   try {
-    // Trava de Autenticação
     if (!req.isAuthenticated() || !req.user) {
       return res.status(401).json({ error: "Não autorizado" });
     }
@@ -33,30 +32,27 @@ router.get("/", async (req: Request, res: Response) => {
     const startDateParam = req.query.startDate as string;
     const endDateParam = req.query.endDate as string;
     const filterEmail = req.query.ownerEmail as string;
-    const filterName = req.query.ownerName as string; // 🚩 Parâmetro de nome
 
-    console.log(`🔎 [BUSCA] User: ${userEmail} | Admin: ${isAdmin} | Filtro Email: ${filterEmail} | Nome: ${filterName} | Datas: ${startDateParam} a ${endDateParam}`);
+    console.log(`🔎 [BUSCA] User: ${userEmail} | Admin: ${isAdmin} | Filtro: ${filterEmail} | Datas: ${startDateParam} a ${endDateParam}`);
 
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
 
-    // 🚩 LÓGICA DE FILTRAGEM ROBUSTA (Tradução de Nome -> E-mail)
-    if (filterName) {
-      // Busca o e-mail associado ao nome na coleção de chamadas
-      const userSnapshot = await db.collection(CONFIG.CALLS_COLLECTION)
-        .where("ownerName", "==", filterName)
+    // 🚩 LÓGICA DE FILTRAGEM INTELIGENTE (E-mail ou Nome)
+    if (filterEmail) {
+      // Tenta verificar se o filtro passado existe como ownerEmail
+      const snapshotByEmail = await db.collection(CONFIG.CALLS_COLLECTION)
+        .where("ownerEmail", "==", filterEmail)
         .limit(1)
         .get();
-      
-      const emailReal = userSnapshot.docs[0]?.data()?.ownerEmail;
-      if (emailReal) {
-        query = query.where("ownerEmail", "==", emailReal);
+
+      if (!snapshotByEmail.empty) {
+        query = query.where("ownerEmail", "==", filterEmail);
       } else {
-        // Se não achou e-mail para esse nome, retorna vazio
-        return res.json({ calls: [], isAdmin, lastVisible: null });
+        // Se não achou por e-mail, tenta buscar pelo nome (fallback)
+        query = query.where("ownerName", "==", filterEmail);
       }
-    } else if (filterEmail) {
-      query = query.where("ownerEmail", "==", filterEmail);
     } else if (!isAdmin) {
+      // Se não pediu filtro e não é admin, força o e-mail do usuário logado
       query = query.where("ownerEmail", "==", userEmail);
     }
 
@@ -95,7 +91,7 @@ router.get("/", async (req: Request, res: Response) => {
   }
 });
 
-// 2. DETALHE DA LIGAÇÃO COM VALIDAÇÃO DE PERMISSÃO
+// 2. DETALHE DA LIGAÇÃO
 router.get("/:id", async (req: Request, res: Response) => {
   try {
     if (!req.isAuthenticated() || !req.user) {
