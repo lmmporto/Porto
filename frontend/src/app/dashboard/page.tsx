@@ -91,7 +91,6 @@ const AdminDebugPanel = () => {
 };
 
 export default function DashboardPage() {
-  // 🚩 CORREÇÃO: loadMore adicionado na desestruturação
   const { calls, isLoading, applyFilter, refresh, hasMore, loadMore } = useCallContext();
   
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
@@ -102,6 +101,7 @@ export default function DashboardPage() {
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
+  // 🚩 ORQUESTRADOR DE BUSCA ATÔMICA ATUALIZADO
   useEffect(() => {
     const agora = new Date();
     let start = '';
@@ -131,6 +131,7 @@ export default function DashboardPage() {
       minScore: minScore
     };
 
+    // Disparo da busca via contexto
     applyFilter(filtrosParaEnviar as any);
 
     const fetchSummary = async () => {
@@ -148,7 +149,8 @@ export default function DashboardPage() {
     };
     fetchSummary();
 
-  }, [dateFilter, sortOrder, customStartDate, customEndDate, minScore, applyFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFilter, sortOrder, customStartDate, customEndDate, minScore]);
 
   const filteredCalls = useMemo(() => {
     if (!searchTerm) return calls;
@@ -159,7 +161,6 @@ export default function DashboardPage() {
     );
   }, [calls, searchTerm]);
 
-  // 🚩 CORREÇÃO: Extração segura das variáveis do summary (Resolve o erro do sublinhado)
   const analyzedCount = summary?.valid_calls ?? 0;
   const totalCalls = summary?.total_calls ?? 0;
   const avgSpin = summary?.media_geral ?? 0;
