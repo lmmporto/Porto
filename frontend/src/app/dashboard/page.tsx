@@ -92,6 +92,7 @@ const AdminDebugPanel = () => {
 
 export default function DashboardPage() {
   const { calls, isLoading, applyFilter, refresh, hasMore, loadMore } = useCallContext();
+  const { user } = useDashboard(); // 🚩 Extraído para monitorar trocas de perfil
   
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -101,7 +102,7 @@ export default function DashboardPage() {
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
-  // 🚩 ORQUESTRADOR DE BUSCA ATÔMICA ATUALIZADO
+  // 🚩 ORQUESTRADOR DE BUSCA ATÔMICA (Reativo ao Usuário)
   useEffect(() => {
     const agora = new Date();
     let start = '';
@@ -131,9 +132,10 @@ export default function DashboardPage() {
       minScore: minScore
     };
 
-    // Disparo da busca via contexto
+    // 1. Dispara busca de chamadas (Contexto limpa a lista automaticamente)
     applyFilter(filtrosParaEnviar as any);
 
+    // 2. Dispara busca de métricas (Cards)
     const fetchSummary = async () => {
       try {
         const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
@@ -149,8 +151,9 @@ export default function DashboardPage() {
     };
     fetchSummary();
 
+    // 🚩 'user' adicionado para recarregar a página ao simular SDR
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFilter, sortOrder, customStartDate, customEndDate, minScore]);
+  }, [dateFilter, sortOrder, customStartDate, customEndDate, minScore, user]);
 
   const filteredCalls = useMemo(() => {
     if (!searchTerm) return calls;
