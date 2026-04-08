@@ -33,17 +33,30 @@ router.get("/", async (req: Request, res: Response) => {
     const startDateParam = req.query.startDate as string;
     const endDateParam = req.query.endDate as string;
     const filterEmail = req.query.ownerEmail as string;
+    const filterName = req.query.ownerName as string; // 🚩 Parâmetro de nome
 
-    console.log(`🔎 [BUSCA] User: ${userEmail} | Admin: ${isAdmin} | Filtro Email: ${filterEmail} | Datas: ${startDateParam} a ${endDateParam}`);
+    console.log(`🔎 [BUSCA] User: ${userEmail} | Admin: ${isAdmin} | Filtro Email: ${filterEmail} | Nome: ${filterName} | Datas: ${startDateParam} a ${endDateParam}`);
 
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
 
-    // 🚩 LÓGICA DE FILTRAGEM ROBUSTA
-    if (filterEmail) {
-      // Se o front pediu um e-mail específico, usa ele (Admin ou SDR buscando o seu)
+    // 🚩 LÓGICA DE FILTRAGEM ROBUSTA (Tradução de Nome -> E-mail)
+    if (filterName) {
+      // Busca o e-mail associado ao nome na coleção de chamadas
+      const userSnapshot = await db.collection(CONFIG.CALLS_COLLECTION)
+        .where("ownerName", "==", filterName)
+        .limit(1)
+        .get();
+      
+      const emailReal = userSnapshot.docs[0]?.data()?.ownerEmail;
+      if (emailReal) {
+        query = query.where("ownerEmail", "==", emailReal);
+      } else {
+        // Se não achou e-mail para esse nome, retorna vazio
+        return res.json({ calls: [], isAdmin, lastVisible: null });
+      }
+    } else if (filterEmail) {
       query = query.where("ownerEmail", "==", filterEmail);
     } else if (!isAdmin) {
-      // Se não pediu e não é admin, força o e-mail do usuário logado
       query = query.where("ownerEmail", "==", userEmail);
     }
 
@@ -51,8 +64,6 @@ router.get("/", async (req: Request, res: Response) => {
     if (startDateParam && endDateParam) {
       const start = new Date(startDateParam);
       const end = new Date(endDateParam);
-      
-      // Ajusta para pegar o dia inteiro (00:00 até 23:59)
       start.setUTCHours(0, 0, 0, 0);
       end.setUTCHours(23, 59, 59, 999);
 
@@ -103,7 +114,6 @@ router.get("/:id", async (req: Request, res: Response) => {
     const userEmail = (req.user as any).email;
     const isAdmin = await checkIfAdmin(userEmail);
 
-    // 🚩 TRAVA DE PRIVACIDADE
     if (!isAdmin && callData?.ownerEmail !== userEmail) {
       return res.status(403).json({ error: "Permissão negada." });
     }
