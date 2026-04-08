@@ -21,7 +21,8 @@ export function SDRRanking({ summary }: SDRRankingProps) {
       .map(([key, stats]: [string, any]) => {
         return {
           name: stats.ownerName || key, 
-          email: stats.ownerEmail || key, // 🚩 Chave única para o filtro
+          // 🚩 AGORA ISSO VEM DO BACKEND (stats.ownerEmail)
+          email: stats.ownerEmail || key, 
           totalCalls: Number(stats.calls || 0),
           validCount: Number(stats.valid_calls || 0),
           avgSpin: Number(stats.nota_media || 0)
@@ -81,7 +82,7 @@ export function SDRRanking({ summary }: SDRRankingProps) {
             <Link 
               key={sdr.email} 
               href={`/dashboard/sdrs/${encodeURIComponent(sdr.name)}`}
-              onClick={() => handleSdrClick(sdr)} // 🚩 Dispara filtro com E-MAIL e loga no console
+              onClick={() => handleSdrClick(sdr)}
               className={cn(
                 "flex items-center justify-between p-4 transition-all group",
                 sdr.totalCalls > 0 ? "hover:bg-slate-50" : "opacity-60 grayscale-[0.5]"
