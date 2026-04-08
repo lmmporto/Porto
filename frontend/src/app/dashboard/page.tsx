@@ -17,6 +17,7 @@ import { Input } from '@/components/ui/input';
 import { CallCard } from '@/components/dashboard/CallCard';
 import { SDRRanking } from '@/components/dashboard/SDRRanking';
 import { useCallContext } from '@/context/CallContext';
+import { useDashboard } from '@/context/DashboardContext'; 
 import type { DashboardSummary } from '@/types';
 
 type SortOrder = 'date_desc' | 'score_desc' | 'score_asc';
@@ -29,8 +30,69 @@ const getBrazilDateString = (date: Date): string => {
   }).format(date);
 };
 
+// --- COMPONENTE DE DEBUG (SIMULAÇÃO) ---
+const AdminDebugPanel = () => {
+  const { startImpersonation, stopImpersonation, isImpersonating } = useDashboard();
+  const [sdrs, setSdrs] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchSdrs = async () => {
+      try {
+        const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
+        const res = await fetch(`${baseUrl}/api/stats/summary`, { credentials: 'include' });
+        const data = await res.json();
+        if (data.sdr_ranking) {
+          const list = Object.entries(data.sdr_ranking).map(([name, stats]: [string, any]) => ({
+            name,
+            email: stats.ownerEmail || name
+          }));
+          setSdrs(list);
+        }
+      } catch (e) {
+        console.error("Erro ao carregar lista de SDRs para o painel de debug");
+      }
+    };
+    if (process.env.NODE_ENV === 'development') fetchSdrs();
+  }, []);
+
+  if (process.env.NODE_ENV !== 'development') return null;
+
+  return (
+    <div className="fixed bottom-4 right-4 bg-amber-100 border-2 border-amber-400 p-4 rounded-2xl shadow-2xl z-50 max-w-xs animate-in slide-in-from-bottom-10">
+      <h3 className="text-xs font-black text-amber-800 uppercase tracking-widest mb-3 flex items-center gap-2">
+        <AlertCircle className="w-3 h-3" /> Painel de Simulação
+      </h3>
+      <div className="space-y-3">
+        <select 
+          onChange={(e) => {
+            const sdr = sdrs.find(s => s.email === e.target.value);
+            if (sdr) startImpersonation(sdr);
+          }}
+          className="w-full p-2 text-xs rounded-lg border border-amber-200 bg-white outline-none focus:ring-2 focus:ring-amber-500"
+        >
+          <option value="">Simular visão de...</option>
+          {sdrs.map(sdr => (
+            <option key={sdr.email} value={sdr.email}>{sdr.name}</option>
+          ))}
+        </select>
+        
+        {isImpersonating && (
+          <Button 
+            onClick={stopImpersonation} 
+            variant="destructive" 
+            className="w-full h-8 text-[10px] font-bold uppercase tracking-widest rounded-lg"
+          >
+            Encerrar Simulação
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+};
+
 export default function DashboardPage() {
-  const { calls, isLoading, applyFilter, loadMore, refresh, hasMore } = useCallContext();
+  // 🚩 CORREÇÃO: loadMore adicionado na desestruturação
+  const { calls, isLoading, applyFilter, refresh, hasMore, loadMore } = useCallContext();
   
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -40,7 +102,6 @@ export default function DashboardPage() {
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
-  // 🚩 ORQUESTRADOR: Apenas define os filtros, a busca é disparada pelo applyFilter
   useEffect(() => {
     const agora = new Date();
     let start = '';
@@ -70,8 +131,7 @@ export default function DashboardPage() {
       minScore: minScore
     };
 
-    // 🚩 Disparo Atômico: Limpa a lista e busca os novos dados
-    applyFilter(filtrosParaEnviar);
+    applyFilter(filtrosParaEnviar as any);
 
     const fetchSummary = async () => {
       try {
@@ -88,8 +148,7 @@ export default function DashboardPage() {
     };
     fetchSummary();
 
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateFilter, sortOrder, customStartDate, customEndDate, minScore]);
+  }, [dateFilter, sortOrder, customStartDate, customEndDate, minScore, applyFilter]);
 
   const filteredCalls = useMemo(() => {
     if (!searchTerm) return calls;
@@ -100,11 +159,11 @@ export default function DashboardPage() {
     );
   }, [calls, searchTerm]);
 
-  const stats = summary as any;
-  const avgSpin = stats?.media_geral || 0;
-  const totalCalls = stats?.total_calls || 0;
-  const analyzedCount = stats?.valid_calls || 0; 
-  const activeSDRsCount = stats?.sdr_ranking ? Object.keys(stats.sdr_ranking).length : 0;
+  // 🚩 CORREÇÃO: Extração segura das variáveis do summary (Resolve o erro do sublinhado)
+  const analyzedCount = summary?.valid_calls ?? 0;
+  const totalCalls = summary?.total_calls ?? 0;
+  const avgSpin = summary?.media_geral ?? 0;
+  const activeSDRsCount = summary?.sdr_ranking ? Object.keys(summary.sdr_ranking).length : 0;
 
   return (
     <div className="space-y-10 pb-20 animate-in fade-in duration-700">
@@ -132,17 +191,28 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="border-slate-100 shadow-sm"><CardContent className="p-6">
-          <p className="text-[10px] font-bold text-slate-400 uppercase">Média SPIN</p>
-          <p className="text-3xl font-bold">{analyzedCount > 0 ? avgSpin.toFixed(1) : "--"}</p>
+        <Card className="border-slate-100 shadow-sm"><CardContent className="p-6 flex items-center gap-4">
+          <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl"><TrendingUp className="w-6 h-6" /></div>
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase">Média SPIN</p>
+            <p className="text-3xl font-bold">{analyzedCount > 0 ? Number(avgSpin).toFixed(1) : "--"}</p>
+          </div>
         </CardContent></Card>
-        <Card className="border-slate-100 shadow-sm"><CardContent className="p-6">
-          <p className="text-[10px] font-bold text-slate-400 uppercase">Volume Total</p>
-          <p className="text-3xl font-bold">{totalCalls}</p>
+        
+        <Card className="border-slate-100 shadow-sm"><CardContent className="p-6 flex items-center gap-4">
+          <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><PhoneCall className="w-6 h-6" /></div>
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase">Volume Total</p>
+            <p className="text-3xl font-bold">{totalCalls}</p>
+          </div>
         </CardContent></Card>
-        <Card className="border-slate-100 shadow-sm"><CardContent className="p-6">
-          <p className="text-[10px] font-bold text-slate-400 uppercase">SDRs Ativos</p>
-          <p className="text-3xl font-bold">{activeSDRsCount}</p>
+
+        <Card className="border-slate-100 shadow-sm"><CardContent className="p-6 flex items-center gap-4">
+          <div className="p-3 bg-amber-50 text-amber-600 rounded-xl"><Users className="w-6 h-6" /></div>
+          <div>
+            <p className="text-[10px] font-bold text-slate-400 uppercase">SDRs Ativos</p>
+            <p className="text-3xl font-bold">{activeSDRsCount}</p>
+          </div>
         </CardContent></Card>
       </div>
 
@@ -160,6 +230,8 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      <AdminDebugPanel />
     </div>
   );
 }
