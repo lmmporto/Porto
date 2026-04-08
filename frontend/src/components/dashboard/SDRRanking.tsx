@@ -19,11 +19,9 @@ export function SDRRanking({ summary }: SDRRankingProps) {
 
     return entries
       .map(([key, stats]: [string, any]) => {
-        // 🚩 Se a chave 'key' for o e-mail, usamos ela. 
-        // Se for nome, certifique-se que o backend envia o e-mail dentro de 'stats'
         return {
-          name: stats.ownerName || key, // Nome para exibição
-          email: stats.ownerEmail || key, // 🚩 E-mail para filtro (Chave única)
+          name: stats.ownerName || key, 
+          email: stats.ownerEmail || key, 
           totalCalls: Number(stats.calls || 0),
           validCount: Number(stats.valid_calls || 0),
           avgSpin: Number(stats.nota_media || 0)
@@ -47,8 +45,9 @@ export function SDRRanking({ summary }: SDRRankingProps) {
     return { color: "text-rose-500", bg: "bg-rose-50", icon: <ArrowRight className="w-3 h-3 rotate-45" /> };
   };
 
-  // 🚩 AÇÃO DE FILTRO SÊNIOR: Dispara busca pelo E-MAIL
+  // 🚩 AÇÃO DE FILTRO SÊNIOR COM LOG DE AUDITORIA
   const handleSdrClick = (sdrEmail: string) => {
+    console.log(`🔎 [RANKING CLICK] SDR selecionado: ${sdrEmail}`);
     applyFilter({ ownerEmail: sdrEmail });
   };
 
@@ -81,7 +80,7 @@ export function SDRRanking({ summary }: SDRRankingProps) {
             <Link 
               key={sdr.email} 
               href={`/dashboard/sdrs/${encodeURIComponent(sdr.name)}`}
-              onClick={() => handleSdrClick(sdr.email)} // 🚩 Dispara filtro com E-MAIL
+              onClick={() => handleSdrClick(sdr.email)}
               className={cn(
                 "flex items-center justify-between p-4 transition-all group",
                 sdr.totalCalls > 0 ? "hover:bg-slate-50" : "opacity-60 grayscale-[0.5]"
