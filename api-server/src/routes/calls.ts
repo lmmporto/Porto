@@ -1,4 +1,4 @@
-import { Router, type Request, type Response, type NextFunction } from "express";
+import { Router, type Request, type Response } from "express";
 import admin from "firebase-admin";
 import { db } from "../firebase.js";
 import { CONFIG } from "../config.js";
@@ -32,7 +32,7 @@ router.get("/", async (req: Request, res: Response) => {
     const startAfter = req.query.lastVisible as string;
     const startDateParam = req.query.startDate as string;
     const endDateParam = req.query.endDate as string;
-    const filterEmail = req.query.ownerEmail as string; // 🚩 Parâmetro vindo do hook
+    const filterEmail = req.query.ownerEmail as string;
 
     console.log(`🔎 [BUSCA] User: ${userEmail} | Admin: ${isAdmin} | Filtro Email: ${filterEmail} | Datas: ${startDateParam} a ${endDateParam}`);
 
@@ -51,6 +51,8 @@ router.get("/", async (req: Request, res: Response) => {
     if (startDateParam && endDateParam) {
       const start = new Date(startDateParam);
       const end = new Date(endDateParam);
+      
+      // Ajusta para pegar o dia inteiro (00:00 até 23:59)
       start.setUTCHours(0, 0, 0, 0);
       end.setUTCHours(23, 59, 59, 999);
 
@@ -101,6 +103,7 @@ router.get("/:id", async (req: Request, res: Response) => {
     const userEmail = (req.user as any).email;
     const isAdmin = await checkIfAdmin(userEmail);
 
+    // 🚩 TRAVA DE PRIVACIDADE
     if (!isAdmin && callData?.ownerEmail !== userEmail) {
       return res.status(403).json({ error: "Permissão negada." });
     }
@@ -123,7 +126,7 @@ router.post("/hubspot-webhook", async (req: Request, res: Response) => {
     const result = await handleIncomingCall({ ...body, callId: String(callId).trim() });
     res.status(202).json(result);
   } catch (error) {
-    res.status(500).json({ success: false, error: "Erro no webhook" });
+    res.status(500).json({ success: false, error: "Erro no processamento do webhook" });
   }
 });
 
