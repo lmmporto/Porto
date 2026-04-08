@@ -1,5 +1,3 @@
-// src/services/analysis.service.ts
-
 import axios from 'axios';
 import { writeFile, unlink } from 'node:fs/promises';
 import os from 'node:os';
@@ -231,7 +229,6 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
  */
 export async function updateDailyStats(callData: any, analysis: any, isUpdate: boolean = false) {
   try {
-    // 🚩 MUDANÇA: Em vez de usar 'new Date()' (hoje), usamos a data da ligação
     const callDate = callData.callTimestamp ? callData.callTimestamp.toDate() : new Date();
     
     const nowInBrazil = new Intl.DateTimeFormat('pt-BR', {
@@ -242,6 +239,9 @@ export async function updateDailyStats(callData: any, analysis: any, isUpdate: b
     const dayId = nowInBrazil.split('/').reverse().join('-'); // Gera YYYY-MM-DD
     
     const statsRef = db.collection('dashboard_stats').doc(dayId);
+    
+    // 🚩 USE O E-MAIL COMO CHAVE NO RANKING DIÁRIO
+    const sdrKey = callData.ownerEmail || callData.ownerName || "Desconhecido";
     const sdrName = callData.ownerName || "Desconhecido";
 
     const isValidaParaRanking = analysis.status_final !== 'NAO_SE_APLICA' && 
@@ -259,15 +259,17 @@ export async function updateDailyStats(callData: any, analysis: any, isUpdate: b
       sum_notes: isValidaParaRanking && isUpdate ? FieldValue.increment(nota) : FieldValue.increment(0),
     };
 
-    updatePayload[`sdr_ranking.${sdrName}.total`] = FieldValue.increment(totalIncrement);
+    updatePayload[`sdr_ranking.${sdrKey}.total`] = FieldValue.increment(totalIncrement);
+    updatePayload[`sdr_ranking.${sdrKey}.ownerName`] = sdrName; // Salva o nome para exibição
+    updatePayload[`sdr_ranking.${sdrKey}.ownerEmail`] = sdrKey; // Salva o e-mail
     
     if (isUpdate && isValidaParaRanking) {
-      updatePayload[`sdr_ranking.${sdrName}.sum_notes`] = FieldValue.increment(nota);
-      updatePayload[`sdr_ranking.${sdrName}.valid_count`] = FieldValue.increment(1);
+      updatePayload[`sdr_ranking.${sdrKey}.sum_notes`] = FieldValue.increment(nota);
+      updatePayload[`sdr_ranking.${sdrKey}.valid_count`] = FieldValue.increment(1);
     }
 
     await statsRef.set(updatePayload, { merge: true });
-    console.log(`📊 [COFRE] ${isUpdate ? 'IA_FINISH' : 'WEBHOOK'}: ${sdrName} | Nota: ${nota} | Valida: ${isValidaParaRanking}`);
+    console.log(`📊 [COFRE] ${isUpdate ? 'IA_FINISH' : 'WEBHOOK'}: ${sdrKey} | Nota: ${nota} | Valida: ${isValidaParaRanking}`);
   } catch (error) {
     console.error("❌ [COFRE ERROR]:", error);
   }
@@ -276,10 +278,11 @@ export async function updateDailyStats(callData: any, analysis: any, isUpdate: b
 /**
  * 🏆 ATUALIZAÇÃO DO PLACAR GLOBAL POR SDR
  */
-export async function updateSdrGlobalStats(ownerName: string, nota: number) {
-  if (!ownerName || ownerName === "Não identificado") return;
+export async function updateSdrGlobalStats(ownerEmail: string, ownerName: string, nota: number) {
+  if (!ownerEmail) return;
   
-  const safeId = ownerName.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
+  // 🚩 O ID DO DOCUMENTO AGORA É O E-MAIL (Safe ID)
+  const safeId = ownerEmail.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
   const sdrRef = db.collection('sdr_stats').doc(safeId);
   
   try {
@@ -289,6 +292,7 @@ export async function updateSdrGlobalStats(ownerName: string, nota: number) {
       if (!doc.exists) {
         transaction.set(sdrRef, {
           ownerName: ownerName,
+          ownerEmail: ownerEmail,
           totalCalls: 1,
           totalScore: nota,
           averageScore: nota,
@@ -308,11 +312,13 @@ export async function updateSdrGlobalStats(ownerName: string, nota: number) {
         });
       }
     });
-    console.log(`🏆 [PLACAR] SDR ${ownerName} atualizado. Nova Média: ${nota}`);
+    console.log(`🏆 [PLACAR] SDR ${ownerEmail} atualizado. Nova Média: ${nota}`);
   } catch (error) {
-    console.error(`❌ [ERRO NO PLACAR] Falha ao atualizar ${ownerName}:`, error);
+    console.error(`❌ [ERRO NO PLACAR] Falha ao atualizar ${ownerEmail}:`, error);
   }
-}/**
+}
+
+/**
  * 🔍 BUSCA PAGINADA DE ANÁLISES (Data Access Layer)
  * Implementada com suporte ao índice composto (ownerEmail + callTimestamp)
  */

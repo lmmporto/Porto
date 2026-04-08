@@ -29,7 +29,6 @@ router.get('/summary', async (req: Request, res: Response) => {
 
     console.log(`📊 [STATS] Buscando resumo de performance do FIRESTORE...`);
 
-    // Agora lemos diretamente do placar consolidado por SDR
     const snapshot = await db.collection('sdr_stats')
       .orderBy('averageScore', 'desc')
       .get();
@@ -41,12 +40,11 @@ router.get('/summary', async (req: Request, res: Response) => {
     snapshot.docs.forEach(doc => {
       const data = doc.data();
       const name = data.ownerName || "SDR Desconhecido";
-      const email = data.ownerEmail || "sem-email@nibo.com.br"; // 🚩 CAPTURA O E-MAIL
+      const email = data.ownerEmail || "sem-email@nibo.com.br";
       
-      // Mapeamento direto do documento consolidado do SDR
       sdr_ranking[name] = {
         ownerName: name,
-        ownerEmail: email, // 🚩 ADICIONADO AO OBJETO
+        ownerEmail: email,
         calls: data.totalCalls || 0,
         valid_calls: data.totalCalls || 0,
         sum_notes: data.totalScore || 0,
@@ -61,7 +59,6 @@ router.get('/summary', async (req: Request, res: Response) => {
     const sdrNames = Object.keys(sdr_ranking);
     const totalSDRs = sdrNames.length || 1;
 
-    // Âncoras Dinâmicas (Médias do Time)
     const v_bar = total_calls / totalSDRs; 
     const m_bar = total_calls > 0 ? (sum_notes / total_calls) : 0; 
 
@@ -71,18 +68,14 @@ router.get('/summary', async (req: Request, res: Response) => {
       const M = s.valid_calls > 0 ? (s.sum_notes / s.valid_calls) : 0;
 
       if (V > 0) {
-        // 1. Qualidade Bayesiana
         const qualidade = (V * M + v_bar * m_bar) / (V + v_bar);
-        // 2. Fator de Tração
         const tracao = Math.sqrt(V / (v_bar || 1));
-        // Resultado Final
         s.nota_media = Number((qualidade * tracao).toFixed(1));
       } else {
         s.nota_media = 0;
       }
     });
 
-    // 🚩 EMPACOTANDO O RESULTADO PARA SALVAR NO CACHE
     const resultado = {
       total_calls,
       valid_calls: total_calls,
@@ -130,6 +123,10 @@ router.post("/rebuild-today-stats", async (req: Request, res: Response) => {
     let count = 0;
     for (const doc of snapshot.docs) {
       const callData = doc.data();
+      
+      // 🚩 GARANTIA: Identificador único para o rebuild
+      const sdrIdentifier = callData.ownerEmail || callData.ownerName || "Desconhecido";
+      
       const mockInitial = { status_final: 'NAO_IDENTIFICADO', nota_spin: null };
       await updateDailyStats(callData, mockInitial, false);
 
