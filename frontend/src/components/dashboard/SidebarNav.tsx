@@ -43,36 +43,33 @@ export function SidebarNav() {
 
   // 🚩 ESTRUTURA DINÂMICA DE MENU
   const menuItems = [
-    // Somente Admin vê o Dashboard Global
-    ...(isAdmin ? [{ 
-      name: 'Performance', 
-      href: '/dashboard', 
-      icon: LayoutDashboard 
-    }] : []),
-    
-    // Todos veem seu próprio painel
-    { 
-      name: 'Meu Painel', 
-      href: '/me', 
-      icon: User 
+    {
+      name: "Meu Painel",
+      href: "/me",
+      icon: User,
     },
-    
-    // SDRs e Histórico (Visão protegida pelo backend)
-    { 
-      name: 'SDRs', 
-      href: '/dashboard/sdrs', 
-      icon: Users 
+    {
+      name: "Histórico",
+      href: "/dashboard/calls",
+      icon: History,
     },
-    { 
-      name: 'Histórico', 
-      href: '/dashboard/calls', 
-      icon: History 
-    },
-    { 
-      name: 'Upload Manual', 
-      href: '/dashboard/upload', 
-      icon: UploadCloud 
-    },
+    ...(isAdmin ? [
+      {
+        name: "Performance",
+        href: "/dashboard",
+        icon: LayoutDashboard,
+      },
+      {
+        name: "SDRs",
+        href: "/dashboard/sdrs",
+        icon: Users,
+      },
+      {
+        name: "Upload Manual",
+        href: "/dashboard/upload",
+        icon: UploadCloud,
+      },
+    ] : []),
   ];
 
   return (

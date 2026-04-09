@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { ChevronRight, Clock, Database, Radio, Hourglass, MinusCircle } from 'lucide-react';
+import { ChevronRight, Clock, Database, Radio, Hourglass, MinusCircle, Phone, ArrowRight } from 'lucide-react';
 import type { SDRCall } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -68,55 +68,31 @@ export function CallCard({ call }: CallCardProps) {
 
   return (
     <Link href={`/dashboard/calls/${call.id}`}>
-      <div className="group flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white border border-slate-200 rounded-2xl hover:border-indigo-300 hover:shadow-md hover:shadow-indigo-50/50 transition-all duration-300 gap-4 cursor-pointer">
-        
-        <div className="flex items-start gap-4 flex-1 overflow-hidden">
-          <div className={cn("w-1.5 h-12 rounded-full shrink-0 mt-1 transition-colors", theme.bg)} />
-          
-          <div className="space-y-2 flex-1 min-w-0">
-            <h4 className="text-[15px] font-bold text-slate-800 line-clamp-1 pr-4 group-hover:text-indigo-600 transition-colors">
-              {call.title || 'Chamada sem Título'}
-            </h4>
-            
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] font-semibold text-slate-500 uppercase tracking-wide">
-              <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-1 rounded-md border border-slate-100">
-                 <div className="w-4 h-4 rounded-full bg-slate-200 text-[8px] flex items-center justify-center text-slate-600 shrink-0">
-                   {getInitials(call.ownerName || 'Desconhecido')}
-                 </div>
-                 <span className="truncate max-w-[120px] text-slate-700">{call.ownerName || 'SDR Desconhecido'}</span>
-              </div>
-
-              <span className="flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-slate-400" /> 
-                {formatDuration(call.durationMs)}
-              </span>
-
-              <span className="text-slate-400">
-                {formatSimpleDate(call.callTimestamp || call.analyzedAt || call.updatedAt)}
-              </span>
+      <div className="bg-slate-900/50 border border-slate-800 hover:border-indigo-500/50 transition-all rounded-2xl p-5 group cursor-pointer">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-slate-800 rounded-xl text-slate-400 group-hover:text-indigo-400 transition-colors shrink-0">
+              <Phone className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-slate-200 uppercase tracking-tight truncate">{call.title || 'Cliente Externo'}</h3>
+              <p className="text-[10px] text-slate-500 font-medium">{formatSimpleDate(call.callTimestamp || call.updatedAt)}</p>
             </div>
           </div>
-        </div>
-
-        <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-t-0 border-slate-100 pt-3 sm:pt-0 mt-2 sm:mt-0">
           
-          <div className="text-right flex flex-col items-end min-w-[85px]">
-            <p className={cn("text-2xl font-headline font-black leading-none tracking-tight", theme.text)}>
-              {displayScore}
-            </p>
-            
-            <span className="flex items-center gap-1 text-[9px] font-black text-slate-400 uppercase tracking-[0.2em] mt-1.5">
-              {statusText}
-              {call.processingStatus === 'PROCESSING' && <Hourglass className="w-3 h-3 text-slate-300 animate-spin" />}
-              {isRotaC && <MinusCircle className="w-3 h-3 text-slate-300" />}
-            </span>
-          </div>
-          
-          <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-indigo-50 transition-colors shrink-0">
-             <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-indigo-500 transition-colors" />
+          <div className="flex items-center gap-6 shrink-0">
+            <div className="text-right">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Score</p>
+              <p className={cn(
+                "text-xl font-black",
+                Number(call.nota_spin) >= 7 ? "text-emerald-400" : "text-amber-400"
+              )}>
+                {displayScore}
+              </p>
+            </div>
+            <ArrowRight className="w-5 h-5 text-slate-700 group-hover:text-indigo-500 transform group-hover:translate-x-1 transition-all" />
           </div>
         </div>
-
       </div>
     </Link>
   );

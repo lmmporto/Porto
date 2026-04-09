@@ -36,20 +36,16 @@ export function useCalls(limit = 10) {
       const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
       
       const params = new URLSearchParams();
-      params.append('limit', String(limit));
+      params.append('limit', String(limit || 50));
 
+      // Propaga modo, ownerEmail, e qualquer outro filtro ativo
       Object.entries(activeFilters).forEach(([key, value]) => {
         if (value !== undefined && value !== null && value !== '' && value !== 'undefined') {
-          if (Array.isArray(value)) {
-            params.append(key, value.join(','));
-          } else {
-            params.append(key, String(value));
-          }
+          params.append(key, String(value));
         }
       });
 
-      // 🚩 MUDANÇA SÊNIOR: Só injeta o e-mail automaticamente se o usuário NÃO for Admin
-      // Se for Admin, ele quer ver a lista limpa (todos) a menos que ele filtre manualmente.
+      // 🚩 SEGURANÇA: Só injeta o e-mail automaticamente se o usuário NÃO for Admin e não houver filtro manual
       if (!activeFilters.ownerEmail && !activeFilters.ownerName && user?.email && !isAdmin) {
         params.set('ownerEmail', user.email);
       }

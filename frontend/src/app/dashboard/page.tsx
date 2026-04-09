@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { 
   TrendingUp, 
   PhoneCall, 
@@ -94,7 +95,20 @@ const AdminDebugPanel = () => {
 
 export default function DashboardPage() {
   const { calls, isLoading, applyFilter, refresh, hasMore, loadMore } = useCallContext();
-  const { user } = useDashboard(); 
+  const { user, isAdmin, isInitialized, isImpersonating } = useDashboard(); 
+  const router = useRouter();
+
+  // 🚩 O "LEÃO DE CHÁCARA": Redirecionamento de segurança
+  useEffect(() => {
+    // Só redireciona se já inicializou, não é admin E não está simulando um SDR
+    if (isInitialized && !isAdmin && !isImpersonating) {
+      console.warn("⛔ Acesso negado ao Dashboard Global. Redirecionando...");
+      router.replace('/me');
+    }
+  }, [isInitialized, isAdmin, isImpersonating, router]);
+
+  // Se o usuário estiver no processo de redirecionamento, evite renderizar o conteúdo sensível
+  if (isInitialized && !isAdmin && !isImpersonating) return null;
   
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
