@@ -131,48 +131,88 @@ router.get('/personal-summary', async (req: Request, res: Response) => {
       return res.status(401).json({ error: "Não autorizado" });
     }
 
-    const userEmail = (req.user as any).email;
-    const isAdmin = await checkIfAdmin(userEmail);
+    const target = (req.query.ownerEmail as string) || (req.user as any).email;
     
-    // 🚩 LÓGICA DE ALVO: Admin pode escolher o e-mail, SDR é forçado ao seu próprio
-    const requestedEmail = req.query.ownerEmail as string;
-    const targetEmail = isAdmin ? (requestedEmail || userEmail) : userEmail;
+    console.log(`🔎 [DEBUG DASHBOARD] Iniciando busca para: ${target}`);
 
-    console.log(`📊 [PERSONAL STATS] Buscando insights para: ${targetEmail} (Solicitado por: ${userEmail})`);
-    
-    const snapshot = await db.collection(CONFIG.CALLS_COLLECTION)
-      .where("ownerEmail", "==", targetEmail)
-      .where("processingStatus", "==", "DONE")
-      .orderBy("callTimestamp", "desc")
-      .limit(20)
-      .get();
+    let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
+
+    // Filtro resiliente: E-mail ou Nome
+    if (target.includes('@')) {
+      query = query.where("ownerEmail", "==", target.trim().toLowerCase());
+    } else {
+      query = query.where("ownerName", "==", target);
+    }
+
+    // 🚩 REMOÇÃO TEMPORÁRIA DE FILTROS RESTRITIVOS para diagnóstico
+    // Buscamos os últimos 50 documentos independente do status para validar a existência de dados
+    const snapshot = await query.orderBy("callTimestamp", "desc").limit(50).get();
+
+    console.log(`📊 [DEBUG DASHBOARD] Documentos encontrados no banco: ${snapshot.size}`);
 
     if (snapshot.empty) {
+      console.log(`⚠️ [DEBUG DASHBOARD] Nenhum documento encontrado para o alvo: ${target}`);
       return res.json({ gaps: [], insights: [], totalAnalisadas: 0 });
     }
 
-    const calls = snapshot.docs.map(doc => doc.data());
+    const gapMap: Record<string, { text: string, count: number }> = {};
+    const insightMap: Record<string, { text: string, count: number }> = {};
 
-    const gapsRaw = calls
-      .map(c => c.ponto_atencao)
-      .filter(t => t && t.length > 5 && t.length < 150);
-    
-    const gaps = Array.from(new Set(gapsRaw)).slice(0, 3);
+    snapshot.docs.forEach((doc, index) => {
+      const c = doc.data();
+      
+      // 🚩 LOG DE INSPEÇÃO DO PRIMEIRO DOCUMENTO
+      if (index === 0) {
+        console.log("📝 [DEBUG CAMPOS] Campos presentes no doc:", Object.keys(c));
+        console.log("📝 [DEBUG CONTEÚDO] Alertas (raw):", c.alertas);
+        console.log("📝 [DEBUG CONTEÚDO] Ponto Atenção (raw):", c.ponto_atencao);
+      }
 
-    const insightsRaw = calls
-      .flatMap(c => c.pontos_fortes || [])
-      .filter(t => t && t.length > 5 && t.length < 150);
-    
-    const insights = Array.from(new Set(insightsRaw)).slice(0, 3);
+      // Captura Gaps: Prioridade Alertas (Array) > Ponto Atenção (String)
+      const rawGaps = (Array.isArray(c.alertas) && c.alertas.length > 0) 
+        ? c.alertas 
+        : (c.ponto_atencao ? [c.ponto_atencao] : []);
+
+      rawGaps.forEach((g: string) => {
+        if (!g || g.length < 5) return;
+        // Normalização por assinatura (primeiras 5 palavras)
+        const key = g.split(' ').slice(0, 5).join(' ').toLowerCase().replace(/[^\w\s]/gi, '');
+        if (!gapMap[key]) gapMap[key] = { text: g, count: 0 };
+        gapMap[key].count++;
+      });
+
+      // Captura Insights: Pontos Fortes (Array)
+      if (Array.isArray(c.pontos_fortes)) {
+        c.pontos_fortes.forEach((i: string) => {
+          if (!i || i.length < 5) return;
+          const key = i.split(' ').slice(0, 5).join(' ').toLowerCase().replace(/[^\w\s]/gi, '');
+          if (!insightMap[key]) insightMap[key] = { text: i, count: 0 };
+          insightMap[key].count++;
+        });
+      }
+    });
+
+    const sortedGaps = Object.values(gapMap)
+      .sort((a, b) => b.count - a.count)
+      .map(e => e.text)
+      .slice(0, 3);
+
+    const sortedInsights = Object.values(insightMap)
+      .sort((a, b) => b.count - a.count)
+      .map(e => e.text)
+      .slice(0, 3);
+
+    console.log(`✅ [DEBUG DASHBOARD] Gaps processados: ${sortedGaps.length}`);
+    console.log(`✅ [DEBUG DASHBOARD] Insights processados: ${sortedInsights.length}`);
 
     return res.json({
-      gaps,
-      insights,
+      gaps: sortedGaps,
+      insights: sortedInsights,
       totalAnalisadas: snapshot.size
     });
 
   } catch (error: any) {
-    console.error("❌ [CRASH NO PERSONAL-SUMMARY]:", error); 
+    console.error("❌ [PERSONAL SUMMARY ERROR]:", error);
     res.status(500).json({ error: error.message });
   }
 });

@@ -32,41 +32,50 @@ router.get("/", async (req: Request, res: Response) => {
     const startDateParam = req.query.startDate as string;
     const endDateParam = req.query.endDate as string;
     const filterEmail = req.query.ownerEmail as string;
+    const mode = req.query.mode as string;
 
-    console.log(`🔎 [BUSCA] User: ${userEmail} | Admin: ${isAdmin} | Filtro: ${filterEmail} | Datas: ${startDateParam} a ${endDateParam}`);
+    console.log(`🔎 [BUSCA] User: ${userEmail} | Admin: ${isAdmin} | Filtro: ${filterEmail} | Datas: ${startDateParam} a ${endDateParam} | Mode: ${mode}`);
 
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
 
-    // 🚩 SEGURANÇA ABSOLUTA: Se não for Admin, o filtro é FORÇADO para o e-mail do usuário
-    if (!isAdmin) {
-      query = query.where("ownerEmail", "==", userEmail);
-    } else {
-      // Se for Admin, ele pode filtrar, mas se não enviar nada, vê tudo.
-      if (filterEmail) {
-        query = query.where("ownerEmail", "==", filterEmail);
-      }
+    // 1. Filtro de Autoria (Resiliência e Segurança)
+    if (filterEmail) {
+      query = query.where("ownerEmail", "==", filterEmail.trim().toLowerCase());
+    } else if (!isAdmin) {
+      query = query.where("ownerEmail", "==", userEmail.trim().toLowerCase());
     }
 
-    // Filtros de Período Real (Usando callTimestamp)
-    if (startDateParam && endDateParam) {
-      const start = new Date(startDateParam);
-      const end = new Date(endDateParam);
-      start.setUTCHours(0, 0, 0, 0);
-      end.setUTCHours(23, 59, 59, 999);
-
+    // 2. Lógica de Ordenação e Modo (Feed vs Vitrine Ranking)
+    if (mode === 'ranking') {
+      // VITRINE: Performance absoluta (Top 10)
       query = query
-        .where("callTimestamp", ">=", admin.firestore.Timestamp.fromDate(start))
-        .where("callTimestamp", "<=", admin.firestore.Timestamp.fromDate(end));
+        .where("processingStatus", "==", "DONE")
+        .orderBy("nota_spin", "desc")
+        .limit(10);
+    } else {
+      // FEED: Cronológico (Fluxo normal com filtros de data)
+      if (startDateParam && endDateParam) {
+        const start = new Date(startDateParam);
+        const end = new Date(endDateParam);
+        start.setUTCHours(0, 0, 0, 0);
+        end.setUTCHours(23, 59, 59, 999);
+
+        query = query
+          .where("callTimestamp", ">=", admin.firestore.Timestamp.fromDate(start))
+          .where("callTimestamp", "<=", admin.firestore.Timestamp.fromDate(end));
+      }
+      
+      query = query.orderBy("callTimestamp", "desc");
+      
+      if (startAfter) {
+        const lastDoc = await db.collection(CONFIG.CALLS_COLLECTION).doc(startAfter).get();
+        if (lastDoc.exists) query = query.startAfter(lastDoc);
+      }
+      
+      query = query.limit(limit);
     }
 
-    query = query.orderBy("callTimestamp", "desc");
-
-    if (startAfter) {
-      const lastDoc = await db.collection(CONFIG.CALLS_COLLECTION).doc(startAfter).get();
-      if (lastDoc.exists) query = query.startAfter(lastDoc);
-    }
-
-    const snapshot = await query.limit(limit).get();
+    const snapshot = await query.get();
     console.log(`✅ [BUSCA] Encontrados ${snapshot.size} documentos`);
 
     const calls = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
