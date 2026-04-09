@@ -80,15 +80,23 @@ export async function processCall(callId: string): Promise<any> {
 
     // --- LOGICA DE LIMPEZA: Filtros de Equipe ---
     if (isBlocked && !teamName.toUpperCase().includes("SDR")) { 
-      console.log(`[CLEANUP] 🧹 Equipe bloqueada: ${teamName}. Removendo registro.`);
-      await callRef.delete();
-      return { success: false, reason: "TEAM_BLOCKED_CLEANED" };
+      console.log(`[ERROR] ⚠️ Call ${callId} marcada como ERROR (Equipe bloqueada: ${teamName})`);
+      await callRef.set({
+        processingStatus: "ERROR",
+        errorReason: "TEAM_BLOCKED",
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+      return { success: false, reason: "TEAM_BLOCKED" };
     }
 
     if (!isAllowed) {
-      console.log(`[CLEANUP] 🧹 Equipe não monitorada: ${teamName}. Removendo registro.`);
-      await callRef.delete();
-      return { success: false, reason: "TEAM_NOT_MONITORED_CLEANED" };
+      console.log(`[ERROR] ⚠️ Call ${callId} marcada como ERROR (Equipe não monitorada: ${teamName})`);
+      await callRef.set({
+        processingStatus: "ERROR",
+        errorReason: "TEAM_NOT_MONITORED",
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+      return { success: false, reason: "TEAM_NOT_MONITORED" };
     }
 
     // --- LOGICA DE LIMPEZA: Tempo Mínimo ---
@@ -96,9 +104,13 @@ export async function processCall(callId: string): Promise<any> {
     const duration = Number(call.durationMs || 0);
 
     if (duration < DURATION_LIMIT) {
-      console.log(`[CLEANUP] 🧹 Call ${callId} muito curta (${duration/1000}s). Removendo registro.`);
-      await callRef.delete();
-      return { success: false, reason: "CALL_TOO_SHORT_CLEANED" };
+      console.log(`[ERROR] ⚠️ Call ${callId} marcada como ERROR (Muito curta: ${duration/1000}s)`);
+      await callRef.set({
+        processingStatus: "ERROR",
+        errorReason: "CALL_TOO_SHORT",
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+      return { success: false, reason: "CALL_TOO_SHORT" };
     }
 
     // --- BUSCA DE ÁUDIO (Retry Loop) ---
@@ -110,9 +122,13 @@ export async function processCall(callId: string): Promise<any> {
 
     // --- LOGICA DE LIMPEZA: Sem Áudio ---
     if (!call.recordingUrl) {
-      console.log(`[CLEANUP] 🧹 Sem URL de áudio após retentativas: ${callId}. Removendo registro.`);
-      await callRef.delete();
-      return { success: false, reason: "NO_AUDIO_CLEANED" };
+      console.log(`[ERROR] ⚠️ Call ${callId} marcada como ERROR (Sem URL de áudio após retentativas)`);
+      await callRef.set({
+        processingStatus: "ERROR",
+        errorReason: "NO_AUDIO",
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+      return { success: false, reason: "NO_AUDIO" };
     }
 
     // --- ANÁLISE ---
@@ -120,9 +136,13 @@ export async function processCall(callId: string): Promise<any> {
     
     // --- LOGICA DE LIMPEZA: Transcrição Insuficiente ---
     if (!transcript || transcript.length < 100) {
-      console.log(`[CLEANUP] 🧹 Transcrição insuficiente para ${callId}. Removendo registro.`);
-      await callRef.delete();
-      return { success: false, reason: "INSUFFICIENT_CONTENT_CLEANED" };
+      console.log(`[ERROR] ⚠️ Call ${callId} marcada como ERROR (Transcrição insuficiente)`);
+      await callRef.set({
+        processingStatus: "ERROR",
+        errorReason: "INSUFFICIENT_CONTENT",
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
+      return { success: false, reason: "INSUFFICIENT_CONTENT" };
     }
 
     call.transcript = transcript;
@@ -160,9 +180,15 @@ export async function processCall(callId: string): Promise<any> {
     return { success: true, status: "ANALYZED" };
 
   } catch (error: any) {
-    console.error(`[ERROR] ❌ Erro na Call ${callId}:`, error.message);
-    console.log(`[CLEANUP] 🧹 Erro no processamento. Removendo registro incompleto: ${callId}`);
-    await callRef.delete();
+    console.error(`[ERROR] ❌ Erro crítico na Call ${callId}:`, error.message);
+    
+    // 🚩 PERSISTÊNCIA DE ERRO: Não deletamos, marcamos para auditoria
+    await callRef.set({
+      processingStatus: "ERROR",
+      errorReason: error.message,
+      updatedAt: FieldValue.serverTimestamp()
+    }, { merge: true });
+    
     throw error;
   }
 }
