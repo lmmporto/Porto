@@ -28,6 +28,15 @@ export interface CallData {
   transcript: string;
   transcriptSourceType: string;
   transcriptLength: number;
+
+  // Novos campos operacionais
+  transcriptSource?: string | null;
+  hasAudio?: boolean;
+  hasTranscript?: boolean;
+  processingStatus?: 'PENDING_AUDIO' | 'QUEUED' | 'PROCESSING' | 'DONE' | 'ERROR' | 'FAILED_NO_AUDIO';
+  audioFetchAttempts?: number;
+  lastAudioCheckAt?: string | Date;
+  updatedAt?: string | Date;
 }
 
 const DISPOSITION_MAP: Record<string, string> = {

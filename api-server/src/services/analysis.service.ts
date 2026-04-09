@@ -82,19 +82,19 @@ function cleanGeminiResponse(text: string): string {
  * Implementa atalho para transcrição nativa do HubSpot para economia de tokens.
  */
 export async function transcribeRecordingFromHubSpot(call: CallData): Promise<string> {
-  // 🚩 ATALHO DE ECONOMIA: Se o HubSpot já mandou o texto, usa ele e não gasta IA!
-  if (call.transcript && call.transcript.length > 100) {
-    console.log(`\n--- ✅ USANDO TRANSCRIÇÃO NATIVA HUBSPOT (Call: ${call.id}) ---`);
+  // 1. Curto-circuito: Se já existe transcrição válida, retorna imediatamente
+  if (call.hasTranscript && call.transcript && call.transcript.length >= 100) {
+    console.log(`⚡ [Short-circuit] Usando transcrição nativa (HUBSPOT) para call: ${call.callId || call.id}`);
     return call.transcript;
   }
 
+  // 2. Se não houver, prossegue com a lógica de baixar áudio e processar via IA
+  console.log(`🎙️ [IA] Transcrevendo áudio via Gemini para call: ${call.callId || call.id}`);
+  
   if (!gemini) throw new Error('GEMINI_API_KEY não configurada no cliente.');
   if (!call?.recordingUrl) {
-    console.warn(`[TRANSCRIPTION] Call ${call.id} sem URL de gravação.`);
-    return '';
+    throw new Error(`Nenhum áudio disponível para transcrição na call: ${call.callId || call.id}`);
   }
-
-  console.log(`\n--- 🎙️ INICIANDO TRANSCRIÇÃO POR IA (Call: ${call.id}) ---`);
   
   let localFilePath = '';
   let uploadedFile: { name?: string; uri?: string; mimeType?: string } | null = null;
@@ -110,7 +110,9 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
     const ext = detectAudioExtension(contentType);
     const buffer = Buffer.from(audioResponse.data as ArrayBuffer);
     
-    if (buffer.byteLength < 3500000) return '';
+    if (!buffer || buffer.byteLength === 0) {
+      throw new Error('Arquivo de áudio vazio ou corrompido.');
+    }
 
     localFilePath = path.join(os.tmpdir(), `call-${randomUUID()}.${ext}`);
     await writeFile(localFilePath, buffer);
@@ -135,7 +137,16 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
 
     const rawText = cleanGeminiResponse(response?.text || '');
     const parsed = safeJsonParse(rawText);
-    return sanitizeText(parsed?.transcript || '');
+    const aiTranscript = sanitizeText(parsed?.transcript || '');
+
+    // Validação pós-processamento
+    if (!aiTranscript || aiTranscript.trim().length < 50) {
+      console.error(`❌ Falha na transcrição IA para call: ${call.callId || call.id}. Resultado vazio ou insuficiente.`);
+      throw new Error('Transcription failed: AI returned empty or insufficient content');
+    }
+
+    console.log(`✅ Transcrição IA concluída com sucesso para call: ${call.callId || call.id}`);
+    return aiTranscript;
 
   } catch (error: any) {
     console.error(`[TRANSCRIPTION ERROR] Falha na Call ${call.id}:`, error.message);

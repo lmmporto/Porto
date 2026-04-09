@@ -34,6 +34,12 @@ export async function processCall(callId: string): Promise<any> {
     }
   }
 
+  // 1. Marcar como em processamento ativo e lockar de outras threads
+  await callRef.update({
+    processingStatus: 'PROCESSING',
+    updatedAt: FieldValue.serverTimestamp()
+  });
+
   console.log(`\n[PROCESS] 🚀 Iniciando Call ${callId}...`);
 
   try {
@@ -72,28 +78,22 @@ export async function processCall(callId: string): Promise<any> {
         await updateDailyStats(basePayload, mockInitialAnalysis);
     }
 
-    // Marcamos como "PROCESSING" temporariamente
-    await callRef.set({ 
-      processingStatus: "PROCESSING", 
-      updatedAt: FieldValue.serverTimestamp() 
-    }, { merge: true });
-
+    // O registro já foi blindado globalmente como PROCESSING antes do try
     // --- LOGICA DE LIMPEZA: Filtros de Equipe ---
-    if (isBlocked && !teamName.toUpperCase().includes("SDR")) { 
-      console.log(`[ERROR] ⚠️ Call ${callId} marcada como ERROR (Equipe bloqueada: ${teamName})`);
+      console.log(`[FAILED] ⚠️ Call ${callId} marcada como FAILED (Equipe bloqueada: ${teamName})`);
       await callRef.set({
-        processingStatus: "ERROR",
-        errorReason: "TEAM_BLOCKED",
+        processingStatus: "FAILED",
+        failureReason: "TEAM_BLOCKED",
         updatedAt: FieldValue.serverTimestamp()
       }, { merge: true });
       return { success: false, reason: "TEAM_BLOCKED" };
     }
 
     if (!isAllowed) {
-      console.log(`[ERROR] ⚠️ Call ${callId} marcada como ERROR (Equipe não monitorada: ${teamName})`);
+      console.log(`[FAILED] ⚠️ Call ${callId} marcada como FAILED (Equipe não monitorada: ${teamName})`);
       await callRef.set({
-        processingStatus: "ERROR",
-        errorReason: "TEAM_NOT_MONITORED",
+        processingStatus: "FAILED",
+        failureReason: "TEAM_NOT_MONITORED",
         updatedAt: FieldValue.serverTimestamp()
       }, { merge: true });
       return { success: false, reason: "TEAM_NOT_MONITORED" };
@@ -104,49 +104,72 @@ export async function processCall(callId: string): Promise<any> {
     const duration = Number(call.durationMs || 0);
 
     if (duration < DURATION_LIMIT) {
-      console.log(`[ERROR] ⚠️ Call ${callId} marcada como ERROR (Muito curta: ${duration/1000}s)`);
+      console.log(`[FAILED] ⚠️ Call ${callId} marcada como FAILED (Muito curta: ${duration/1000}s)`);
       await callRef.set({
-        processingStatus: "ERROR",
-        errorReason: "CALL_TOO_SHORT",
+        processingStatus: "FAILED",
+        failureReason: "CALL_TOO_SHORT",
         updatedAt: FieldValue.serverTimestamp()
       }, { merge: true });
       return { success: false, reason: "CALL_TOO_SHORT" };
     }
 
-    // --- BUSCA DE ÁUDIO (Retry Loop) ---
-    for (let attempt = 1; attempt <= CONFIG.REFETCH_ATTEMPTS && !call.recordingUrl; attempt++) {
-      console.log(`[RETRY] ⏳ Tentativa ${attempt} de buscar áudio para ${callId}...`);
-      await sleep(CONFIG.REFETCH_WAIT_MS);
-      call = await fetchCall(callId);
-    }
+    // --- ROTEAMENTO DE DADOS: Otimização de Transcrição ---
+    // 1. Recuperar dados exatos consolidados no banco de dados
+    const docSnap = await callRef.get();
+    const callData = docSnap.data() as CallData;
 
-    // --- LOGICA DE LIMPEZA: Sem Áudio ---
-    if (!call.recordingUrl) {
-      console.log(`[ERROR] ⚠️ Call ${callId} marcada como ERROR (Sem URL de áudio após retentativas)`);
-      await callRef.set({
-        processingStatus: "ERROR",
-        errorReason: "NO_AUDIO",
-        updatedAt: FieldValue.serverTimestamp()
+    let finalTranscript = '';
+    let source = '';
+
+    // 2. Prioridade: Transcrição nativa do HubSpot
+    if (callData.hasTranscript && callData.transcript) {
+      finalTranscript = callData.transcript;
+      source = callData.transcriptSource || 'HUBSPOT';
+      console.log(`✅ Usando transcrição nativa do HubSpot para ${callId}`);
+    } 
+    // 3. Fallback: Transcrição por IA (se houver áudio)
+    else if (callData.hasAudio && callData.recordingUrl) {
+      console.log(`🎙️ Transcrevendo áudio via IA para ${callId}`);
+      // Asseguramos callUrl atualizado ao método de IA
+      call.recordingUrl = callData.recordingUrl;
+      finalTranscript = await transcribeRecordingFromHubSpot(call);
+      source = 'AI_GENERATED';
+    } 
+    // 4. Falha: Sem recursos para processar
+    else {
+      console.error(`❌ Falha: Sem transcrição ou áudio para ${callId}`);
+      await callRef.set({ 
+        processingStatus: 'FAILED_NO_AUDIO', 
+        failureReason: 'NO_AUDIO_OR_TRANSCRIPT',
+        updatedAt: FieldValue.serverTimestamp() 
       }, { merge: true });
-      return { success: false, reason: "NO_AUDIO" };
+      return { success: false, reason: "NO_AUDIO_OR_TRANSCRIPT" };
     }
 
-    // --- ANÁLISE ---
-    const transcript = await transcribeRecordingFromHubSpot(call);
-    
+    const MIN_TRANSCRIPT_LENGTH = 180;
+
     // --- LOGICA DE LIMPEZA: Transcrição Insuficiente ---
-    if (!transcript || transcript.length < 50) {
-      console.log(`⚠️ [ERRO] Transcrição insuficiente para ${callId}. SALVANDO PARA DEBUG.`);
-      
-      await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).update({
-        processingStatus: 'ERROR',
-        errorReason: 'Transcrição insuficiente ou áudio mudo',
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-      return { success: false, reason: "INSUFFICIENT_CONTENT" };
+    if (!finalTranscript || finalTranscript.trim().length < MIN_TRANSCRIPT_LENGTH) {
+      console.log(`⚠️ [FAILED] Conteúdo insuficiente para análise na call ${callId}.`);
+
+      await callRef.set({
+        processingStatus: 'FAILED',
+        failureReason: !finalTranscript || finalTranscript.trim().length === 0
+          ? 'TRANSCRIPT_EMPTY'
+          : 'TRANSCRIPT_TOO_SHORT',
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+
+      return {
+        success: false,
+        status: 'FAILED',
+        reason: !finalTranscript || finalTranscript.trim().length === 0
+          ? 'TRANSCRIPT_EMPTY'
+          : 'TRANSCRIPT_TOO_SHORT',
+      };
     }
 
-    call.transcript = transcript;
+    call.transcript = finalTranscript;
     const { analysis, rawPrompt, rawResponse } = await analyzeCallWithGemini(call, owner);
 
     // 🚩 COFRE DE SALDOS: Atualiza nota e status
@@ -155,7 +178,8 @@ export async function processCall(callId: string): Promise<any> {
     // 🚩 SALVAMENTO FINAL: Garante que TUDO seja persistido
     await callRef.set({
       ...basePayload,
-      transcript: transcript,
+      transcript: finalTranscript,
+      transcriptSource: source,
       processingStatus: "DONE",
       analyzedAt: FieldValue.serverTimestamp(),
       status_final: analysis.status_final,
@@ -181,15 +205,17 @@ export async function processCall(callId: string): Promise<any> {
     return { success: true, status: "ANALYZED" };
 
   } catch (error: any) {
-    console.error(`[ERROR] ❌ Erro crítico na Call ${callId}:`, error.message);
-    
-    // 🚩 PERSISTÊNCIA DE ERRO: Não deletamos, marcamos para auditoria
+    const message = error?.message || 'Unexpected processing error';
+
+    console.error(`[ERROR] ❌ Erro operacional na Call ${callId}:`, message);
+
     await callRef.set({
-      processingStatus: "ERROR",
-      errorReason: error.message,
-      updatedAt: FieldValue.serverTimestamp()
+      processingStatus: 'ERROR',
+      failureReason: 'PROCESSING_EXCEPTION',
+      errorMessage: message,
+      updatedAt: FieldValue.serverTimestamp(),
     }, { merge: true });
-    
+
     throw error;
   }
 }

@@ -1,6 +1,7 @@
 import { db } from '../firebase.js';
 import admin from 'firebase-admin';
 import { CONFIG } from '../config.js';
+import { HUBSPOT_CALL_PROPERTIES } from '../constants/hubspot.js';
 import axios from 'axios';
 
 // 🚩 DURAÇÃO MÍNIMA: 2 minutos (120.000 milissegundos)
@@ -27,19 +28,25 @@ export async function handleIncomingCall(payload: any) {
     // 2. BUSCA ATIVA: Pega os dados reais da chamada no HubSpot
     // Usamos a API v3 de Engagements/Calls
     const hsResponse = await axios.get(
-      `https://api.hubapi.com/crm/v3/objects/calls/${callId}?properties=hs_call_duration,hs_call_recording_url,hubspot_owner_id,hs_call_title,hs_call_status`,
+      `https://api.hubapi.com/crm/v3/objects/calls/${callId}?properties=${HUBSPOT_CALL_PROPERTIES}`,
       { headers: { Authorization: `Bearer ${token}` } }
     );
 
     const callData = hsResponse.data.properties;
+
+    // Normalização de dados para processamento
+    const hubspotTranscript = String(callData.hs_call_transcript || '').trim();
+    const hasTranscript = hubspotTranscript.length >= 100;
+    const recordingUrl = String(callData.hs_call_recording_url || '').trim();
+    const hasAudio = Boolean(recordingUrl);
+
     const durationMs = Number(callData.hs_call_duration || 0);
-    const hasAudio = !!callData.hs_call_recording_url;
     const ownerId = callData.hubspot_owner_id;
 
-    // 3. FILTRO DE QUALIDADE (2 minutos e com áudio)
-    if (durationMs < MIN_DURATION_MS || !hasAudio) {
-      console.log(`⏭️ Chamada ${callId} ignorada. Duração: ${durationMs}ms, Áudio: ${hasAudio}`);
-      return { status: 'rejected', reason: 'Invalid criteria (Duration or Audio)' };
+    // Validação de duração mínima
+    if (durationMs < MIN_DURATION_MS) {
+      console.log(`⏭️ Chamada ${callId} ignorada por duração. Duração: ${durationMs}ms`);
+      return { status: 'rejected', reason: 'Too short' };
     }
 
     // 4. TRADUÇÃO DE DONO (ID para E-mail)
@@ -62,11 +69,26 @@ export async function handleIncomingCall(payload: any) {
     const collectionName = CONFIG.CALLS_COLLECTION || 'calls_analysis';
     const callRef = db.collection(collectionName).doc(String(callId));
     
-    // Verificamos se já não está processando para evitar duplicidade
+    // Lógica de verificação de estado para permitir ou bloquear o processamento
     const docSnap = await callRef.get();
-    if (docSnap.exists && docSnap.data()?.processingStatus !== 'ERROR') {
-      console.log(`⏭️ Chamada ${callId} já existe no banco.`);
-      return { status: 'ignored', reason: 'Already exists' };
+
+    if (docSnap.exists) {
+      const existingData = docSnap.data();
+      const blockedStatuses = ['DONE', 'PROCESSING'];
+
+      if (blockedStatuses.includes(existingData?.processingStatus)) {
+        console.log(`⏭️ Chamada ${callId} ignorada. Estado atual: ${existingData?.processingStatus}`);
+        return { status: 'ignored', reason: 'Already processed or in progress' };
+      }
+      
+      console.log(`🔄 Atualizando chamada ${callId} existente. Estado anterior: ${existingData?.processingStatus}`);
+    }
+
+    // Determinação do estado inicial da chamada
+    let initialStatus = 'PENDING_AUDIO';
+
+    if (hasTranscript || hasAudio) {
+      initialStatus = 'QUEUED';
     }
 
     const payloadToSave = {
@@ -75,17 +97,23 @@ export async function handleIncomingCall(payload: any) {
       title: callData.hs_call_title || 'Chamada sem título',
       durationMs: durationMs,
       hasAudio: hasAudio,
-      recordingUrl: callData.hs_call_recording_url,
+      hasTranscript: hasTranscript,
+      transcript: hasTranscript ? hubspotTranscript : null,
+      transcriptSource: hasTranscript ? 'HUBSPOT' : null,
+      recordingUrl: recordingUrl,
       ownerId: ownerId,
       ownerEmail: ownerEmail.toLowerCase(),
       ownerName: ownerName,
       hsCallStatus: callData.hs_call_status,
-      processingStatus: 'QUEUED',
+      processingStatus: initialStatus,
+      audioFetchAttempts: 0,
+      lastAudioCheckAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       callTimestamp: admin.firestore.FieldValue.serverTimestamp() // Idealmente pegar do HubSpot (hs_createdate)
     };
 
-    await callRef.set(payloadToSave);
+    await callRef.set(payloadToSave, { merge: true });
     console.log(`✅ Chamada ${callId} enfileirada para análise!`);
 
     return { status: 'accepted', callId: callId };
