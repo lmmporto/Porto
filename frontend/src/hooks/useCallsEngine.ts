@@ -3,7 +3,8 @@ import type { SDRCall, CallFilters } from '@/types';
 import { useDashboard } from '@/context/DashboardContext'; 
 
 export function useCalls(limit = 10) {
-  const { user } = useDashboard(); 
+  // 🚩 Extraímos isAdmin para controlar a flexibilidade do filtro
+  const { user, isAdmin } = useDashboard(); 
 
   const [calls, setCalls] = useState<SDRCall[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -16,7 +17,6 @@ export function useCalls(limit = 10) {
   const fetchData = useCallback(async (isReset = false, overrideFilters?: CallFilters) => {
     const activeFilters = overrideFilters || filters;
     
-    // 🚩 PROTEÇÃO: Se não temos o usuário logado ainda e nenhum filtro de e-mail/nome, não buscamos nada!
     if (!user?.email && !activeFilters.ownerEmail && !activeFilters.ownerName) {
       console.warn("⚠️ [useCalls] Busca bloqueada: Usuário não autenticado e sem filtros.");
       return;
@@ -33,12 +33,11 @@ export function useCalls(limit = 10) {
     setError(null);
 
     try {
-      const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
+      const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
       
       const params = new URLSearchParams();
       params.append('limit', String(limit));
 
-      // 1. Aplica todos os filtros ativos (incluindo ownerName e ownerEmail)
       Object.entries(activeFilters).forEach(([key, value]) => {
         if (value !== undefined && value !== null && value !== '' && value !== 'undefined') {
           if (Array.isArray(value)) {
@@ -49,8 +48,9 @@ export function useCalls(limit = 10) {
         }
       });
 
-      // 2. 🚩 BLINDAGEM: Injeta o e-mail do usuário logado se não houver filtro específico
-      if (!activeFilters.ownerEmail && !activeFilters.ownerName && user?.email) {
+      // 🚩 MUDANÇA SÊNIOR: Só injeta o e-mail automaticamente se o usuário NÃO for Admin
+      // Se for Admin, ele quer ver a lista limpa (todos) a menos que ele filtre manualmente.
+      if (!activeFilters.ownerEmail && !activeFilters.ownerName && user?.email && !isAdmin) {
         params.set('ownerEmail', user.email);
       }
 
@@ -60,7 +60,7 @@ export function useCalls(limit = 10) {
 
       const url = `${baseUrl}/api/calls?${params.toString()}`;
       
-      console.log(`🔎 [BUSCA ATÔMICA] URL: ${url}`);
+      console.log("🚀 FETCHING FROM:", url);
 
       const res = await fetch(url, { 
         credentials: 'include',
@@ -86,7 +86,8 @@ export function useCalls(limit = 10) {
         setIsLoading(false);
       }
     }
-  }, [limit, lastVisible, filters, user]);
+    // 🚩 Adicionado isAdmin nas dependências para garantir consistência
+  }, [limit, lastVisible, filters, user, isAdmin]);
 
   const updateFilters = useCallback((newFilters: CallFilters) => {
     setFilters(newFilters);

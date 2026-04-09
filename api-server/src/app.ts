@@ -25,6 +25,8 @@ declare global {
 }
 
 const app: Express = express();
+const isDev = process.env.NODE_ENV === 'development';
+const isProduction = process.env.NODE_ENV === 'production';
 
 // 🚩 Configuração vital para proxies (Render/Heroku/Cloudflare)
 app.set('trust proxy', 1);
@@ -53,7 +55,7 @@ if (!CONFIG.SESSION_SECRET || !CONFIG.GOOGLE_CLIENT_ID || !CONFIG.GOOGLE_CLIENT_
   throw new Error('Variáveis de ambiente de configuração (Auth/URL) faltando.');
 }
 
-// --- CONFIGURAÇÃO DE SESSÃO BLINDADA PARA CROSS-ORIGIN ---
+// --- 1. CONFIGURAÇÃO DE SESSÃO DINÂMICA (COOKIES) ---
 app.use(
   session({
     name: 'sdr.sid',
@@ -64,8 +66,8 @@ app.use(
     proxy: true,
     cookie: {
       httpOnly: true,
-      secure: true, 
-      sameSite: 'none', 
+      secure: isProduction, 
+      sameSite: isProduction ? 'none' : 'lax', 
       maxAge: 1000 * 60 * 60 * 24 * 7, // 7 dias
     },
   })
@@ -73,6 +75,34 @@ app.use(
 
 app.use(passport.initialize());
 app.use(passport.session());
+
+// --- 2. AUTENTICAÇÃO HÍBRIDA (MOCK COM PRIORIDADE DE SIMULAÇÃO) ---
+if (isDev) {
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    // 🚩 PRIORIDADE: Se o front mandar um e-mail via query, ele manda no sistema
+    const impersonateEmail = req.query.ownerEmail as string;
+
+    if (impersonateEmail && impersonateEmail.includes('@')) {
+      (req as any).user = { 
+        id: `simulated-${impersonateEmail}`,
+        email: impersonateEmail, 
+        name: `Simulando: ${impersonateEmail}` 
+      };
+      console.log(`🛠️ [DEV AUTH]: Agindo como SDR Simulado: ${impersonateEmail}`);
+    } else if (!req.user) {
+      // Fallback padrão para você não precisar logar localmente
+      (req as any).user = { 
+        id: 'dev-user-id',
+        email: 'lucas.porto@nibo.com.br', 
+        name: 'Lucas Porto (Dev Mode)' 
+      };
+      console.log("🛠️ [DEV AUTH]: Usuário Admin Mock injetado.");
+    }
+    
+    (req as any).isAuthenticated = () => true;
+    next();
+  });
+}
 
 passport.serializeUser((user, done) => {
   done(null, user);
@@ -165,8 +195,8 @@ app.post('/auth/logout', (req: any, res: Response) => {
     req.session.destroy(() => {
       res.clearCookie('sdr.sid', {
         httpOnly: true,
-        secure: true,
-        sameSite: 'none'
+        secure: isProduction,
+        sameSite: isProduction ? 'none' : 'lax'
       });
       return res.status(200).json({ success: true });
     });

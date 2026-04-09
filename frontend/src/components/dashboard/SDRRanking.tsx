@@ -45,11 +45,10 @@ export function SDRRanking({ summary }: SDRRankingProps) {
     return { color: "text-rose-500", bg: "bg-rose-50", icon: <ArrowRight className="w-3 h-3 rotate-45" /> };
   };
 
-  // 🚩 AÇÃO DE FILTRO SÊNIOR: Dispara busca pelo NOME (Backend traduzirá para e-mail)
+  // 🚩 AÇÃO DE FILTRO ATUALIZADA: Agora envia ownerEmail
   const handleSdrClick = (sdr: any) => {
-    console.log("🔎 [DEBUG] SDR Ranking Click - Objeto SDR:", sdr);
-    console.log("🔎 [DEBUG] Nome sendo enviado para filtro:", sdr.name);
-    applyFilter({ ownerName: sdr.name });
+    console.log("🚀 DISPARANDO FILTRO PARA EMAIL:", sdr.email);
+    applyFilter({ ownerEmail: sdr.email });
   };
 
   if (ranking.length === 0) {
@@ -76,11 +75,14 @@ export function SDRRanking({ summary }: SDRRankingProps) {
         {ranking.map((sdr, index) => {
           const hasAnalyzed = sdr.validCount > 0;
           const status = getStatusConfig(sdr.avgSpin, hasAnalyzed);
+          const uniqueKey = `${sdr.email || 'no-email'}-${index}`;
           
           return (
             <Link 
-              key={sdr.email} 
+              key={uniqueKey} 
+              // 🚩 URL visual usa o NOME
               href={`/dashboard/sdrs/${encodeURIComponent(sdr.name)}`}
+              // 🚩 Lógica de filtro usa o EMAIL
               onClick={() => handleSdrClick(sdr)}
               className={cn(
                 "flex items-center justify-between p-4 transition-all group",

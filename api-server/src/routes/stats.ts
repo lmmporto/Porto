@@ -39,7 +39,6 @@ router.get('/summary', async (req: Request, res: Response) => {
 
     const now = Date.now();
     
-    // 🚩 LÓGICA DE CACHE: Apenas para Admins para evitar vazamento entre SDRs
     if (isAdmin && cachedStats && (now - lastCacheTime < 60000)) {
       console.log(`📊 [STATS] Retornando resumo de performance do CACHE (Admin).`);
       return res.json(cachedStats);
@@ -47,10 +46,8 @@ router.get('/summary', async (req: Request, res: Response) => {
 
     console.log(`📊 [STATS] Buscando resumo de performance do FIRESTORE para: ${userEmail}`);
 
-    // 🚩 REMOVIDO ORDER BY: Evita erro de índice composto quando filtrado por e-mail
     let query: FirebaseFirestore.Query = db.collection('sdr_stats');
 
-    // 🚩 SEGURANÇA ABSOLUTA: Se não for Admin, filtra o ranking apenas para o e-mail dele
     if (!isAdmin) {
       query = query.where("ownerEmail", "==", userEmail);
     }
@@ -63,27 +60,27 @@ router.get('/summary', async (req: Request, res: Response) => {
 
     snapshot.docs.forEach(doc => {
       const data = doc.data();
-      const name = data.ownerName || "SDR Desconhecido";
-      const email = data.ownerEmail || "sem-email@nibo.com.br";
-      
-      sdr_ranking[name] = {
-        ownerName: name,
-        ownerEmail: email,
-        calls: data.totalCalls || 0,
-        valid_calls: data.totalCalls || 0,
-        sum_notes: data.totalScore || 0,
-        nota_media: data.averageScore || 0
-      };
+      if (data.ownerEmail && data.ownerEmail.includes('@')) {
+        const name = data.ownerName || "SDR Desconhecido";
+        const email = data.ownerEmail;
+        
+        sdr_ranking[name] = {
+          ownerName: name,
+          ownerEmail: email,
+          calls: data.totalCalls || 0,
+          valid_calls: data.totalCalls || 0,
+          sum_notes: data.totalScore || 0,
+          nota_media: data.averageScore || 0
+        };
 
-      total_calls += Number(data.totalCalls || 0);
-      sum_notes += Number(data.totalScore || 0);
+        total_calls += Number(data.totalCalls || 0);
+        sum_notes += Number(data.totalScore || 0);
+      }
     });
 
-    // 🚩 NOVA MATEMÁTICA: SCORE TURBO DINÂMICO
     const sdrNames = Object.keys(sdr_ranking);
     const totalSDRs = sdrNames.length || 1;
 
-    // Âncoras Dinâmicas (Médias do Time)
     const v_bar = total_calls / totalSDRs; 
     const m_bar = total_calls > 0 ? (sum_notes / total_calls) : 0; 
 
@@ -93,9 +90,7 @@ router.get('/summary', async (req: Request, res: Response) => {
       const M = s.valid_calls > 0 ? (s.sum_notes / s.valid_calls) : 0;
 
       if (V > 0) {
-        // 1. Qualidade Bayesiana (Puxa para a média se tiver pouco volume)
         const qualidade = (V * M + v_bar * m_bar) / (V + v_bar);
-        // 2. Fator de Tração (sqrt para suavizar prêmio por volume)
         const tracao = Math.sqrt(V / (v_bar || 1));
         s.nota_media = Number((qualidade * tracao).toFixed(1));
       } else {
@@ -122,6 +117,63 @@ router.get('/summary', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error("❌ [STATS ERROR]:", error.message);
     return res.status(500).json({ error: "Erro interno no processamento de estatísticas" });
+  }
+});
+
+/**
+ * GET /personal-summary
+ * Retorna insights qualitativos baseados nas últimas chamadas.
+ * Suporta ownerEmail via query para Admins.
+ */
+router.get('/personal-summary', async (req: Request, res: Response) => {
+  try {
+    if (!req.isAuthenticated() || !req.user) {
+      return res.status(401).json({ error: "Não autorizado" });
+    }
+
+    const userEmail = (req.user as any).email;
+    const isAdmin = await checkIfAdmin(userEmail);
+    
+    // 🚩 LÓGICA DE ALVO: Admin pode escolher o e-mail, SDR é forçado ao seu próprio
+    const requestedEmail = req.query.ownerEmail as string;
+    const targetEmail = isAdmin ? (requestedEmail || userEmail) : userEmail;
+
+    console.log(`📊 [PERSONAL STATS] Buscando insights para: ${targetEmail} (Solicitado por: ${userEmail})`);
+    
+    const snapshot = await db.collection(CONFIG.CALLS_COLLECTION)
+      .where("ownerEmail", "==", targetEmail)
+      .where("processingStatus", "==", "DONE")
+      .orderBy("callTimestamp", "desc")
+      .limit(20)
+      .get();
+
+    if (snapshot.empty) {
+      return res.json({ gaps: [], insights: [], totalAnalisadas: 0 });
+    }
+
+    const calls = snapshot.docs.map(doc => doc.data());
+
+    const gapsRaw = calls
+      .map(c => c.ponto_atencao)
+      .filter(t => t && t.length > 5 && t.length < 150);
+    
+    const gaps = Array.from(new Set(gapsRaw)).slice(0, 3);
+
+    const insightsRaw = calls
+      .flatMap(c => c.pontos_fortes || [])
+      .filter(t => t && t.length > 5 && t.length < 150);
+    
+    const insights = Array.from(new Set(insightsRaw)).slice(0, 3);
+
+    return res.json({
+      gaps,
+      insights,
+      totalAnalisadas: snapshot.size
+    });
+
+  } catch (error: any) {
+    console.error("❌ [CRASH NO PERSONAL-SUMMARY]:", error); 
+    res.status(500).json({ error: error.message });
   }
 });
 

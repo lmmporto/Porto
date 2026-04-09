@@ -39,17 +39,11 @@ const AdminDebugPanel = () => {
     const fetchSdrs = async () => {
       try {
         const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
-        const res = await fetch(`${baseUrl}/api/stats/summary`, { credentials: 'include' });
+        const res = await fetch(`${baseUrl}/api/sdr-registry`, { credentials: 'include' });
         const data = await res.json();
-        if (data.sdr_ranking) {
-          const list = Object.entries(data.sdr_ranking).map(([name, stats]: [string, any]) => ({
-            name,
-            email: stats.ownerEmail || name
-          }));
-          setSdrs(list);
-        }
+        setSdrs(data.sdrs || []);
       } catch (e) {
-        console.error("Erro ao carregar lista de SDRs para o painel de debug");
+        console.error("Erro ao carregar SDRs do registro para o painel de debug");
       }
     };
     if (process.env.NODE_ENV === 'development') fetchSdrs();
@@ -71,9 +65,17 @@ const AdminDebugPanel = () => {
           className="w-full p-2 text-xs rounded-lg border border-amber-200 bg-white outline-none focus:ring-2 focus:ring-amber-500"
         >
           <option value="">Simular visão de...</option>
-          {sdrs.map(sdr => (
-            <option key={sdr.email} value={sdr.email}>{sdr.name}</option>
-          ))}
+          {sdrs
+            // 🚩 FILTRO RADICAL: Remove qualquer e-mail de fallback ou inválido
+            .filter(sdr => sdr.email && sdr.email.includes('@') && sdr.email !== 'sem-email@nibo.com.br')
+            // 🚩 DE-DUPLICAÇÃO: Garante que o mesmo e-mail não apareça duas vezes
+            .filter((sdr, index, self) => index === self.findIndex((t) => t.email === sdr.email))
+            .map((sdr) => (
+              <option key={sdr.email} value={sdr.email}>
+                {sdr.name}
+              </option>
+            ))
+          }
         </select>
         
         {isImpersonating && (
@@ -92,7 +94,7 @@ const AdminDebugPanel = () => {
 
 export default function DashboardPage() {
   const { calls, isLoading, applyFilter, refresh, hasMore, loadMore } = useCallContext();
-  const { user } = useDashboard(); // 🚩 Extraído para monitorar trocas de perfil
+  const { user } = useDashboard(); 
   
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -102,7 +104,6 @@ export default function DashboardPage() {
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
 
-  // 🚩 ORQUESTRADOR DE BUSCA ATÔMICA (Reativo ao Usuário)
   useEffect(() => {
     const agora = new Date();
     let start = '';
@@ -132,10 +133,8 @@ export default function DashboardPage() {
       minScore: minScore
     };
 
-    // 1. Dispara busca de chamadas (Contexto limpa a lista automaticamente)
     applyFilter(filtrosParaEnviar as any);
 
-    // 2. Dispara busca de métricas (Cards)
     const fetchSummary = async () => {
       try {
         const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
@@ -151,8 +150,6 @@ export default function DashboardPage() {
     };
     fetchSummary();
 
-    // 🚩 'user' adicionado para recarregar a página ao simular SDR
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dateFilter, sortOrder, customStartDate, customEndDate, minScore, user]);
 
   const filteredCalls = useMemo(() => {

@@ -7,10 +7,12 @@ import {
   LogOut,
   Users,
   LayoutDashboard,
-  History
+  History,
+  User // 🚩 Novo ícone para o painel pessoal
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NiboLogo } from '@/components/ui/nibo-logo';
+import { useDashboard } from '@/context/DashboardContext'; // 🚩 Importação do contexto
 import {
   Sidebar,
   SidebarContent,
@@ -26,19 +28,36 @@ import {
 export function SidebarNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const { isAdmin, checkUser } = useDashboard(); // 🚩 Extração de permissões
 
-  const handleLogout = () => {
-    localStorage.removeItem('auth_v1');
-    router.push('/login');
+  const handleLogout = async () => {
+    try {
+      const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
+      await fetch(`${baseUrl}/auth/logout`, { method: 'POST', credentials: 'include' });
+      await checkUser(); // Reseta o estado do contexto
+      router.push('/login');
+    } catch (e) {
+      router.push('/login');
+    }
   };
 
-  // 🚩 ESTRUTURA REAL (Confirmada pelas suas imagens):
+  // 🚩 ESTRUTURA DINÂMICA DE MENU
   const menuItems = [
-    { 
+    // Somente Admin vê o Dashboard Global
+    ...(isAdmin ? [{ 
       name: 'Performance', 
       href: '/dashboard', 
       icon: LayoutDashboard 
+    }] : []),
+    
+    // Todos veem seu próprio painel
+    { 
+      name: 'Meu Painel', 
+      href: '/me', 
+      icon: User 
     },
+    
+    // SDRs e Histórico (Visão protegida pelo backend)
     { 
       name: 'SDRs', 
       href: '/dashboard/sdrs', 
@@ -59,7 +78,7 @@ export function SidebarNav() {
   return (
     <Sidebar variant="sidebar" collapsible="icon" className="border-r border-slate-100 bg-white">
       <SidebarHeader className="p-6">
-        <Link href="/dashboard" className="flex items-center gap-3 text-slate-900 group">
+        <Link href={isAdmin ? "/dashboard" : "/me"} className="flex items-center gap-3 text-slate-900 group">
           <NiboLogo className="text-sm group-data-[collapsible=icon]:hidden" />
         </Link>
       </SidebarHeader>
@@ -69,11 +88,8 @@ export function SidebarNav() {
           <SidebarGroupContent>
             <SidebarMenu className="gap-1">
               {menuItems.map((item) => {
-                // 🚩 Lógica de Ativo:
-                // - Se for a Home, só ativa se o caminho for EXATAMENTE /dashboard
-                // - Para os outros, ativa se o caminho começar com a rota (ex: /calls/123 ativa o Histórico)
-                const isActive = item.href === '/dashboard' 
-                  ? pathname === '/dashboard' 
+                const isActive = item.href === '/dashboard' || item.href === '/me'
+                  ? pathname === item.href 
                   : pathname.startsWith(item.href);
 
                 return (

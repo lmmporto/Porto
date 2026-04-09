@@ -11,7 +11,7 @@ interface User {
 interface DashboardContextType {
   user: User | null;
   isAdmin: boolean;
-  isImpersonating: boolean; // 🚩 Útil para mostrar um aviso na UI
+  isImpersonating: boolean;
   isLoading: boolean;
   isInitialized: boolean;
   checkUser: () => Promise<void>;
@@ -30,7 +30,37 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   // 🚩 ESTADO DE SIMULAÇÃO
   const [impersonatedUser, setImpersonatedUser] = useState<User | null>(null);
 
+  // 🚩 RECUPERAÇÃO: Ao carregar o app, verifica se havia uma simulação ativa no sessionStorage
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      const savedSdr = sessionStorage.getItem('impersonated_sdr');
+      if (savedSdr) {
+        try {
+          const parsedSdr = JSON.parse(savedSdr);
+          console.log("🔄 [DEV MODE]: Restaurando simulação de:", parsedSdr.name);
+          setImpersonatedUser(parsedSdr);
+        } catch (e) {
+          sessionStorage.removeItem('impersonated_sdr');
+        }
+      }
+    }
+  }, []);
+
   const checkUser = useCallback(async () => {
+    // 🚩 REGRA DE OURO: Bypass de autenticação em ambiente de desenvolvimento
+    if (process.env.NODE_ENV === 'development') {
+      console.log("🛠️ [DEV MODE]: Ignorando autenticação real e usando perfil Admin.");
+      setUser({ 
+        email: 'lucas.porto@nibo.com.br', 
+        name: 'Lucas Porto (Dev)',
+        picture: 'https://github.com/identicons/jedi.png' 
+      });
+      setServerIsAdmin(true);
+      setIsInitialized(true);
+      return;
+    }
+
+    // --- FLUXO DE PRODUÇÃO ---
     try {
       const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
       const res = await fetch(`${baseUrl}/auth/me`, { 
@@ -56,23 +86,22 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     checkUser();
   }, [checkUser]);
 
-  // 🚩 LÓGICA DE SIMULAÇÃO
+  // 🚩 LÓGICA DE SIMULAÇÃO COM PERSISTÊNCIA
   const startImpersonation = (sdr: User) => {
     console.warn(`⚠️ SIMULAÇÃO ATIVA: Agindo como ${sdr.name}`);
     setImpersonatedUser(sdr);
+    // Salva no navegador para não perder no refresh
+    sessionStorage.setItem('impersonated_sdr', JSON.stringify(sdr));
   };
 
   const stopImpersonation = () => {
     console.warn(`✅ SIMULAÇÃO ENCERRADA: Retornando ao perfil Admin.`);
     setImpersonatedUser(null);
+    // Remove do navegador
+    sessionStorage.removeItem('impersonated_sdr');
   };
 
-  // 🚩 DEFINIÇÃO DO USUÁRIO EFETIVO E PAPEL
-  // O resto do app (incluindo o hook useCallsEngine) usará este 'effectiveUser'
   const effectiveUser = impersonatedUser || user;
-  
-  // O usuário só tem poderes de admin se NÃO estiver simulando e se for admin no servidor
-  // Adicionada a trava de segurança por e-mail conforme solicitado
   const isAdmin = !impersonatedUser && (serverIsAdmin || user?.email === 'lucas.porto@nibo.com.br');
 
   return (
