@@ -135,13 +135,14 @@ export async function processCall(callId: string): Promise<any> {
     const transcript = await transcribeRecordingFromHubSpot(call);
     
     // --- LOGICA DE LIMPEZA: Transcrição Insuficiente ---
-    if (!transcript || transcript.length < 100) {
-      console.log(`[ERROR] ⚠️ Call ${callId} marcada como ERROR (Transcrição insuficiente)`);
-      await callRef.set({
-        processingStatus: "ERROR",
-        errorReason: "INSUFFICIENT_CONTENT",
-        updatedAt: FieldValue.serverTimestamp()
-      }, { merge: true });
+    if (!transcript || transcript.length < 50) {
+      console.log(`⚠️ [ERRO] Transcrição insuficiente para ${callId}. SALVANDO PARA DEBUG.`);
+      
+      await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).update({
+        processingStatus: 'ERROR',
+        errorReason: 'Transcrição insuficiente ou áudio mudo',
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
       return { success: false, reason: "INSUFFICIENT_CONTENT" };
     }
 
