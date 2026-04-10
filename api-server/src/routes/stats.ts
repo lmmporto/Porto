@@ -14,28 +14,29 @@ const BRAZIL_TIMEZONE = 'America/Sao_Paulo';
 let cachedStats: any = null;
 let lastCacheTime = 0;
 
-
-
 /**
  * GET /summary (Relativo ao prefixo /api/stats)
  * Retorna o resumo de performance extraído do Placar Consolidado (sdr_stats).
  */
 router.get('/summary', async (req: Request, res: Response) => {
   try {
-    if (!req.isAuthenticated() || !req.user) return res.status(401).json({ error: "Não autorizado" });
+    if (!req.isAuthenticated() || !req.user) {
+      return res.status(401).json({ error: "Não autorizado" });
+    }
 
     const userEmail = (req.user as any).email;
+    const isAdmin = await checkIfAdmin(userEmail);
+
     const now = Date.now();
     
     // Cache compartilhado: ranking é público para o time logado
-    if (cachedStats && (now - lastCacheTime < 60000)) {
+    if (isAdmin && cachedStats && (now - lastCacheTime < 60000)) {
+      console.log(`📊 [STATS] Retornando resumo de performance do CACHE (Admin).`);
       return res.json(cachedStats);
     }
 
     console.log(`📊 [STATS] Gerando ranking global para: ${userEmail}`);
 
-    // 🚩 MUDANÇA SÊNIOR: Removemos o filtro de ownerEmail para trazer o ranking completo
-    // Ordenamos por averageScore (ou nota_media se o campo mudar)
     let query = db.collection('sdr_stats');
     const snapshot = await query.get();
 
@@ -65,7 +66,6 @@ router.get('/summary', async (req: Request, res: Response) => {
 
     const sdrNames = Object.keys(sdr_ranking || {});
 
-    // 🚩 PROTEÇÃO: Se não houver dados, retorna estrutura vazia segura em vez de tentar calcular
     if (sdrNames.length === 0) {
       console.log("⚠️ [STATS] Nenhum dado de SDR encontrado. Retornando estrutura EMPTY_SAFE.");
       return res.json({
@@ -79,7 +79,6 @@ router.get('/summary', async (req: Request, res: Response) => {
     }
 
     const totalSDRs = sdrNames.length;
-
     const v_bar = total_calls / totalSDRs;
     const m_bar = total_calls > 0 ? (sum_notes / total_calls) : 0;
 
@@ -106,8 +105,10 @@ router.get('/summary', async (req: Request, res: Response) => {
       version: "V7_PUBLIC_LEADERBOARD"
     };
 
-    cachedStats = resultado;
-    lastCacheTime = now;
+    if (isAdmin) {
+      cachedStats = resultado;
+      lastCacheTime = now;
+    }
 
     return res.json(resultado);
 
@@ -120,20 +121,21 @@ router.get('/summary', async (req: Request, res: Response) => {
 /**
  * GET /personal-summary
  * Retorna insights qualitativos baseados nas últimas chamadas.
- * Suporta ownerEmail via query para Admins.
  */
 router.get('/personal-summary', async (req: Request, res: Response) => {
   try {
-    // 🚩 SEGURANÇA: Bloqueia acesso não autenticado
     if (!req.isAuthenticated() || !req.user) {
       return res.status(401).json({ error: "Não autorizado" });
     }
 
+    const userEmail = (req.user as any).email;
+    
     // 1. Normalização rigorosa
-    const rawEmail = (req.query.ownerEmail as string) || (req.user as any).email || "";
+    const rawEmail = (req.query.ownerEmail as string) || userEmail || "";
     const targetEmail = rawEmail.toLowerCase().trim();
 
-    console.log(`🔎 [DEBUG] Buscando insights para: "${targetEmail}"`);
+    // 🚩 LOG DE AUDITORIA: Rastreamento do alvo da busca
+    console.log(`⚠️ [DEBUG] Buscando insights para: ${targetEmail}`);
 
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
 
@@ -158,7 +160,6 @@ router.get('/personal-summary', async (req: Request, res: Response) => {
     snapshot.docs.forEach((doc) => {
       const c = doc.data();
 
-      // Captura Gaps (Alertas ou Ponto de Atenção)
       const rawGaps = (Array.isArray(c.alertas) && c.alertas.length > 0)
         ? c.alertas
         : (c.ponto_atencao ? [c.ponto_atencao] : []);
@@ -170,7 +171,6 @@ router.get('/personal-summary', async (req: Request, res: Response) => {
         gapMap[key].count++;
       });
 
-      // Captura Insights (Pontos Fortes)
       if (Array.isArray(c.pontos_fortes)) {
         c.pontos_fortes.forEach((i: string) => {
           if (!i || i.length < 5) return;
@@ -191,8 +191,8 @@ router.get('/personal-summary', async (req: Request, res: Response) => {
     });
 
   } catch (error: any) {
-    console.error("❌ [PERSONAL SUMMARY ERROR]:", error);
-    res.status(500).json({ error: "Erro ao processar insights" });
+    console.error("❌ [CRASH NO PERSONAL-SUMMARY]:", error); 
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -210,7 +210,7 @@ router.post("/rebuild-today-stats", async (req: Request, res: Response) => {
     console.log(`\n[REBUILD] 🔨 Iniciando reconstrução do dia: ${todayStr}`);
 
     const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+    startOfDay.setHours(0, 0, 0, 0); 
 
     const snapshot = await db.collection(CONFIG.CALLS_COLLECTION)
       .where("updatedAt", ">=", admin.firestore.Timestamp.fromDate(startOfDay))
@@ -223,8 +223,6 @@ router.post("/rebuild-today-stats", async (req: Request, res: Response) => {
     let count = 0;
     for (const doc of snapshot.docs) {
       const callData = doc.data();
-      const sdrIdentifier = callData.ownerEmail || callData.ownerName || "Desconhecido";
-
       const mockInitial = { status_final: 'NAO_IDENTIFICADO', nota_spin: null };
       await updateDailyStats(callData, mockInitial, false);
 
@@ -234,10 +232,10 @@ router.post("/rebuild-today-stats", async (req: Request, res: Response) => {
       count++;
     }
 
-    res.json({
-      success: true,
+    res.json({ 
+      success: true, 
       message: `Cofre reconstruído com sucesso para o dia ${todayStr}.`,
-      processedCalls: count
+      processedCalls: count 
     });
 
   } catch (error: any) {
