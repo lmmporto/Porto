@@ -52,22 +52,19 @@ if (!CONFIG.SESSION_SECRET || !CONFIG.GOOGLE_CLIENT_ID || !CONFIG.GOOGLE_CLIENT_
 }
 
 // --- 1. CONFIGURAÇÃO DE SESSÃO DINÂMICA (COOKIES) ---
-app.use(
-  session({
-    name: 'sdr.sid',
-    secret: CONFIG.SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    rolling: true,
-    proxy: true, 
-    cookie: {
-      httpOnly: true,
-      secure: true, // 🚩 HTTPS é obrigatório para SameSite: 'none'
-      sameSite: 'none', // 🚩 Permite cookies entre domínios diferentes
-      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 dias
-    },
-  })
-);
+app.use(session({
+  name: 'sdr.sid',
+  secret: CONFIG.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  proxy: true, 
+  cookie: {
+    httpOnly: true,
+    secure: true, // 🚩 HTTPS é obrigatório para SameSite: 'none'
+    sameSite: 'none', // 🚩 Permite cookies cross-domain
+    maxAge: 1000 * 60 * 60 * 24 * 7,
+  },
+}));
 
 app.use(passport.initialize());
 app.use(passport.session());
@@ -159,8 +156,15 @@ app.get(
     failureRedirect: `${CONFIG.FRONTEND_URL}/login?error=google_auth_failed`,
     session: true,
   }),
-  (_req, res) => {
-    res.redirect(`${CONFIG.FRONTEND_URL}/dashboard`);
+  (req: any, res) => {
+    // 🚩 Força o salvamento da sessão antes do redirect para garantir persistência no banco
+    req.session.save((err: any) => {
+      if (err) {
+        console.error("❌ Erro ao salvar sessão:", err);
+        return res.redirect(`${CONFIG.FRONTEND_URL}/login?error=session_save_failed`);
+      }
+      res.redirect(`${CONFIG.FRONTEND_URL}/dashboard`);
+    });
   }
 );
 
