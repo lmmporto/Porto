@@ -1,10 +1,10 @@
 import { useState, useCallback, useRef } from 'react';
 import type { SDRCall, CallFilters } from '@/types';
-import { useDashboard } from '@/context/DashboardContext'; 
+import { useDashboard } from '@/context/DashboardContext';
 
 export function useCalls(limit = 10) {
   // 🚩 Extraímos isAdmin para controlar a flexibilidade do filtro
-  const { user, isAdmin } = useDashboard(); 
+  const { user, isAdmin } = useDashboard();
 
   const [calls, setCalls] = useState<SDRCall[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -16,7 +16,7 @@ export function useCalls(limit = 10) {
 
   const fetchData = useCallback(async (isReset = false, overrideFilters?: CallFilters) => {
     const activeFilters = overrideFilters || filters;
-    
+
     if (!user?.email && !activeFilters.ownerEmail && !activeFilters.ownerName) {
       console.warn("⚠️ [useCalls] Busca bloqueada: Usuário não autenticado e sem filtros.");
       return;
@@ -25,7 +25,7 @@ export function useCalls(limit = 10) {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
-    
+
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
@@ -34,7 +34,7 @@ export function useCalls(limit = 10) {
 
     try {
       const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
-      
+
       const params = new URLSearchParams();
       params.append('limit', String(limit || 50));
 
@@ -45,9 +45,12 @@ export function useCalls(limit = 10) {
         }
       });
 
-      // 🚩 SEGURANÇA: Só injeta o e-mail automaticamente se o usuário NÃO for Admin e não houver filtro manual
-      if (!activeFilters.ownerEmail && !activeFilters.ownerName && user?.email && !isAdmin) {
-        params.set('ownerEmail', user.email);
+      // 🚩 CORREÇÃO SÊNIOR: Só injeta o e-mail se não for Admin (visão restrita)
+      // Se for Admin, params.ownerEmail virá apenas se houver um filtro explícito selecionado.
+      const shouldFilterByEmail = !isAdmin && user?.email;
+
+      if (shouldFilterByEmail && !activeFilters.ownerEmail) {
+        params.append('ownerEmail', user.email);
       }
 
       if (!isReset && lastVisible) {
@@ -55,12 +58,12 @@ export function useCalls(limit = 10) {
       }
 
       const url = `${baseUrl}/api/calls?${params.toString()}`;
-      
+
       console.log("🚀 FETCHING FROM:", url);
 
-      const res = await fetch(url, { 
+      const res = await fetch(url, {
         credentials: 'include',
-        signal: controller.signal 
+        signal: controller.signal
       });
 
       if (!res.ok) {
@@ -72,7 +75,7 @@ export function useCalls(limit = 10) {
 
       setCalls(prev => isReset ? (data.calls || []) : [...prev, ...(data.calls || [])]);
       setLastVisible(data.lastVisible || null);
-      
+
     } catch (err: any) {
       if (err.name === 'AbortError') return;
       console.error("❌ [useCalls Error]:", err.message);
@@ -88,17 +91,17 @@ export function useCalls(limit = 10) {
   const updateFilters = useCallback((newFilters: CallFilters) => {
     setFilters(newFilters);
     setLastVisible(null);
-    setCalls([]); 
+    setCalls([]);
   }, []);
 
-  return { 
-    calls, 
-    setCalls, 
-    isLoading, 
-    error, 
-    filters, 
-    fetchData, 
-    updateFilters, 
-    hasMore: !!lastVisible 
+  return {
+    calls,
+    setCalls,
+    isLoading,
+    error,
+    filters,
+    fetchData,
+    updateFilters,
+    hasMore: !!lastVisible
   };
 }
