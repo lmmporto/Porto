@@ -150,7 +150,7 @@ router.get('/personal-summary', async (req: Request, res: Response) => {
     }
 
     // 3. Execução da Query
-    const snapshot = await query.orderBy("callTimestamp", "desc").limit(50).get();
+    const snapshot = await query.orderBy("callTimestamp", "desc").limit(15).get();
 
     if (snapshot.empty) {
       console.log(`⚠️ [DEBUG DASHBOARD] Nenhum documento encontrado para: ${targetEmail}`);
