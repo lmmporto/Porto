@@ -167,9 +167,15 @@ export default function DashboardPage() {
   }, [dateFilter, sortOrder, customStartDate, customEndDate, minScore, user]);
 
   const filteredCalls = useMemo(() => {
-    if (!searchTerm) return calls;
+    // 🚩 ALLOWLIST SÊNIOR: Filtro de segurança para exibição
+    const allowlisted = calls.filter(call => 
+      call.nota_spin !== null && 
+      ['APROVADO', 'ATENCAO', 'REPROVADO'].includes(call.status_final ?? '')
+    );
+
+    if (!searchTerm) return allowlisted;
     const term = searchTerm.toLowerCase();
-    return calls.filter(c => 
+    return allowlisted.filter(c => 
       c.ownerName?.toLowerCase().includes(term) || 
       c.title?.toLowerCase().includes(term)
     );
@@ -236,7 +242,13 @@ export default function DashboardPage() {
         <div className="lg:col-span-3 space-y-6">
           <Input placeholder="Pesquisar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
           <div className="grid gap-4">
-            {filteredCalls.map(call => <CallCard key={call.id} call={call} />)}
+            {filteredCalls.length > 0 ? (
+              filteredCalls.map(call => <CallCard key={call.id} call={call} />)
+            ) : !isLoading && (
+              <div className="bg-slate-900/40 border border-slate-800 rounded-3xl p-20 text-center">
+                <p className="text-slate-500 italic">Nenhuma chamada com avaliação SPIN encontrada para este período.</p>
+              </div>
+            )}
             {hasMore && (
               <Button variant="ghost" className="w-full py-8 border-2 border-dashed rounded-2xl" onClick={loadMore} disabled={isLoading}>
                 {isLoading ? "Carregando..." : "Carregar mais"}

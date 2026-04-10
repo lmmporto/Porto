@@ -154,11 +154,20 @@ export default function SDRDashboardPage() {
             </h2>
 
             <div className="grid gap-4">
-              {calls.length > 0 ? (
-                calls.map(call => <CallCard key={call.id} call={call} />)
+              {calls.filter(call => 
+                call.nota_spin !== null && 
+                ['APROVADO', 'ATENCAO', 'REPROVADO'].includes(call.status_final)
+              ).length > 0 ? (
+                calls
+                  // 🚩 ALLOWLIST SÊNIOR: Filtro de segurança para exibição
+                  .filter(call => 
+                    call.nota_spin !== null && 
+                    ['APROVADO', 'ATENCAO', 'REPROVADO'].includes(call.status_final)
+                  )
+                  .map(call => <CallCard key={call.id} call={call} />)
               ) : !isLoading && (
-                <div className="bg-[#1e293b] border border-slate-800 rounded-2xl p-20 text-center">
-                  <p className="text-slate-500 italic">Nenhuma chamada encontrada para o seu perfil.</p>
+                <div className="bg-slate-900/40 border border-slate-800 rounded-3xl p-20 text-center">
+                  <p className="text-slate-500 italic">Nenhuma chamada com avaliação SPIN encontrada para este período.</p>
                 </div>
               )}
               
