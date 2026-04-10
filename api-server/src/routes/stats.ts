@@ -129,62 +129,53 @@ router.get('/summary', async (req: Request, res: Response) => {
  */
 router.get('/personal-summary', async (req: Request, res: Response) => {
   try {
+    // 🚩 SEGURANÇA: Bloqueia acesso não autenticado
     if (!req.isAuthenticated() || !req.user) {
       return res.status(401).json({ error: "Não autorizado" });
     }
 
+    // 1. Normalização rigorosa
     const rawEmail = (req.query.ownerEmail as string) || (req.user as any).email || "";
     const targetEmail = rawEmail.toLowerCase().trim();
     
-    console.log(`🔎 [DEBUG] Buscando dados para e-mail normalizado: "${targetEmail}"`);
+    console.log(`🔎 [DEBUG] Buscando insights para: "${targetEmail}"`);
 
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
 
-    // Filtro resiliente: E-mail ou Nome
+    // 2. Filtro resiliente
     if (targetEmail.includes('@')) {
       query = query.where("ownerEmail", "==", targetEmail);
     } else {
-      query = query.where("ownerName", "==", rawEmail); // Preserva o nome original se não for e-mail
+      query = query.where("ownerName", "==", rawEmail);
     }
 
-    // 🚩 REMOÇÃO TEMPORÁRIA DE FILTROS RESTRITIVOS para diagnóstico
-    // Buscamos os últimos 50 documentos independente do status para validar a existência de dados
+    // 3. Execução da Query
     const snapshot = await query.orderBy("callTimestamp", "desc").limit(50).get();
 
-    console.log(`📊 [DEBUG DASHBOARD] Documentos encontrados no banco: ${snapshot.size}`);
-
     if (snapshot.empty) {
-      console.log(`⚠️ [DEBUG DASHBOARD] Nenhum documento encontrado para o alvo: ${target}`);
+      console.log(`⚠️ [DEBUG DASHBOARD] Nenhum documento encontrado para: ${targetEmail}`);
       return res.json({ gaps: [], insights: [], totalAnalisadas: 0 });
     }
 
     const gapMap: Record<string, { text: string, count: number }> = {};
     const insightMap: Record<string, { text: string, count: number }> = {};
 
-    snapshot.docs.forEach((doc, index) => {
+    snapshot.docs.forEach((doc) => {
       const c = doc.data();
       
-      // 🚩 LOG DE INSPEÇÃO DO PRIMEIRO DOCUMENTO
-      if (index === 0) {
-        console.log("📝 [DEBUG CAMPOS] Campos presentes no doc:", Object.keys(c));
-        console.log("📝 [DEBUG CONTEÚDO] Alertas (raw):", c.alertas);
-        console.log("📝 [DEBUG CONTEÚDO] Ponto Atenção (raw):", c.ponto_atencao);
-      }
-
-      // Captura Gaps: Prioridade Alertas (Array) > Ponto Atenção (String)
+      // Captura Gaps (Alertas ou Ponto de Atenção)
       const rawGaps = (Array.isArray(c.alertas) && c.alertas.length > 0) 
         ? c.alertas 
         : (c.ponto_atencao ? [c.ponto_atencao] : []);
 
       rawGaps.forEach((g: string) => {
         if (!g || g.length < 5) return;
-        // Normalização por assinatura (primeiras 5 palavras)
         const key = g.split(' ').slice(0, 5).join(' ').toLowerCase().replace(/[^\w\s]/gi, '');
         if (!gapMap[key]) gapMap[key] = { text: g, count: 0 };
         gapMap[key].count++;
       });
 
-      // Captura Insights: Pontos Fortes (Array)
+      // Captura Insights (Pontos Fortes)
       if (Array.isArray(c.pontos_fortes)) {
         c.pontos_fortes.forEach((i: string) => {
           if (!i || i.length < 5) return;
@@ -195,18 +186,8 @@ router.get('/personal-summary', async (req: Request, res: Response) => {
       }
     });
 
-    const sortedGaps = Object.values(gapMap)
-      .sort((a, b) => b.count - a.count)
-      .map(e => e.text)
-      .slice(0, 3);
-
-    const sortedInsights = Object.values(insightMap)
-      .sort((a, b) => b.count - a.count)
-      .map(e => e.text)
-      .slice(0, 3);
-
-    console.log(`✅ [DEBUG DASHBOARD] Gaps processados: ${sortedGaps.length}`);
-    console.log(`✅ [DEBUG DASHBOARD] Insights processados: ${sortedInsights.length}`);
+    const sortedGaps = Object.values(gapMap).sort((a, b) => b.count - a.count).map(e => e.text).slice(0, 3);
+    const sortedInsights = Object.values(insightMap).sort((a, b) => b.count - a.count).map(e => e.text).slice(0, 3);
 
     return res.json({
       gaps: sortedGaps,
@@ -216,7 +197,7 @@ router.get('/personal-summary', async (req: Request, res: Response) => {
 
   } catch (error: any) {
     console.error("❌ [PERSONAL SUMMARY ERROR]:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "Erro ao processar insights" });
   }
 });
 
