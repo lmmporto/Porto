@@ -22,30 +22,21 @@ let lastCacheTime = 0;
  */
 router.get('/summary', async (req: Request, res: Response) => {
   try {
-    if (!req.isAuthenticated() || !req.user) {
-      return res.status(401).json({ error: "Não autorizado" });
-    }
+    if (!req.isAuthenticated() || !req.user) return res.status(401).json({ error: "Não autorizado" });
 
     const userEmail = (req.user as any).email;
-    const isAdmin = await checkIfAdmin(userEmail);
-
     const now = Date.now();
-
-    if (isAdmin && cachedStats && (now - lastCacheTime < 60000)) {
-      console.log(`📊 [STATS] Retornando resumo de performance do CACHE (Admin).`);
+    
+    // Cache compartilhado: ranking é público para o time logado
+    if (cachedStats && (now - lastCacheTime < 60000)) {
       return res.json(cachedStats);
     }
 
-    console.log(`📊 [STATS] Buscando resumo de performance do FIRESTORE para: ${userEmail}`);
+    console.log(`📊 [STATS] Gerando ranking global para: ${userEmail}`);
 
-    let query: FirebaseFirestore.Query = db.collection('sdr_stats');
-
-    if (!isAdmin) {
-      const targetEmail = userEmail.toLowerCase().trim();
-      console.log(`🔎 [DEBUG] Buscando estatísticas para e-mail normalizado: "${targetEmail}"`);
-      query = query.where("ownerEmail", "==", targetEmail);
-    }
-
+    // 🚩 MUDANÇA SÊNIOR: Removemos o filtro de ownerEmail para trazer o ranking completo
+    // Ordenamos por averageScore (ou nota_media se o campo mudar)
+    let query = db.collection('sdr_stats');
     const snapshot = await query.get();
 
     const sdr_ranking: Record<string, any> = {};
@@ -112,13 +103,11 @@ router.get('/summary', async (req: Request, res: Response) => {
       sum_notes,
       media_geral: total_calls > 0 ? Number((sum_notes / total_calls).toFixed(2)) : 0,
       sdr_ranking: sdr_ranking,
-      version: "V6_TURBO_SCORE_DYNAMIC_SECURE_NO_ORDER"
+      version: "V7_PUBLIC_LEADERBOARD"
     };
 
-    if (isAdmin) {
-      cachedStats = resultado;
-      lastCacheTime = now;
-    }
+    cachedStats = resultado;
+    lastCacheTime = now;
 
     return res.json(resultado);
 

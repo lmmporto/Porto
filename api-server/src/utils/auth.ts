@@ -7,18 +7,24 @@ import { db } from "../firebase.js";
 export async function checkIfAdmin(email: string): Promise<boolean> {
   try {
     if (!email) return false;
-    
+
     const doc = await db.collection("configuracoes").doc("gerais").get();
-    if (!doc.exists) {
-      console.warn("⚠️ [AUTH] Documento de configurações gerais não encontrado.");
-      return false;
-    }
+    const data = doc.data();
     
-    const admins: string[] = doc.data()?.admins || [];
-    // Normalização rigorosa para evitar falhas por case-sensitivity
-    return admins.map(e => e.toLowerCase().trim()).includes(email.toLowerCase().trim());
+    // 🚩 PROTEÇÃO SÊNIOR: Garante que 'admins' seja sempre um array antes de processar
+    const adminsRaw = data?.admins;
+    const adminsList = Array.isArray(adminsRaw) ? adminsRaw : [];
+
+    // Normaliza o e-mail do usuário
+    const normalizedUserEmail = email.toLowerCase().trim();
+
+    // Verifica se o e-mail está na lista (também normalizada)
+    return adminsList.some(adminEmail => 
+      typeof adminEmail === 'string' && 
+      adminEmail.toLowerCase().trim() === normalizedUserEmail
+    );
   } catch (error) {
-    console.error("❌ [AUTH ERROR] Erro crítico ao verificar privilégios de admin:", error);
-    return false; 
+    console.error("❌ [AUTH ERROR] Falha catastrófica no checkIfAdmin:", error);
+    return false; // Em dúvida, nega acesso (Fail-Closed)
   }
 }
