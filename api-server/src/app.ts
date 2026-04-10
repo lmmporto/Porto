@@ -5,94 +5,59 @@ import session from 'express-session';
 import passport from 'passport';
 import { Strategy as GoogleStrategy, type Profile } from 'passport-google-oauth20';
 import { CONFIG } from './config.js';
-import { processCall } from './services/processCall.js';
+import { checkIfAdmin } from './utils/auth.js';
 import sdrRegistryRouter from './routes/sdr-registro.js';
 import callsRouter from './routes/calls.js';
 import statsRouter from './routes/stats.js';
-import healthRouter from './routes/health.js';
-
-type AuthUser = {
-  id: string;
-  email: string;
-  name: string;
-  picture?: string;
-};
-
-declare global {
-  namespace Express {
-    interface User extends AuthUser {}
-  }
-}
 
 const app: Express = express();
 const isDev = process.env.NODE_ENV === 'development';
 
-// 🚩 1. CONFIANÇA NO PROXY (Obrigatório para Render)
 app.set('trust proxy', 1);
 
-// 🚩 2. MIDDLEWARE DE CORS MANUAL (Robusto)
+// --- 1. CORS DINÂMICO ---
 const allowedOrigins = ['https://sdr-pjt.vercel.app', 'http://localhost:3001', 'http://localhost:3000'];
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'Cache-Control', 'X-Requested-With', 'Pragma'],
+  exposedHeaders: ['set-cookie']
+}));
 
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-  if (origin && (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app'))) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
-  
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, Cache-Control, X-Requested-With, Pragma');
-  res.setHeader('Vary', 'Origin');
-
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-  next();
-});
-
-app.use(express.json({ limit: '5mb' }));
+app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-app.use((req: Request, _res: Response, next: NextFunction) => {
-  console.log(`[HTTP] ${new Date().toISOString()} ${req.method} ${req.originalUrl}`);
-  next();
-});
-
-if (!CONFIG.SESSION_SECRET || !CONFIG.GOOGLE_CLIENT_ID || !CONFIG.GOOGLE_CLIENT_SECRET || !CONFIG.GOOGLE_CALLBACK_URL || !CONFIG.ALLOWED_EMAIL_DOMAIN || !CONFIG.FRONTEND_URL) {
-  throw new Error('Variáveis de ambiente de configuração (Auth/URL) faltando.');
-}
-
-// --- 3. CONFIGURAÇÃO DE SESSÃO DINÂMICA ---
+// --- 2. CONFIGURAÇÃO DE SESSÃO ---
 app.use(
   session({
     name: 'sdr.sid',
-    secret: CONFIG.SESSION_SECRET,
-    resave: true, // 🚩 Força a persistência
-    saveUninitialized: true, // 🚩 Garante que o cookie seja criado
+    secret: CONFIG.SESSION_SECRET as string, // 🚩 Tipagem garantida
+    resave: false, 
+    saveUninitialized: false, 
     proxy: true,
     cookie: {
       httpOnly: true,
-      secure: true, // HTTPS é obrigatório para SameSite: 'none'
+      secure: true, 
       sameSite: 'none',
-      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 dias
+      maxAge: 1000 * 60 * 60 * 24 * 7,
     },
   })
 );
 
-// --- 4. PASSPORT (OBRIGATORIAMENTE DEPOIS DA SESSION) ---
 app.use(passport.initialize());
 app.use(passport.session());
 
-// --- 5. SERIALIZAÇÃO ---
-passport.serializeUser((user: any, done) => {
-  done(null, user);
-});
+passport.serializeUser((user: any, done) => done(null, user));
+passport.deserializeUser((user: any, done) => done(null, user));
 
-passport.deserializeUser((user: any, done) => {
-  done(null, user);
-});
-
-// --- 6. AUTENTICAÇÃO HÍBRIDA (MOCK PARA DESENVOLVIMENTO) ---
+// --- 3. AUTENTICAÇÃO HÍBRIDA (MOCK PARA DESENVOLVIMENTO) ---
 if (isDev) {
   app.use((req: Request, res: Response, next: NextFunction) => {
     const impersonateEmail = req.query.ownerEmail as string;
@@ -108,75 +73,63 @@ if (isDev) {
   });
 }
 
-passport.use(
-  new GoogleStrategy(
-    {
-      clientID: CONFIG.GOOGLE_CLIENT_ID,
-      clientSecret: CONFIG.GOOGLE_CLIENT_SECRET,
-      callbackURL: CONFIG.GOOGLE_CALLBACK_URL,
-    },
-    async (_accessToken: string, _refreshToken: string, profile: Profile, done) => {
-      try {
-        const email = profile.emails?.[0]?.value?.toLowerCase();
-        if (!email) return done(new Error('Google não retornou e-mail.'));
-        if (email.split('@')[1]?.toLowerCase() !== CONFIG.ALLOWED_EMAIL_DOMAIN.toLowerCase()) {
-          return done(null, false, { message: 'Domínio não autorizado.' });
-        }
-        return done(null, { id: profile.id, email, name: profile.displayName || email, picture: profile.photos?.[0]?.value });
-      } catch (error) {
-        return done(error as Error);
-      }
+// --- 4. GOOGLE STRATEGY ---
+passport.use(new GoogleStrategy({
+    clientID: CONFIG.GOOGLE_CLIENT_ID as string,         // 🚩 Tipagem garantida
+    clientSecret: CONFIG.GOOGLE_CLIENT_SECRET as string, // 🚩 Tipagem garantida
+    callbackURL: CONFIG.GOOGLE_CALLBACK_URL as string,   // 🚩 Tipagem garantida
+  },
+  async (_accessToken: string, _refreshToken: string, profile: Profile, done: (err: any, user?: any) => void) => {
+    try {
+      const email = profile.emails?.[0]?.value?.toLowerCase();
+      if (!email) return done(null, false);
+      return done(null, { 
+        id: profile.id, 
+        email, 
+        name: profile.displayName || email, 
+        picture: profile.photos?.[0]?.value 
+      });
+    } catch (error) {
+      return done(error);
     }
-  )
-);
+  }
+));
 
-// --- ROTAS ---
+// --- 5. ROTAS ---
 app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'], session: true }));
 
-app.get('/auth/google/callback', passport.authenticate('google', {
-    failureRedirect: `${CONFIG.FRONTEND_URL}/login?error=google_auth_failed`,
-    session: true,
-  }),
-  (req: any, res) => {
+app.get('/auth/google/callback', 
+  passport.authenticate('google', { failureRedirect: `${CONFIG.FRONTEND_URL}/login?error=auth_failed` }),
+  (req, res) => {
     req.session.save(() => res.redirect(`${CONFIG.FRONTEND_URL}/dashboard`));
   }
 );
 
 app.get('/auth/me', async (req: any, res: Response) => {
   if (req.isAuthenticated && req.isAuthenticated()) {
-    try {
-      const userEmail = req.user.email;
-      const { db } = await import('./firebase.js');
-      const doc = await db.collection("configuracoes").doc("gerais").get();
-      const admins = doc.data()?.admins || [];
-      return res.status(200).json({ authenticated: true, user: req.user, isAdmin: admins.includes(userEmail) });
-    } catch (error) {
-      return res.status(200).json({ authenticated: true, user: req.user, isAdmin: false });
-    }
+    const isAdmin = await checkIfAdmin(req.user.email);
+    return res.json({ authenticated: true, user: req.user, isAdmin });
   }
   return res.status(401).json({ authenticated: false });
 });
 
 app.post('/auth/logout', (req: any, res: Response) => {
-  req.logout((logoutErr: any) => {
-    if (logoutErr) return res.status(500).json({ success: false });
+  req.logout(() => {
     req.session.destroy(() => {
       res.clearCookie('sdr.sid', { httpOnly: true, secure: true, sameSite: 'none' });
-      return res.status(200).json({ success: true });
+      res.json({ success: true });
     });
   });
 });
 
-app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
-
 app.use('/api/calls', callsRouter);
 app.use('/api/stats', statsRouter);
-app.use('/api/sdr-registry', sdrRegistryRouter); 
-app.use('/api/health', healthRouter);
+app.use('/api/sdr-registry', sdrRegistryRouter);
+app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
-app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
-  console.error('💥 [GLOBAL ERROR HANDLER]:', err.message);
-  res.status(500).json({ success: false, error: err.message });
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  console.error('💥 [SERVER ERROR]:', err.message);
+  res.status(err.status || 500).json({ error: err.message });
 });
 
 export default app;

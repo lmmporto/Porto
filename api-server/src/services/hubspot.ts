@@ -7,6 +7,7 @@ import { firstFilled } from "../utils.js";
 export interface OwnerDetails {
   ownerId: string | null;
   ownerName: string;
+  ownerEmail: string | null; // 🚩 ADICIONE ESTA LINHA AQUI
   teamId: string | null;
   teamName: string;
   userId: string | null;
@@ -72,22 +73,40 @@ async function fetchTranscriptFromHubSpot(transcriptId: string): Promise<string>
 export async function fetchOwnerDetails(ownerId: string | null): Promise<OwnerDetails> {
   try {
     if (!ownerId) {
-      return { ownerId: null, ownerName: "Sem owner", teamId: null, teamName: "Sem equipe", userId: null };
+      return { 
+        ownerId: null, 
+        ownerName: "Sem owner", 
+        ownerEmail: null, // 🚩 Adicionado para cumprir o contrato
+        teamId: null, 
+        teamName: "Sem equipe", 
+        userId: null 
+      };
     }
+
     const { data } = await hubspot.get(`/crm/v3/owners/${ownerId}`);
+
     return {
       ownerId: String(ownerId),
       ownerName: data?.firstName || data?.lastName 
         ? `${data?.firstName || ""} ${data?.lastName || ""}`.trim() 
         : `Owner ${ownerId}`,
+      ownerEmail: data?.email || null, // 🚩 Aqui buscamos o email real do HubSpot!
       teamId: data?.teams?.[0]?.id || null,
       teamName: data?.teams?.[0]?.name || "Sem equipe",
       userId: data?.userId || data?.userIdIncludingInactive || null,
     };
   } catch (error) {
-    return { ownerId: String(ownerId), ownerName: `Owner ${ownerId}`, teamId: null, teamName: "Sem equipe", userId: null };
+    return { 
+      ownerId: String(ownerId), 
+      ownerName: `Owner ${ownerId}`, 
+      ownerEmail: null, // 🚩 Adicionado para evitar erro no catch
+      teamId: null, 
+      teamName: "Sem equipe", 
+      userId: null 
+    };
   }
 }
+
 
 export async function fetchCall(callId: string): Promise<CallData> {
   // 🚩 Adicionamos 'hs_analytics_transcript_id' na lista de busca
