@@ -46,10 +46,13 @@ router.get("/", async (req: Request, res: Response) => {
     }
 
     // 2. Lógica de Ordenação e Modo (Feed vs Vitrine Ranking)
+
+    // 🚩 REGRA GLOBAL: O SDR só vê o que a IA terminou de analisar com sucesso
+    query = query.where("processingStatus", "==", "DONE");
+
     if (mode === 'ranking') {
       // VITRINE: Performance absoluta (Top 10)
       query = query
-        .where("processingStatus", "==", "DONE")
         .orderBy("nota_spin", "desc")
         .limit(10);
     } else {
