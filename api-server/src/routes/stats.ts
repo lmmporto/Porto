@@ -3,6 +3,7 @@ import { db } from '../firebase.js';
 import admin from 'firebase-admin';
 import { CONFIG } from '../config.js';
 import { updateDailyStats } from '../services/analysis.service.js';
+import { checkIfAdmin } from '../utils/auth.js';
 
 const router = Router();
 
@@ -13,16 +14,7 @@ const BRAZIL_TIMEZONE = 'America/Sao_Paulo';
 let cachedStats: any = null;
 let lastCacheTime = 0;
 
-// Função auxiliar para saber se é Admin
-async function checkIfAdmin(email: string) {
-  try {
-    const doc = await db.collection("configuracoes").doc("gerais").get();
-    const admins = doc.data()?.admins || [];
-    return admins.includes(email);
-  } catch {
-    return false;
-  }
-}
+
 
 /**
  * GET /summary (Relativo ao prefixo /api/stats)
@@ -38,7 +30,7 @@ router.get('/summary', async (req: Request, res: Response) => {
     const isAdmin = await checkIfAdmin(userEmail);
 
     const now = Date.now();
-    
+
     if (isAdmin && cachedStats && (now - lastCacheTime < 60000)) {
       console.log(`📊 [STATS] Retornando resumo de performance do CACHE (Admin).`);
       return res.json(cachedStats);
@@ -65,7 +57,7 @@ router.get('/summary', async (req: Request, res: Response) => {
       if (data.ownerEmail && data.ownerEmail.includes('@')) {
         const name = data.ownerName || "SDR Desconhecido";
         const email = data.ownerEmail;
-        
+
         sdr_ranking[name] = {
           ownerName: name,
           ownerEmail: email,
@@ -80,11 +72,25 @@ router.get('/summary', async (req: Request, res: Response) => {
       }
     });
 
-    const sdrNames = Object.keys(sdr_ranking);
-    const totalSDRs = sdrNames.length || 1;
+    const sdrNames = Object.keys(sdr_ranking || {});
 
-    const v_bar = total_calls / totalSDRs; 
-    const m_bar = total_calls > 0 ? (sum_notes / total_calls) : 0; 
+    // 🚩 PROTEÇÃO: Se não houver dados, retorna estrutura vazia segura em vez de tentar calcular
+    if (sdrNames.length === 0) {
+      console.log("⚠️ [STATS] Nenhum dado de SDR encontrado. Retornando estrutura EMPTY_SAFE.");
+      return res.json({
+        total_calls: 0,
+        valid_calls: 0,
+        sum_notes: 0,
+        media_geral: 0,
+        sdr_ranking: {},
+        version: "V6_EMPTY_SAFE"
+      });
+    }
+
+    const totalSDRs = sdrNames.length;
+
+    const v_bar = total_calls / totalSDRs;
+    const m_bar = total_calls > 0 ? (sum_notes / total_calls) : 0;
 
     sdrNames.forEach(name => {
       const s = sdr_ranking[name];
@@ -137,7 +143,7 @@ router.get('/personal-summary', async (req: Request, res: Response) => {
     // 1. Normalização rigorosa
     const rawEmail = (req.query.ownerEmail as string) || (req.user as any).email || "";
     const targetEmail = rawEmail.toLowerCase().trim();
-    
+
     console.log(`🔎 [DEBUG] Buscando insights para: "${targetEmail}"`);
 
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
@@ -162,10 +168,10 @@ router.get('/personal-summary', async (req: Request, res: Response) => {
 
     snapshot.docs.forEach((doc) => {
       const c = doc.data();
-      
+
       // Captura Gaps (Alertas ou Ponto de Atenção)
-      const rawGaps = (Array.isArray(c.alertas) && c.alertas.length > 0) 
-        ? c.alertas 
+      const rawGaps = (Array.isArray(c.alertas) && c.alertas.length > 0)
+        ? c.alertas
         : (c.ponto_atencao ? [c.ponto_atencao] : []);
 
       rawGaps.forEach((g: string) => {
@@ -215,7 +221,7 @@ router.post("/rebuild-today-stats", async (req: Request, res: Response) => {
     console.log(`\n[REBUILD] 🔨 Iniciando reconstrução do dia: ${todayStr}`);
 
     const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0); 
+    startOfDay.setHours(0, 0, 0, 0);
 
     const snapshot = await db.collection(CONFIG.CALLS_COLLECTION)
       .where("updatedAt", ">=", admin.firestore.Timestamp.fromDate(startOfDay))
@@ -229,7 +235,7 @@ router.post("/rebuild-today-stats", async (req: Request, res: Response) => {
     for (const doc of snapshot.docs) {
       const callData = doc.data();
       const sdrIdentifier = callData.ownerEmail || callData.ownerName || "Desconhecido";
-      
+
       const mockInitial = { status_final: 'NAO_IDENTIFICADO', nota_spin: null };
       await updateDailyStats(callData, mockInitial, false);
 
@@ -239,10 +245,10 @@ router.post("/rebuild-today-stats", async (req: Request, res: Response) => {
       count++;
     }
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: `Cofre reconstruído com sucesso para o dia ${todayStr}.`,
-      processedCalls: count 
+      processedCalls: count
     });
 
   } catch (error: any) {

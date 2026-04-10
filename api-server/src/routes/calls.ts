@@ -3,19 +3,11 @@ import admin from "firebase-admin";
 import { db } from "../firebase.js";
 import { CONFIG } from "../config.js";
 import { handleIncomingCall } from "../services/webhook.service.js";
+import { checkIfAdmin } from "../utils/auth.js";
 
 const router = Router();
 
-// Função auxiliar para saber se é Admin
-async function checkIfAdmin(email: string) {
-  try {
-    const doc = await db.collection("configuracoes").doc("gerais").get();
-    const admins = doc.data()?.admins || [];
-    return admins.includes(email);
-  } catch {
-    return false;
-  }
-}
+
 
 // 1. LISTAGEM COM TRAVA DE SEGURANÇA E AUDITORIA
 router.get("/", async (req: Request, res: Response) => {
@@ -29,7 +21,7 @@ router.get("/", async (req: Request, res: Response) => {
 
     // 🚩 SONDA DE DIAGNÓSTICO: Auditoria de Identidade
     console.log(`🕵️ [PROD DEBUG] Buscando chamadas para: "${userEmail}" | isAdmin: ${isAdmin}`);
-    
+
     const limit = Math.min(Number(req.query.limit || 10), 50);
     const startAfter = req.query.lastVisible as string;
     const startDateParam = req.query.startDate as string;
@@ -71,14 +63,14 @@ router.get("/", async (req: Request, res: Response) => {
           .where("callTimestamp", ">=", admin.firestore.Timestamp.fromDate(start))
           .where("callTimestamp", "<=", admin.firestore.Timestamp.fromDate(end));
       }
-      
+
       query = query.orderBy("callTimestamp", "desc");
-      
+
       if (startAfter) {
         const lastDoc = await db.collection(CONFIG.CALLS_COLLECTION).doc(startAfter).get();
         if (lastDoc.exists) query = query.startAfter(lastDoc);
       }
-      
+
       query = query.limit(limit);
     }
 
@@ -109,10 +101,10 @@ router.get("/:id", async (req: Request, res: Response) => {
     if (!callId || callId === 'undefined' || callId === 'null') {
       return res.status(400).json({ error: "ID inválido." });
     }
-    
+
     const doc = await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).get();
     if (!doc.exists) return res.status(404).json({ error: "Ligação não encontrada." });
-    
+
     const callData = doc.data();
     const userEmail = (req.user as any).email;
     const isAdmin = await checkIfAdmin(userEmail);
@@ -133,9 +125,9 @@ router.post("/hubspot-webhook", async (req: Request, res: Response) => {
   try {
     const body = req.body;
     const callId = body?.callId || body?.objectId || (Array.isArray(body) ? body[0]?.objectId : undefined);
-    
+
     if (!callId) return res.status(200).json({ ignored: true });
-    
+
     const result = await handleIncomingCall({ ...body, callId: String(callId).trim() });
     res.status(202).json(result);
   } catch (error) {
