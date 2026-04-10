@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, ReactNode, useRef } from 'react';
 
 // --- INTERFACES ---
 interface User {
@@ -27,6 +27,9 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
 
+  // 🚩 TRAVA DE EXECUÇÃO ÚNICA
+  const isChecking = useRef(false);
+
   // 🚩 ESTADO DE SIMULAÇÃO
   const [impersonatedUser, setImpersonatedUser] = useState<User | null>(null);
 
@@ -47,6 +50,10 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const checkUser = useCallback(async () => {
+    // 🚩 PROTEÇÃO: Impede chamadas redundantes ao /auth/me
+    if (isChecking.current) return;
+    isChecking.current = true;
+
     setIsLoading(true);
     
     // 🚩 REGRA DE OURO: Bypass de autenticação em ambiente de desenvolvimento

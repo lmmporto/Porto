@@ -24,18 +24,16 @@ router.get('/summary', async (req: Request, res: Response) => {
       return res.status(401).json({ error: "Não autorizado" });
     }
 
-    const userEmail = (req.user as any).email;
-    const isAdmin = await checkIfAdmin(userEmail);
-
     const now = Date.now();
     
-    // Cache compartilhado: ranking é público para o time logado
-    if (isAdmin && cachedStats && (now - lastCacheTime < 60000)) {
-      console.log(`📊 [STATS] Retornando resumo de performance do CACHE (Admin).`);
+    // 🚩 PROTEÇÃO DE MEMÓRIA: Verifica cache global antes de qualquer processamento pesado
+    if (cachedStats && (now - lastCacheTime < 60000)) {
+      console.log(`📊 [STATS] Retornando resumo de performance do CACHE.`);
       return res.json(cachedStats);
     }
 
-    console.log(`📊 [STATS] Gerando ranking global para: ${userEmail}`);
+    const userEmail = (req.user as any).email;
+    console.log(`📊 [STATS] Gerando ranking global (Cache expirado ou inexistente). Solicitado por: ${userEmail}`);
 
     let query = db.collection('sdr_stats');
     const snapshot = await query.get();
@@ -68,14 +66,18 @@ router.get('/summary', async (req: Request, res: Response) => {
 
     if (sdrNames.length === 0) {
       console.log("⚠️ [STATS] Nenhum dado de SDR encontrado. Retornando estrutura EMPTY_SAFE.");
-      return res.json({
+      const emptyResult = {
         total_calls: 0,
         valid_calls: 0,
         sum_notes: 0,
         media_geral: 0,
         sdr_ranking: {},
         version: "V6_EMPTY_SAFE"
-      });
+      };
+      // Cacheia mesmo o estado vazio para evitar queries repetitivas em banco zerado
+      cachedStats = emptyResult;
+      lastCacheTime = now;
+      return res.json(emptyResult);
     }
 
     const totalSDRs = sdrNames.length;
@@ -105,10 +107,9 @@ router.get('/summary', async (req: Request, res: Response) => {
       version: "V7_PUBLIC_LEADERBOARD"
     };
 
-    if (isAdmin) {
-      cachedStats = resultado;
-      lastCacheTime = now;
-    }
+    // 🚩 ATUALIZAÇÃO DO CACHE: Disponibiliza o resultado para as próximas chamadas por 60s
+    cachedStats = resultado;
+    lastCacheTime = now;
 
     return res.json(resultado);
 
