@@ -26,15 +26,18 @@ declare global {
 
 const app: Express = express();
 const isDev = process.env.NODE_ENV === 'development';
-const isProduction = process.env.NODE_ENV === 'production';
 
-// 🚩 Configuração vital para proxies (Render/Heroku/Cloudflare)
-app.set('trust proxy', 1);
+// 🚩 1. CONFIGURAÇÃO VITAL PARA PROXIES (Render exige isso para cookies HTTPS)
+app.set('trust proxy', true);
 
-// 🚩 AJUSTE DE CORS: Suporte a múltiplos ambientes
+// 🚩 2. AJUSTE DE CORS: Suporte a múltiplos ambientes
 app.use(cors({
-  origin: isProduction ? 'https://sdr-pjt.vercel.app' : ['http://localhost:3000', 'http://localhost:3001'],
-  credentials: true, // 🚩 OBRIGATÓRIO para enviar cookies
+  origin: [
+    'http://localhost:3001',
+    'http://localhost:3000',
+    'https://sdr-pjt.vercel.app'
+  ],
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Cookie']
 }));
@@ -51,59 +54,51 @@ if (!CONFIG.SESSION_SECRET || !CONFIG.GOOGLE_CLIENT_ID || !CONFIG.GOOGLE_CLIENT_
   throw new Error('Variáveis de ambiente de configuração (Auth/URL) faltando.');
 }
 
-// --- 1. CONFIGURAÇÃO DE SESSÃO DINÂMICA (COOKIES) ---
-app.use(session({
-  name: 'sdr.sid',
-  secret: CONFIG.SESSION_SECRET,
-  resave: false,
-  saveUninitialized: false,
-  proxy: true, 
-  cookie: {
-    httpOnly: true,
-    secure: true, // 🚩 HTTPS é obrigatório para SameSite: 'none'
-    sameSite: 'none', // 🚩 Permite cookies cross-domain
-    maxAge: 1000 * 60 * 60 * 24 * 7,
-  },
-}));
+// --- 3. CONFIGURAÇÃO DE SESSÃO DINÂMICA ---
+app.use(
+  session({
+    name: 'sdr.sid',
+    secret: CONFIG.SESSION_SECRET,
+    resave: true, // 🚩 Força a persistência
+    saveUninitialized: true, // 🚩 Garante que o cookie seja criado
+    proxy: true,
+    cookie: {
+      httpOnly: true,
+      secure: true, // HTTPS é obrigatório para SameSite: 'none'
+      sameSite: 'none',
+      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 dias
+    },
+  })
+);
 
+// --- 4. PASSPORT (OBRIGATORIAMENTE DEPOIS DA SESSION) ---
 app.use(passport.initialize());
 app.use(passport.session());
 
-// --- 2. AUTENTICAÇÃO HÍBRIDA (MOCK COM PRIORIDADE DE SIMULAÇÃO) ---
-if (isDev) {
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    // 🚩 PRIORIDADE: Se o front mandar um e-mail via query, ele manda no sistema
-    const impersonateEmail = req.query.ownerEmail as string;
-
-    if (impersonateEmail && impersonateEmail.includes('@')) {
-      (req as any).user = { 
-        id: `simulated-${impersonateEmail}`,
-        email: impersonateEmail, 
-        name: `Simulando: ${impersonateEmail}` 
-      };
-      console.log(`🛠️ [DEV AUTH]: Agindo como SDR Simulado: ${impersonateEmail}`);
-    } else if (!req.user) {
-      // Fallback padrão para você não precisar logar localmente
-      (req as any).user = { 
-        id: 'dev-user-id',
-        email: 'lucas.porto@nibo.com.br', 
-        name: 'Lucas Porto (Dev Mode)' 
-      };
-      console.log("🛠️ [DEV AUTH]: Usuário Admin Mock injetado.");
-    }
-    
-    (req as any).isAuthenticated = () => true;
-    next();
-  });
-}
-
-passport.serializeUser((user, done) => {
+// --- 5. SERIALIZAÇÃO ---
+passport.serializeUser((user: any, done) => {
   done(null, user);
 });
 
 passport.deserializeUser((user: any, done) => {
   done(null, user);
 });
+
+// --- 6. AUTENTICAÇÃO HÍBRIDA (MOCK PARA DESENVOLVIMENTO) ---
+if (isDev) {
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const impersonateEmail = req.query.ownerEmail as string;
+    if (!req.user || impersonateEmail) {
+      (req as any).user = { 
+        id: impersonateEmail ? `simulated-${impersonateEmail}` : 'dev-user-id',
+        email: impersonateEmail || 'lucas.porto@nibo.com.br', 
+        name: impersonateEmail ? `Simulando: ${impersonateEmail}` : 'Lucas Porto (Dev Mode)' 
+      };
+      (req as any).isAuthenticated = () => true;
+    }
+    next();
+  });
+}
 
 passport.use(
   new GoogleStrategy(
@@ -116,22 +111,10 @@ passport.use(
       try {
         const email = profile.emails?.[0]?.value?.toLowerCase();
         if (!email) return done(new Error('Google não retornou e-mail.'));
-
-        const emailDomain = email.split('@')[1]?.toLowerCase();
-        const allowedDomain = CONFIG.ALLOWED_EMAIL_DOMAIN.toLowerCase();
-
-        if (emailDomain !== allowedDomain) {
+        if (email.split('@')[1]?.toLowerCase() !== CONFIG.ALLOWED_EMAIL_DOMAIN.toLowerCase()) {
           return done(null, false, { message: 'Domínio não autorizado.' });
         }
-
-        const user: AuthUser = {
-          id: profile.id,
-          email,
-          name: profile.displayName || email,
-          picture: profile.photos?.[0]?.value,
-        };
-
-        return done(null, user);
+        return done(null, { id: profile.id, email, name: profile.displayName || email, picture: profile.photos?.[0]?.value });
       } catch (error) {
         return done(error as Error);
       }
@@ -139,32 +122,15 @@ passport.use(
   )
 );
 
-// --- ROTAS DE AUTENTICAÇÃO ---
+// --- ROTAS ---
+app.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'], session: true }));
 
-app.get(
-  '/auth/google',
-  passport.authenticate('google', {
-    scope: ['profile', 'email'],
-    session: true,
-    hd: CONFIG.ALLOWED_EMAIL_DOMAIN,
-  })
-);
-
-app.get(
-  '/auth/google/callback',
-  passport.authenticate('google', {
+app.get('/auth/google/callback', passport.authenticate('google', {
     failureRedirect: `${CONFIG.FRONTEND_URL}/login?error=google_auth_failed`,
     session: true,
   }),
   (req: any, res) => {
-    // 🚩 Força o salvamento da sessão antes do redirect para garantir persistência no banco
-    req.session.save((err: any) => {
-      if (err) {
-        console.error("❌ Erro ao salvar sessão:", err);
-        return res.redirect(`${CONFIG.FRONTEND_URL}/login?error=session_save_failed`);
-      }
-      res.redirect(`${CONFIG.FRONTEND_URL}/dashboard`);
-    });
+    req.session.save(() => res.redirect(`${CONFIG.FRONTEND_URL}/dashboard`));
   }
 );
 
@@ -175,13 +141,7 @@ app.get('/auth/me', async (req: any, res: Response) => {
       const { db } = await import('./firebase.js');
       const doc = await db.collection("configuracoes").doc("gerais").get();
       const admins = doc.data()?.admins || [];
-      const isAdmin = admins.includes(userEmail);
-
-      return res.status(200).json({
-        authenticated: true,
-        user: req.user,
-        isAdmin: isAdmin
-      });
+      return res.status(200).json({ authenticated: true, user: req.user, isAdmin: admins.includes(userEmail) });
     } catch (error) {
       return res.status(200).json({ authenticated: true, user: req.user, isAdmin: false });
     }
@@ -193,11 +153,7 @@ app.post('/auth/logout', (req: any, res: Response) => {
   req.logout((logoutErr: any) => {
     if (logoutErr) return res.status(500).json({ success: false });
     req.session.destroy(() => {
-      res.clearCookie('sdr.sid', {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'none'
-      });
+      res.clearCookie('sdr.sid', { httpOnly: true, secure: true, sameSite: 'none' });
       return res.status(200).json({ success: true });
     });
   });
