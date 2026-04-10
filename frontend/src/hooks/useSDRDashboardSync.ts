@@ -7,15 +7,16 @@ export function useSDRDashboardSync() {
   const { calls, isLoading, applyFilter } = useCallContext();
   const [personalInsights, setPersonalInsights] = useState<any>(null);
   
-  const emailCarregado = useRef<string | null>(null);
+  // 🚩 TRAVA DE SEGURANÇA: Impede que o mesmo e-mail seja carregado várias vezes
+  const lastLoadedEmail = useRef<string | null>(null);
 
   const loadData = useCallback(async (targetEmail: string) => {
-    if (emailCarregado.current === targetEmail) return;
+    if (lastLoadedEmail.current === targetEmail) return;
+    
+    lastLoadedEmail.current = targetEmail;
+    console.log("🚀 [SYNC] Iniciando carga estável para:", targetEmail);
 
-    console.log("🚀 [SYNC] Iniciando carga total para:", targetEmail);
-    emailCarregado.current = targetEmail;
-
-    const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || 'https://porto-58em.onrender.com').replace(/\/$/, '');
 
     try {
       await Promise.all([
@@ -28,7 +29,8 @@ export function useSDRDashboardSync() {
       ]);
     } catch (error) {
       console.error("❌ [SYNC ERROR]:", error);
-      emailCarregado.current = null;
+      // Libera para tentar de novo após 5 segundos em caso de erro
+      setTimeout(() => { lastLoadedEmail.current = null; }, 5000);
     }
   }, [applyFilter]);
 
@@ -38,14 +40,14 @@ export function useSDRDashboardSync() {
     }
   }, [user?.email, loadData]);
 
-  return {
-    user,
-    calls,
-    isLoading,
-    personalInsights,
+  return { 
+    user, 
+    calls, 
+    isLoading, 
+    personalInsights, 
     isAdmin,
     refresh: () => {
-      emailCarregado.current = null;
+      lastLoadedEmail.current = null;
       if (user?.email) loadData(user.email.toLowerCase().trim());
     }
   };

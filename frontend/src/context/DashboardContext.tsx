@@ -46,7 +46,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const checkUser = useCallback(async () => {
+  const checkUser = useCallback(async (retryCount = 0) => {
     // 🚩 REGRA DE OURO: Bypass de autenticação em ambiente de desenvolvimento
     if (process.env.NODE_ENV === 'development') {
       console.log("🛠️ [DEV MODE]: Ignorando autenticação real e usando perfil Admin.");
@@ -64,9 +64,16 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     try {
       const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
       const res = await fetch(`${baseUrl}/auth/me`, { 
-        credentials: 'include' // 🚩 OBRIGATÓRIO para enviar o cookie em requisições cross-origin
+        credentials: 'include' 
       });
       
+      // 🚩 SE O SERVIDOR ESTIVER "ACORDANDO" (502), TENTA DE NOVO
+      if (res.status === 502 && retryCount < 2) {
+        console.warn(`⚠️ [AUTH RETRY ${retryCount + 1}/2]: Servidor instável (502), tentando reconectar...`);
+        setTimeout(() => checkUser(retryCount + 1), 2000);
+        return;
+      }
+
       if (!res.ok) throw new Error("Não autenticado");
       
       const data = await res.json();
@@ -78,12 +85,21 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         setUser(null);
         setServerIsAdmin(false);
       }
-    } catch (e) {
-      console.error("🚨 [AUTH ERROR]: Sessão expirada ou não encontrada.");
-      setUser(null);
-      setServerIsAdmin(false);
+    } catch (e: any) {
+      // 🚩 TENTA DE NOVO CASO SEJA ERRO DE REDE OU TIMEOUT
+      if (retryCount < 2) {
+        console.warn(`⚠️ [AUTH RETRY ${retryCount + 1}/2]: Falha na conexão. Tentando novamente...`);
+        setTimeout(() => checkUser(retryCount + 1), 2000);
+      } else {
+        console.error("🚨 [AUTH ERROR]: Sessão expirada ou servidor inacessível.", e.message);
+        setUser(null);
+        setServerIsAdmin(false);
+      }
     } finally {
-      setIsInitialized(true);
+      // Só encerra o loading se não houver retry pendente
+      if (retryCount >= 2) {
+        setIsInitialized(true);
+      }
     }
   }, []);
 

@@ -27,45 +27,28 @@ declare global {
 const app: Express = express();
 const isDev = process.env.NODE_ENV === 'development';
 
-// 🚩 1. CONFIGURAÇÃO VITAL PARA PROXIES (Render exige isso para cookies HTTPS)
-app.set('trust proxy', true);
+// 🚩 1. CONFIANÇA NO PROXY (Obrigatório para Render)
+app.set('trust proxy', 1);
 
-// 🚩 2. AJUSTE DE CORS: Suporte a múltiplos ambientes
-const allowedOrigins = [
-  'https://sdr-pjt.vercel.app',
-  'http://localhost:3001',
-  'http://localhost:3000'
-];
+// 🚩 2. MIDDLEWARE DE CORS MANUAL (Robusto)
+const allowedOrigins = ['https://sdr-pjt.vercel.app', 'http://localhost:3001', 'http://localhost:3000'];
 
-app.use(cors({
-  origin: (origin, callback) => {
-    // Permite requisições sem origin (como apps mobile ou curl)
-    if (!origin) return callback(null, true);
-    
-    // Verifica se a URL está na lista oficial ou se é um preview da Vercel
-    const isAllowed = allowedOrigins.includes(origin) || 
-                     (origin.endsWith('.vercel.app') && origin.includes('sdr'));
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app'))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cookie, Cache-Control, X-Requested-With, Pragma');
+  res.setHeader('Vary', 'Origin');
 
-    if (isAllowed) {
-      callback(null, true);
-    } else {
-      console.warn(`🚫 [CORS REJECTED]: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: [
-    'Content-Type', 
-    'Authorization', 
-    'Cookie', 
-    'Cache-Control', // 🚩 Resolve o erro do navegador
-    'X-Requested-With',
-    'Pragma'
-  ],
-  exposedHeaders: ['set-cookie'],
-  maxAge: 86400 // Cache de 24h para evitar requisições OPTIONS repetitivas
-}));
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  next();
+});
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
