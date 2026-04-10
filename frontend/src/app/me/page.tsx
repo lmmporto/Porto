@@ -6,7 +6,8 @@ import {
   XCircle, 
   Phone, 
   ArrowLeft,
-  RefreshCw
+  RefreshCw,
+  BarChart3
 } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -52,6 +53,14 @@ export default function SDRDashboardPage() {
       insights: personalInsights?.insights || []
     };
   }, [calls, personalInsights]);
+
+  // 🚩 ALLOWLIST SÊNIOR: Filtro de segurança para exibição
+  const displayCalls = useMemo(() => {
+    return calls.filter(call => 
+      call.nota_spin !== null && 
+      ['APROVADO', 'ATENCAO', 'REPROVADO'].includes(call.status_final ?? '')
+    );
+  }, [calls]);
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-200 p-8 pb-20">
@@ -148,26 +157,20 @@ export default function SDRDashboardPage() {
           </div>
 
           {/* BOTTOM SECTION: LISTA DE CHAMADAS */}
-          <div className="space-y-6">
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <Phone className="w-5 h-5 text-indigo-400" /> Histórico Recente
-            </h2>
+          <section className="space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-indigo-500/10 rounded-lg"><BarChart3 className="w-5 h-5 text-indigo-400" /></div>
+              <h2 className="text-xl font-bold text-white">Atividades Recentes</h2>
+            </div>
 
             <div className="grid gap-4">
-              {calls.filter(call => 
-                call.nota_spin !== null && 
-                ['APROVADO', 'ATENCAO', 'REPROVADO'].includes(call.status_final)
-              ).length > 0 ? (
-                calls
-                  // 🚩 ALLOWLIST SÊNIOR: Filtro de segurança para exibição
-                  .filter(call => 
-                    call.nota_spin !== null && 
-                    ['APROVADO', 'ATENCAO', 'REPROVADO'].includes(call.status_final)
-                  )
-                  .map(call => <CallCard key={call.id} call={call} />)
+              {displayCalls.length > 0 ? (
+                displayCalls.map(call => (
+                  <CallCard key={call.id} call={call} />
+                ))
               ) : !isLoading && (
                 <div className="bg-slate-900/40 border border-slate-800 rounded-3xl p-20 text-center">
-                  <p className="text-slate-500 italic">Nenhuma chamada com avaliação SPIN encontrada para este período.</p>
+                  <p className="text-slate-500 italic">Nenhuma chamada com avaliação SPIN encontrada para o seu perfil.</p>
                 </div>
               )}
               
@@ -177,7 +180,7 @@ export default function SDRDashboardPage() {
                 </div>
               )}
             </div>
-          </div>
+          </section>
 
         </div>
       </div>
