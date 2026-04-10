@@ -49,7 +49,9 @@ router.get('/summary', async (req: Request, res: Response) => {
     let query: FirebaseFirestore.Query = db.collection('sdr_stats');
 
     if (!isAdmin) {
-      query = query.where("ownerEmail", "==", userEmail);
+      const targetEmail = userEmail.toLowerCase().trim();
+      console.log(`🔎 [DEBUG] Buscando estatísticas para e-mail normalizado: "${targetEmail}"`);
+      query = query.where("ownerEmail", "==", targetEmail);
     }
 
     const snapshot = await query.get();
@@ -131,17 +133,18 @@ router.get('/personal-summary', async (req: Request, res: Response) => {
       return res.status(401).json({ error: "Não autorizado" });
     }
 
-    const target = (req.query.ownerEmail as string) || (req.user as any).email;
+    const rawEmail = (req.query.ownerEmail as string) || (req.user as any).email || "";
+    const targetEmail = rawEmail.toLowerCase().trim();
     
-    console.log(`🔎 [DEBUG DASHBOARD] Iniciando busca para: ${target}`);
+    console.log(`🔎 [DEBUG] Buscando dados para e-mail normalizado: "${targetEmail}"`);
 
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
 
     // Filtro resiliente: E-mail ou Nome
-    if (target.includes('@')) {
-      query = query.where("ownerEmail", "==", target.trim().toLowerCase());
+    if (targetEmail.includes('@')) {
+      query = query.where("ownerEmail", "==", targetEmail);
     } else {
-      query = query.where("ownerName", "==", target);
+      query = query.where("ownerName", "==", rawEmail); // Preserva o nome original se não for e-mail
     }
 
     // 🚩 REMOÇÃO TEMPORÁRIA DE FILTROS RESTRITIVOS para diagnóstico

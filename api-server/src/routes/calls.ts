@@ -42,10 +42,11 @@ router.get("/", async (req: Request, res: Response) => {
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
 
     // 1. Filtro de Autoria (Resiliência e Segurança)
-    if (filterEmail) {
-      query = query.where("ownerEmail", "==", filterEmail.trim().toLowerCase());
-    } else if (!isAdmin) {
-      query = query.where("ownerEmail", "==", userEmail.trim().toLowerCase());
+    if (filterEmail || !isAdmin) {
+      const rawEmail = filterEmail || userEmail || "";
+      const targetEmail = rawEmail.toLowerCase().trim();
+      console.log(`🔎 [DEBUG] Buscando dados para e-mail normalizado: "${targetEmail}"`);
+      query = query.where("ownerEmail", "==", targetEmail);
     }
 
     // 2. Lógica de Ordenação e Modo (Feed vs Vitrine Ranking)
