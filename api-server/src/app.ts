@@ -32,16 +32,12 @@ const isProduction = process.env.NODE_ENV === 'production';
 app.set('trust proxy', 1);
 
 // 🚩 AJUSTE DE CORS: Suporte a múltiplos ambientes
-app.use(
-  cors({
-    origin: [
-      'http://localhost:3001',      // Seu Front local (porta 3001)
-      'http://localhost:3000',      // Seu Front local (porta 3000)
-      'https://sdr-pjt.vercel.app'  // Seu Front produção
-    ],
-    credentials: true,
-  })
-);
+app.use(cors({
+  origin: isProduction ? 'https://sdr-pjt.vercel.app' : ['http://localhost:3000', 'http://localhost:3001'],
+  credentials: true, // 🚩 OBRIGATÓRIO para enviar cookies
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie']
+}));
 
 app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -63,11 +59,11 @@ app.use(
     resave: false,
     saveUninitialized: false,
     rolling: true,
-    proxy: true,
+    proxy: true, 
     cookie: {
       httpOnly: true,
-      secure: isProduction, 
-      sameSite: isProduction ? 'none' : 'lax', 
+      secure: true, // 🚩 HTTPS é obrigatório para SameSite: 'none'
+      sameSite: 'none', // 🚩 Permite cookies entre domínios diferentes
       maxAge: 1000 * 60 * 60 * 24 * 7, // 7 dias
     },
   })
@@ -195,8 +191,8 @@ app.post('/auth/logout', (req: any, res: Response) => {
     req.session.destroy(() => {
       res.clearCookie('sdr.sid', {
         httpOnly: true,
-        secure: isProduction,
-        sameSite: isProduction ? 'none' : 'lax'
+        secure: true,
+        sameSite: 'none'
       });
       return res.status(200).json({ success: true });
     });
