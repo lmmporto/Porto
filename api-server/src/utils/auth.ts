@@ -1,30 +1,34 @@
 import { db } from "../firebase.js";
 
-/**
- * Verifica se um e-mail pertence à lista de administradores no Firestore.
- * 🚩 SEGURANÇA: Em caso de erro ou e-mail vazio, retorna false (comportamento fail-safe).
- */
 export async function checkIfAdmin(email: string): Promise<boolean> {
   try {
     if (!email) return false;
 
     const doc = await db.collection("configuracoes").doc("gerais").get();
-    const data = doc.data();
-    
-    // 🚩 PROTEÇÃO SÊNIOR: Garante que 'admins' seja sempre um array antes de processar
-    const adminsRaw = data?.admins;
-    const adminsList = Array.isArray(adminsRaw) ? adminsRaw : [];
+    if (!doc.exists) return false;
 
-    // Normaliza o e-mail do usuário
+    const data = doc.data();
+    const adminsRaw = data?.admins;
     const normalizedUserEmail = email.toLowerCase().trim();
 
-    // Verifica se o e-mail está na lista (também normalizada)
-    return adminsList.some(adminEmail => 
-      typeof adminEmail === 'string' && 
-      adminEmail.toLowerCase().trim() === normalizedUserEmail
-    );
+    // 🚩 TRATAMENTO MULTI-TIPO (O Segredo da Resiliência)
+    
+    // Caso 1: O banco tem uma LISTA de admins
+    if (Array.isArray(adminsRaw)) {
+      return adminsRaw.some(adminEmail => 
+        typeof adminEmail === 'string' && 
+        adminEmail.toLowerCase().trim() === normalizedUserEmail
+      );
+    }
+
+    // Caso 2: O banco tem apenas UMA STRING (Seu estado atual)
+    if (typeof adminsRaw === 'string') {
+      return adminsRaw.toLowerCase().trim() === normalizedUserEmail;
+    }
+
+    return false;
   } catch (error) {
-    console.error("❌ [AUTH ERROR] Falha catastrófica no checkIfAdmin:", error);
-    return false; // Em dúvida, nega acesso (Fail-Closed)
+    console.error("❌ [AUTH ERROR] Erro ao verificar admin:", error);
+    return false; 
   }
 }

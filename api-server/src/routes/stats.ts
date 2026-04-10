@@ -24,18 +24,29 @@ router.get('/summary', async (req: Request, res: Response) => {
       return res.status(401).json({ error: "Não autorizado" });
     }
 
+    const userEmail = (req.user as any).email;
+    const isAdmin = await checkIfAdmin(userEmail);
     const now = Date.now();
+
+    // 🚩 PERMITE SIMULAÇÃO NO RANKING:
+    const requestedEmail = req.query.ownerEmail as string;
+    const targetEmail = (isAdmin && requestedEmail) ? requestedEmail.toLowerCase().trim() : userEmail.toLowerCase().trim();
     
-    // 🚩 PROTEÇÃO DE MEMÓRIA: Verifica cache global antes de qualquer processamento pesado
-    if (cachedStats && (now - lastCacheTime < 60000)) {
+    // 🚩 PROTEÇÃO DE MEMÓRIA: Verifica cache global apenas se for a busca geral (sem filtro de e-mail)
+    if (!requestedEmail && isAdmin && cachedStats && (now - lastCacheTime < 60000)) {
       console.log(`📊 [STATS] Retornando resumo de performance do CACHE.`);
       return res.json(cachedStats);
     }
 
-    const userEmail = (req.user as any).email;
-    console.log(`📊 [STATS] Gerando ranking global (Cache expirado ou inexistente). Solicitado por: ${userEmail}`);
+    console.log(`📊 [STATS] Gerando ranking global. Solicitado por: ${userEmail} | Alvo: ${requestedEmail || 'TODOS'}`);
 
-    let query = db.collection('sdr_stats');
+    let query: FirebaseFirestore.Query = db.collection('sdr_stats');
+    
+    // Aplica filtro se não for admin ou se um e-mail específico foi solicitado
+    if (!isAdmin || requestedEmail) {
+      query = query.where("ownerEmail", "==", targetEmail);
+    }
+
     const snapshot = await query.get();
 
     const sdr_ranking: Record<string, any> = {};
@@ -66,18 +77,14 @@ router.get('/summary', async (req: Request, res: Response) => {
 
     if (sdrNames.length === 0) {
       console.log("⚠️ [STATS] Nenhum dado de SDR encontrado. Retornando estrutura EMPTY_SAFE.");
-      const emptyResult = {
+      return res.json({
         total_calls: 0,
         valid_calls: 0,
         sum_notes: 0,
         media_geral: 0,
         sdr_ranking: {},
         version: "V6_EMPTY_SAFE"
-      };
-      // Cacheia mesmo o estado vazio para evitar queries repetitivas em banco zerado
-      cachedStats = emptyResult;
-      lastCacheTime = now;
-      return res.json(emptyResult);
+      });
     }
 
     const totalSDRs = sdrNames.length;
@@ -107,9 +114,11 @@ router.get('/summary', async (req: Request, res: Response) => {
       version: "V7_PUBLIC_LEADERBOARD"
     };
 
-    // 🚩 ATUALIZAÇÃO DO CACHE: Disponibiliza o resultado para as próximas chamadas por 60s
-    cachedStats = resultado;
-    lastCacheTime = now;
+    // 🚩 ATUALIZAÇÃO DO CACHE: Apenas se for a query global de Admin
+    if (isAdmin && !requestedEmail) {
+      cachedStats = resultado;
+      lastCacheTime = now;
+    }
 
     return res.json(resultado);
 
@@ -151,6 +160,7 @@ router.get('/personal-summary', async (req: Request, res: Response) => {
     const snapshot = await query.orderBy("callTimestamp", "desc").limit(15).get();
 
     if (snapshot.empty) {
+      // 🚩 CORREÇÃO DO CRASH: targetEmail em vez de target
       console.log(`⚠️ [DEBUG DASHBOARD] Nenhum documento encontrado para: ${targetEmail}`);
       return res.json({ gaps: [], insights: [], totalAnalisadas: 0 });
     }

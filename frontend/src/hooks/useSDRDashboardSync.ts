@@ -10,9 +10,12 @@ export function useSDRDashboardSync() {
   const lastLoadedEmail = useRef<string | null>(null);
 
   const loadData = useCallback(async (targetEmail: string) => {
-    if (lastLoadedEmail.current === targetEmail) return; // 🚩 A VACINA
-    lastLoadedEmail.current = targetEmail;
+    if (lastLoadedEmail.current === targetEmail) return;
     
+    console.log(`🚀 [SYNC] Carga estável para: ${targetEmail}`);
+    lastLoadedEmail.current = targetEmail;
+
+    // Fallback inteligente para desenvolvimento local
     const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
     
     try {
@@ -25,7 +28,8 @@ export function useSDRDashboardSync() {
         .then(data => setPersonalInsights(data))
       ]);
     } catch (error) {
-      lastLoadedEmail.current = null;
+      console.error("❌ [SYNC ERROR]:", error);
+      lastLoadedEmail.current = null; // Permite retentativa em caso de falha
     }
   }, [applyFilter]);
 
@@ -35,15 +39,8 @@ export function useSDRDashboardSync() {
     }
   }, [user?.email, loadData]);
 
-  return { 
-    user, 
-    calls, 
-    isLoading, 
-    personalInsights, 
-    isAdmin,
-    refresh: () => {
-      lastLoadedEmail.current = null;
-      if (user?.email) loadData(user.email.toLowerCase().trim());
-    }
-  };
+  return { user, calls, isLoading, personalInsights, isAdmin, refresh: () => {
+    lastLoadedEmail.current = null;
+    if (user?.email) loadData(user.email);
+  }};
 }

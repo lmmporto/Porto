@@ -7,8 +7,6 @@ import { checkIfAdmin } from "../utils/auth.js";
 
 const router = Router();
 
-
-
 // 1. LISTAGEM COM TRAVA DE SEGURANÇA E AUDITORIA
 router.get("/", async (req: Request, res: Response) => {
   try {
@@ -41,10 +39,9 @@ router.get("/", async (req: Request, res: Response) => {
       query = query.where("ownerEmail", "==", targetEmail);
     }
 
-    // 2. Lógica de Ordenação e Modo (Feed vs Vitrine Ranking)
-
-    // 🚩 REGRA GLOBAL: O SDR só vê o que a IA terminou de analisar com sucesso
-    query = query.where("processingStatus", "==", "DONE");
+    // 2. 🚩 MUDANÇA SÊNIOR: Tornar o status 'DONE' opcional para não sumir com o histórico
+    // Comentamos esta linha até que o Backfill processe tudo.
+    // query = query.where("processingStatus", "==", "DONE");
 
     if (mode === 'ranking') {
       // VITRINE: Performance absoluta (Top 10)
