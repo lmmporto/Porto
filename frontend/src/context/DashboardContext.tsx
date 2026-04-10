@@ -64,8 +64,11 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     try {
       const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
       const res = await fetch(`${baseUrl}/auth/me`, { 
-        credentials: 'include' 
+        credentials: 'include' // 🚩 OBRIGATÓRIO para enviar o cookie em requisições cross-origin
       });
+      
+      if (!res.ok) throw new Error("Não autenticado");
+      
       const data = await res.json();
       
       if (data.authenticated) {
@@ -76,7 +79,9 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         setServerIsAdmin(false);
       }
     } catch (e) {
-      console.error("🚨 [AUTH ERROR]: Falha ao validar sessão.");
+      console.error("🚨 [AUTH ERROR]: Sessão expirada ou não encontrada.");
+      setUser(null);
+      setServerIsAdmin(false);
     } finally {
       setIsInitialized(true);
     }
