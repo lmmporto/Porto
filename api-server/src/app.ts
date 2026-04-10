@@ -31,15 +31,40 @@ const isDev = process.env.NODE_ENV === 'development';
 app.set('trust proxy', true);
 
 // 🚩 2. AJUSTE DE CORS: Suporte a múltiplos ambientes
+const allowedOrigins = [
+  'https://sdr-pjt.vercel.app',
+  'http://localhost:3001',
+  'http://localhost:3000'
+];
+
 app.use(cors({
-  origin: [
-    'http://localhost:3001',
-    'http://localhost:3000',
-    'https://sdr-pjt.vercel.app'
-  ],
+  origin: (origin, callback) => {
+    // Permite requisições sem origin (como apps mobile ou curl)
+    if (!origin) return callback(null, true);
+    
+    // Verifica se a URL está na lista oficial ou se é um preview da Vercel
+    const isAllowed = allowedOrigins.includes(origin) || 
+                     (origin.endsWith('.vercel.app') && origin.includes('sdr'));
+
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      console.warn(`🚫 [CORS REJECTED]: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie']
+  allowedHeaders: [
+    'Content-Type', 
+    'Authorization', 
+    'Cookie', 
+    'Cache-Control', // 🚩 Resolve o erro do navegador
+    'X-Requested-With',
+    'Pragma'
+  ],
+  exposedHeaders: ['set-cookie'],
+  maxAge: 86400 // Cache de 24h para evitar requisições OPTIONS repetitivas
 }));
 
 app.use(express.json({ limit: '5mb' }));
