@@ -26,6 +26,9 @@ router.get("/", async (req: Request, res: Response) => {
 
     const userEmail = (req.user as any).email;
     const isAdmin = await checkIfAdmin(userEmail);
+
+    // 🚩 SONDA DE DIAGNÓSTICO: Auditoria de Identidade
+    console.log(`🕵️ [PROD DEBUG] Buscando chamadas para: "${userEmail}" | isAdmin: ${isAdmin}`);
     
     const limit = Math.min(Number(req.query.limit || 10), 50);
     const startAfter = req.query.lastVisible as string;
