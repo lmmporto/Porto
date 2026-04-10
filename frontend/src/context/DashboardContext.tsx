@@ -26,7 +26,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const [serverIsAdmin, setServerIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
-  
+
   // 🚩 ESTADO DE SIMULAÇÃO
   const [impersonatedUser, setImpersonatedUser] = useState<User | null>(null);
 
@@ -46,10 +46,11 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const checkUser = useCallback(async (retryCount = 0) => {
+  const checkUser = useCallback(async () => {
+    setIsLoading(true);
+    
     // 🚩 REGRA DE OURO: Bypass de autenticação em ambiente de desenvolvimento
     if (process.env.NODE_ENV === 'development') {
-      console.log("🛠️ [DEV MODE]: Ignorando autenticação real e usando perfil Admin.");
       setUser({ 
         email: 'lucas.porto@nibo.com.br', 
         name: 'Lucas Porto (Dev)',
@@ -57,27 +58,20 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       });
       setServerIsAdmin(true);
       setIsInitialized(true);
+      setIsLoading(false);
       return;
     }
 
-    // --- FLUXO DE PRODUÇÃO ---
     try {
       const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
-      const res = await fetch(`${baseUrl}/auth/me`, { 
-        credentials: 'include' 
-      });
+      const res = await fetch(`${baseUrl}/auth/me`, { credentials: 'include' });
       
-      // 🚩 SE O SERVIDOR ESTIVER "ACORDANDO" (502), TENTA DE NOVO
-      if (res.status === 502 && retryCount < 2) {
-        console.warn(`⚠️ [AUTH RETRY ${retryCount + 1}/2]: Servidor instável (502), tentando reconectar...`);
-        setTimeout(() => checkUser(retryCount + 1), 2000);
+      if (!res.ok) {
+        setUser(null);
         return;
       }
 
-      if (!res.ok) throw new Error("Não autenticado");
-      
       const data = await res.json();
-      
       if (data.authenticated) {
         setUser(data.user);
         setServerIsAdmin(data.isAdmin || false);
@@ -85,21 +79,14 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
         setUser(null);
         setServerIsAdmin(false);
       }
-    } catch (e: any) {
-      // 🚩 TENTA DE NOVO CASO SEJA ERRO DE REDE OU TIMEOUT
-      if (retryCount < 2) {
-        console.warn(`⚠️ [AUTH RETRY ${retryCount + 1}/2]: Falha na conexão. Tentando novamente...`);
-        setTimeout(() => checkUser(retryCount + 1), 2000);
-      } else {
-        console.error("🚨 [AUTH ERROR]: Sessão expirada ou servidor inacessível.", e.message);
-        setUser(null);
-        setServerIsAdmin(false);
-      }
+    } catch (e) {
+      console.error("🚨 [AUTH FATAL]:", e);
+      setUser(null);
+      setServerIsAdmin(false);
     } finally {
-      // Só encerra o loading se não houver retry pendente
-      if (retryCount >= 2) {
-        setIsInitialized(true);
-      }
+      // 🚩 REGRA DE OURO: O sistema DEVE ser marcado como inicializado aqui para evitar telas brancas
+      setIsInitialized(true);
+      setIsLoading(false);
     }
   }, []);
 
@@ -126,19 +113,19 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const isAdmin = !impersonatedUser && (serverIsAdmin || user?.email === 'lucas.porto@nibo.com.br');
 
   return (
-    <DashboardContext.Provider value={{ 
-      user: effectiveUser, 
+    <DashboardContext.Provider value={{
+      user: effectiveUser,
       isAdmin,
       isImpersonating: !!impersonatedUser,
-      isLoading, 
-      isInitialized, 
+      isLoading,
+      isInitialized,
       checkUser,
       startImpersonation,
       stopImpersonation
     }}>
       {isInitialized ? children : (
         <div className="min-h-screen flex items-center justify-center bg-white">
-           <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
         </div>
       )}
     </DashboardContext.Provider>
