@@ -1,30 +1,33 @@
+import admin from 'firebase-admin'; // 🚩 ADICIONE ESTA LINHA
 import { initializeApp, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import dotenv from 'dotenv';
 import axios from 'axios';
 
 dotenv.config();
 
-// 🚩 CONFIGURAÇÕES DO RESGATE
-const DIAS_PARA_VOLTAR = 2;
-const MIN_DURATION_MS = 120000; // 2 minutos
+// 🚩 CONFIGURAÇÕES DO RESGATE RECALIBRADAS
+const DIAS_PARA_VOLTAR = 3; // Aumentamos para 3 dias para garantir cobertura total
+const MIN_DURATION_MS = 110000; // 🚩 1 minuto e 50 segundos
 const CALLS_COLLECTION = 'calls_analysis';
 
 async function runBackfill() {
-  console.log(`🚀 Iniciando Resgate de Chamadas (Últimos ${DIAS_PARA_VOLTAR} dias)...`);
+  console.log(`🚀 Iniciando Resgate de Chamadas (Mínimo: 1:50s | Últimos ${DIAS_PARA_VOLTAR} dias)...`);
 
-  // 1. Inicializa Firebase
   const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '{}');
   if (!serviceAccount.project_id) throw new Error("Credenciais do Firebase não encontradas!");
-  initializeApp({ credential: cert(serviceAccount) });
+  
+  // Inicializa apenas se não houver apps inicializados
+  if (admin.apps.length === 0) {
+    initializeApp({ credential: cert(serviceAccount) });
+  }
+  
   const db = getFirestore();
-
   const token = process.env.HUBSPOT_TOKEN;
-  if (!token) throw new Error("HUBSPOT_TOKEN não encontrado no .env!");
 
   try {
-    // 2. Busca todos os donos (SDRs) no HubSpot
-    console.log("⏳ Baixando lista de SDRs do HubSpot...");
+    // 1. Busca todos os donos (SDRs) no HubSpot
+    console.log("⏳ Mapeando SDRs do HubSpot...");
     const ownersRes = await axios.get('https://api.hubapi.com/crm/v3/owners', {
       headers: { Authorization: `Bearer ${token}` },
       params: { limit: 100 }
@@ -33,34 +36,25 @@ async function runBackfill() {
     const ownerMap = new Map();
     ownersRes.data.results.forEach((owner: any) => {
       ownerMap.set(owner.id, {
-        email: owner.email?.toLowerCase() || 'desconhecido@nibo.com.br',
+        email: (owner.email || '').toLowerCase().trim(),
         name: `${owner.firstName || ''} ${owner.lastName || ''}`.trim()
       });
     });
-    console.log(`✅ ${ownerMap.size} SDRs mapeados.`);
 
-    // 3. Calcula a data de corte
+    // 2. Calcula a data de corte
     const dataCorte = new Date();
     dataCorte.setDate(dataCorte.getDate() - DIAS_PARA_VOLTAR);
     const timestampCorte = dataCorte.getTime();
 
-    console.log(`⏳ Buscando chamadas criadas após: ${dataCorte.toLocaleString('pt-BR')}`);
-
-    // 4. Busca as chamadas no HubSpot com PAGINAÇÃO
+    // 3. Busca as chamadas com PAGINAÇÃO
     let allCalls: any[] = [];
     let after: string | null = null;
     let hasMore = true;
 
-    console.log("⏳ Buscando todas as páginas de chamadas...");
-
     while (hasMore) {
       const searchBody: any = {
         filterGroups: [{
-          filters: [{
-            propertyName: "hs_createdate",
-            operator: "GTE",
-            value: timestampCorte.toString()
-          }]
+          filters: [{ propertyName: "hs_createdate", operator: "GTE", value: timestampCorte.toString() }]
         }],
         properties: ["hs_call_duration", "hs_call_recording_url", "hubspot_owner_id", "hs_call_title", "hs_call_status", "hs_createdate"],
         limit: 100,
@@ -71,76 +65,65 @@ async function runBackfill() {
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
       });
 
-      const results = callsRes.data.results || [];
-      allCalls = [...allCalls, ...results];
-
-      if (callsRes.data.paging?.next?.after) {
-        after = callsRes.data.paging.next.after;
-        console.log(`📡 Buscando próxima página... (Total atual: ${allCalls.length})`);
-      } else {
-        hasMore = false;
-      }
+      allCalls = [...allCalls, ...(callsRes.data.results || [])];
+      after = callsRes.data.paging?.next?.after;
+      hasMore = !!after;
+      if (hasMore) console.log(`📡 Coletando... (${allCalls.length} chamadas encontradas)`);
     }
 
-    console.log(`📊 Encontradas ${allCalls.length} chamadas no total.`);
-
     let adicionadas = 0;
-    let ignoradasTempo = 0;
-    let ignoradasDuplicadas = 0;
+    let ignoradas = 0;
 
-    // 5. Processa e salva no Firestore
+    // 4. Processa e salva no Firestore
     for (const hsCall of allCalls) {
-      const callId = hsCall.id;
       const props = hsCall.properties;
       const durationMs = Number(props.hs_call_duration || 0);
       const hasAudio = !!props.hs_call_recording_url;
 
+      // Filtro de Qualidade
       if (durationMs < MIN_DURATION_MS || !hasAudio) {
-        ignoradasTempo++;
+        ignoradas++;
         continue;
       }
 
-      const docRef = db.collection(CALLS_COLLECTION).doc(String(callId));
+      const docRef = db.collection(CALLS_COLLECTION).doc(String(hsCall.id));
       const docSnap = await docRef.get();
       
-      if (docSnap.exists) {
-        ignoradasDuplicadas++;
+      // Evita re-processar o que já está DONE ou QUEUED
+      if (docSnap.exists && docSnap.data()?.processingStatus !== 'ERROR') {
         continue;
       }
 
       const ownerInfo = ownerMap.get(props.hubspot_owner_id) || { email: 'desconhecido@nibo.com.br', name: 'Desconhecido' };
 
       await docRef.set({
-        id: String(callId),
-        callId: String(callId),
+        id: String(hsCall.id),
+        callId: String(hsCall.id),
         title: props.hs_call_title || 'Chamada Resgatada',
         durationMs: durationMs,
         hasAudio: hasAudio,
         recordingUrl: props.hs_call_recording_url,
         ownerId: props.hubspot_owner_id,
-        ownerEmail: ownerInfo.email,
+        ownerEmail: ownerInfo.email, // 🚩 Já vem normalizado do ownerMap
         ownerName: ownerInfo.name,
         hsCallStatus: props.hs_call_status,
         processingStatus: 'QUEUED', 
-        createdAt: new Date(),
-        callTimestamp: new Date(props.hs_createdate)
-      });
+        createdAt: FieldValue.serverTimestamp(),
+        callTimestamp: new Date(props.hs_createdate), // 🚩 Data real da ligação
+        updatedAt: FieldValue.serverTimestamp()
+      }, { merge: true });
 
-      console.log(`➕ Enfileirada: ${callId} (${ownerInfo.name})`);
+      console.log(`✅ Enfileirada: ${hsCall.id} | ${ownerInfo.name} | ${(durationMs/60000).toFixed(1)} min`);
       adicionadas++;
     }
 
     console.log("\n=================================");
-    console.log("🏁 RESUMO DO RESGATE:");
-    console.log(`✅ Adicionadas à Fila (QUEUED): ${adicionadas}`);
-    console.log(`⏭️ Ignoradas (< 2min ou sem áudio): ${ignoradasTempo}`);
-    console.log(`⏭️ Ignoradas (Já existiam no banco): ${ignoradasDuplicadas}`);
+    console.log(`🏁 RESUMO: ${adicionadas} novas chamadas na fila. ${ignoradas} descartadas.`);
     console.log("=================================\n");
 
     process.exit(0);
-
   } catch (error: any) {
-    console.error("❌ ERRO NO RESGATE:", error?.response?.data || error.message);
+    console.error("❌ ERRO:", error.message);
     process.exit(1);
   }
 }

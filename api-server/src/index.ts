@@ -22,5 +22,5 @@ app.listen(port, () => {
   console.log("=================================");
   
   // 🚩 LIGA O MOTOR DE PROCESSAMENTO EM BACKGROUND
-//  startWorker();
+  startWorker();
 });
