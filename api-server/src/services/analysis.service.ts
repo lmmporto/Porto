@@ -214,7 +214,9 @@ PASSO 2: CRITÉRIOS DE PONTUAÇÃO (TOTAL 10 PONTOS)
 
 PASSO 3: PLAYBOOK DO OURO (OBRIGATÓRIO) (FEEDBACK DO COACH)
 Para cada falha ou oportunidade, você deve gerar um item no campo 'playbook_detalhado' seguindo RIGOROSAMENTE este formato:
- "Aos[MM:SS] -, o cliente disse [Citação]. Oportunidade desperdiçada: [Explicação de como aprofundar]."
+ "Aos[MM:SS] -, o cliente disse [Citação]. Oportunidade desperdiçada: [Explicação de como abordar]."
+ Exemplo:
+"Falta de aprofundamento na dor | [05:00] - O lead disse [Estou corrido] -> Dica de Ouro: O SDR aceitou a objeção passivamente. Deveria ter perguntado: 'Entendo, mas se pudéssemos ganhar 30min/dia, valeria 5min agora?'"
 
 PASSO 4: STATUS FINAL (RIGOROSO)
 - 0 a 4.9: REPROVADO | 5.0 a 7.9: ATENCAO | 8.0 a 10: APROVADO | ROTA D: NAO_SE_APLICA
