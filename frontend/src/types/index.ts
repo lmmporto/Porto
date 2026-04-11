@@ -48,15 +48,15 @@ export interface SDRCall {
   
   hubspotCallId?: string; 
   portalId?: string;
-  callTimestamp: string; 
-  createdAt: string; 
-  updatedAt: string;
+  callTimestamp: any; // Mantemos 'any' ou 'string' conforme seu uso atual
+  createdAt: any; 
+  updatedAt: any;
   analyzedAt: string | null;
 
   title: string;
   ownerId: string | null;
   ownerName: string;
-  ownerEmail: string; // E-mail usado para a trava de segurança
+  ownerEmail: string; 
   teamId: string | null;
   teamName: string;
   durationMs: number;
@@ -70,12 +70,12 @@ export interface SDRCall {
   // Conteúdo da análise
   resumo: string;
   alertas: string[];
+  playbook_detalhado?: string[]; // 🚩 ADICIONADO: O novo campo do ouro
   ponto_atencao: string;
   maior_dificuldade: string;
-  pontos_fortes: string | string[];
-
-  analise_escuta?: string;
+  pontos_fortes: string[];
   perguntas_sugeridas?: string[];
+  analise_escuta?: string;
 }
 
 /**

@@ -7,7 +7,7 @@ import { firstFilled } from "../utils.js";
 export interface OwnerDetails {
   ownerId: string | null;
   ownerName: string;
-  ownerEmail: string | null; // 🚩 ADICIONE ESTA LINHA AQUI
+  ownerEmail: string | null; 
   teamId: string | null;
   teamName: string;
   userId: string | null;
@@ -76,7 +76,7 @@ export async function fetchOwnerDetails(ownerId: string | null): Promise<OwnerDe
       return { 
         ownerId: null, 
         ownerName: "Sem owner", 
-        ownerEmail: null, // 🚩 Adicionado para cumprir o contrato
+        ownerEmail: null,
         teamId: null, 
         teamName: "Sem equipe", 
         userId: null 
@@ -90,7 +90,7 @@ export async function fetchOwnerDetails(ownerId: string | null): Promise<OwnerDe
       ownerName: data?.firstName || data?.lastName 
         ? `${data?.firstName || ""} ${data?.lastName || ""}`.trim() 
         : `Owner ${ownerId}`,
-      ownerEmail: data?.email || null, // 🚩 Aqui buscamos o email real do HubSpot!
+      ownerEmail: data?.email || null,
       teamId: data?.teams?.[0]?.id || null,
       teamName: data?.teams?.[0]?.name || "Sem equipe",
       userId: data?.userId || data?.userIdIncludingInactive || null,
@@ -99,7 +99,7 @@ export async function fetchOwnerDetails(ownerId: string | null): Promise<OwnerDe
     return { 
       ownerId: String(ownerId), 
       ownerName: `Owner ${ownerId}`, 
-      ownerEmail: null, // 🚩 Adicionado para evitar erro no catch
+      ownerEmail: null,
       teamId: null, 
       teamName: "Sem equipe", 
       userId: null 
@@ -107,11 +107,13 @@ export async function fetchOwnerDetails(ownerId: string | null): Promise<OwnerDe
   }
 }
 
-
 export async function fetchCall(callId: string): Promise<CallData> {
-  // 🚩 Adicionamos 'hs_analytics_transcript_id' na lista de busca
+  // 🚩 LISTA EXPANDIDA: Cobrindo todas as variações de nomes de campos do HubSpot
   const propertiesToFetch = [
-    ...new Set([...Object.values(CONFIG.PROPS).flat(), 'hs_call_disposition', 'hs_portal_id', 'hs_analytics_transcript_id'])
+    'hs_call_title', 'hs_call_duration', 'hs_call_recording_url', 
+    'hs_call_status', 'hs_call_body', 'hs_call_transcript', 
+    'hs_analytics_transcript_id', 'hubspot_owner_id', 'hs_portal_id',
+    'url_gravacao_chamada', 'recording_url', 'hs_call_disposition', 'hs_createdate'
   ];
 
   const { data } = await hubspot.get(`/crm/v3/objects/calls/${callId}`, {
@@ -119,41 +121,44 @@ export async function fetchCall(callId: string): Promise<CallData> {
   });
 
   const props: Record<string, any> = data?.properties || {};
-  const ownerId = firstFilled(props, CONFIG.PROPS.OWNER);
-  const duration = Number(firstFilled(props, CONFIG.PROPS.DURATION) || 0);
-  const dispId = String(props.hs_call_disposition || "");
-  const recording = firstFilled(props, CONFIG.PROPS.RECORDING) || "";
-
-  // 🚩 PEGA O ID DO TEXTO DIRETO DA PROPRIEDADE
+  
+  // 🚩 LÓGICA DE FALLBACK (O "OU" LÓGICO):
+  const recording = props.hs_call_recording_url || props.url_gravacao_chamada || props.recording_url || "";
+  const transcript = props.hs_call_transcript || "";
   const transcriptId = props.hs_analytics_transcript_id;
+  const dispId = String(props.hs_call_disposition || "");
 
-  const wasConnected = duration > 20000 && recording !== "";
-
-  // Se achou o ID, tenta baixar o texto. Se não, fica vazio.
-  const transcript = transcriptId ? await fetchTranscriptFromHubSpot(transcriptId) : "";
+  // Se houver transcriptId mas não houver transcript no body, tenta buscar via API de extensões
+  let finalTranscript = transcript;
+  if (!finalTranscript && transcriptId) {
+    finalTranscript = await fetchTranscriptFromHubSpot(transcriptId);
+  }
 
   return {
     id: data.id,
-    hubspotCallId: data.id, 
-    callId: data.id,        
+    hubspotCallId: data.id,
+    callId: data.id,
     portalId: String(props.hs_portal_id || ""),
-    title: firstFilled(props, CONFIG.PROPS.TITLE) || `Call ${callId}`,
-    ownerId: ownerId ? String(ownerId) : "",
-    durationMs: duration,
-    status: firstFilled(props, CONFIG.PROPS.STATUS) || "",
-    disposition: DISPOSITION_MAP[dispId] || "Attempt", 
-    wasConnected,
-    timestamp: firstFilled(props, CONFIG.PROPS.TIMESTAMP) || new Date().toISOString(),
+    title: props.hs_call_title || "Chamada sem título",
+    ownerId: props.hubspot_owner_id ? String(props.hubspot_owner_id) : "",
+    durationMs: Number(props.hs_call_duration || 0),
+    status: props.hs_call_status || "",
+    disposition: DISPOSITION_MAP[dispId] || "Attempt",
+    wasConnected: Number(props.hs_call_duration || 0) > 20000,
+    timestamp: props.hs_createdate || new Date().toISOString(),
     recordingUrl: recording,
-    transcript: transcript,
-    transcriptSourceType: transcript ? "HUBSPOT" : "NONE",
-    transcriptLength: transcript.length,
+    transcript: finalTranscript,
+    transcriptSourceType: finalTranscript ? "HUBSPOT" : "NONE",
+    transcriptLength: finalTranscript.length,
+    hasAudio: !!recording,
+    hasTranscript: !!finalTranscript
   };
 }
 
 export async function searchCallsInHubSpot({ limit = 100 }: { limit?: number }) {
   const properties = [
-    ...new Set([...Object.values(CONFIG.PROPS).flat(), 'hs_call_disposition', 'hs_portal_id', 'hs_analytics_transcript_id'])
+    'hs_call_title', 'hs_call_duration', 'hs_call_recording_url', 
+    'hs_call_status', 'hs_analytics_transcript_id', 'hubspot_owner_id', 'hs_portal_id'
   ];
   
   const body = {

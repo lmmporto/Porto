@@ -81,20 +81,12 @@ export async function processCall(callId: string): Promise<any> {
       updatedAt: FieldValue.serverTimestamp(),
     };
 
-    // Registra volume apenas para times elegíveis
-    if (isAllowed && !isBlocked) {
-      const mockInitialAnalysis = {
-        status_final: "NAO_IDENTIFICADO",
-        nota_spin: null,
-      };
-      await updateDailyStats(basePayload, mockInitialAnalysis);
-    }
+    // 🚩 AJUSTE SÊNIOR: updateDailyStats removido daqui. 
+    // Só atualizamos estatísticas no final (PASSO 6) para evitar inflar volume de chamadas não analisadas.
 
     // Filtro de time bloqueado
     if (isBlocked) {
-      console.log(
-        `[FAILED] ⚠️ Call ${callId} marcada como FAILED (Equipe bloqueada: ${teamName})`
-      );
+      console.log(`[FAILED] ⚠️ Call ${callId} marcada como FAILED (Equipe bloqueada: ${teamName})`);
       await callRef.set(
         {
           ...basePayload,
@@ -109,9 +101,7 @@ export async function processCall(callId: string): Promise<any> {
 
     // Filtro de time não monitorado
     if (!isAllowed) {
-      console.log(
-        `[FAILED] ⚠️ Call ${callId} marcada como FAILED (Equipe não monitorada: ${teamName})`
-      );
+      console.log(`[FAILED] ⚠️ Call ${callId} marcada como FAILED (Equipe não monitorada: ${teamName})`);
       await callRef.set(
         {
           ...basePayload,
@@ -127,9 +117,7 @@ export async function processCall(callId: string): Promise<any> {
     // Filtro de duração mínima
     const duration = Number(call.durationMs || 0);
     if (duration < DURATION_LIMIT) {
-      console.log(
-        `[FAILED] ⚠️ Call ${callId} marcada como FAILED (Muito curta: ${duration / 1000}s)`
-      );
+      console.log(`[FAILED] ⚠️ Call ${callId} marcada como FAILED (Muito curta: ${duration / 1000}s)`);
       await callRef.set(
         {
           ...basePayload,
@@ -185,21 +173,17 @@ export async function processCall(callId: string): Promise<any> {
       };
     }
 
-    // Falha de conteúdo: transcript vazia ou curta
+    // 🚩 APRIMORAMENTO DE RESILIÊNCIA: Falha de conteúdo marcada como ERROR para resgate
     if (!finalTranscript || finalTranscript.trim().length < MIN_TRANSCRIPT_LENGTH) {
-      const reason =
-        !finalTranscript || finalTranscript.trim().length === 0
-          ? "TRANSCRIPT_EMPTY"
-          : "TRANSCRIPT_TOO_SHORT";
-
-      console.log(`⚠️ [FAILED] Conteúdo insuficiente para análise na call ${callId}.`);
+      const reason = !finalTranscript ? "TRANSCRIPT_EMPTY" : "TRANSCRIPT_TOO_SHORT";
+      console.warn(`⚠️ [RETRY_REQUIRED] Chamada ${callId} falhou na IA (${reason}).`);
 
       await callRef.set(
         {
           ...basePayload,
           transcript: finalTranscript || "",
           transcriptSource,
-          processingStatus: "FAILED",
+          processingStatus: "ERROR",
           failureReason: reason,
           updatedAt: FieldValue.serverTimestamp(),
         },
@@ -208,7 +192,7 @@ export async function processCall(callId: string): Promise<any> {
 
       return {
         success: false,
-        status: "FAILED",
+        status: "ERROR",
         reason,
       };
     }
@@ -218,7 +202,7 @@ export async function processCall(callId: string): Promise<any> {
 
     const { analysis, rawPrompt, rawResponse } = await analyzeCallWithGemini(call, owner);
 
-    // Atualiza o cofre com o resultado final
+    // 🚩 ATUALIZAÇÃO DE ESTATÍSTICAS: Apenas no sucesso final
     await updateDailyStats(basePayload, analysis, true);
 
     // Salva tudo de forma terminal
@@ -238,6 +222,7 @@ export async function processCall(callId: string): Promise<any> {
         pontos_fortes: analysis.pontos_fortes,
         analise_escuta: analysis.analise_escuta,
         perguntas_sugeridas: analysis.perguntas_sugeridas,
+        playbook_detalhado: analysis.playbook_detalhado,
         rawPrompt,
         rawResponse,
         failureReason: FieldValue.delete(),
@@ -248,7 +233,6 @@ export async function processCall(callId: string): Promise<any> {
     );
 
     // Atualiza placar consolidado
-    // Ajuste esta chamada se a assinatura real for diferente no seu analysis.service.ts
     await updateSdrGlobalStats(
       owner.ownerEmail || "",
       basePayload.ownerName,
@@ -259,7 +243,6 @@ export async function processCall(callId: string): Promise<any> {
     return { success: true, status: "DONE" };
   } catch (error: any) {
     const message = error?.message || "Unexpected processing error";
-
     console.error(`[ERROR] ❌ Erro operacional na Call ${callId}:`, message);
 
     await callRef.set(
@@ -275,4 +258,3 @@ export async function processCall(callId: string): Promise<any> {
     throw error;
   }
 }
-//

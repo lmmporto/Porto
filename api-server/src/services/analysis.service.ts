@@ -21,7 +21,7 @@ const ANALYSIS_RESPONSE_SCHEMA = {
     'nota_spin', 
     'resumo', 
     'alertas', 
-    'playbook_detalhado', // 🚩 O NOVO CAMPO DO OURO
+    'playbook_detalhado', 
     'ponto_atencao', 
     'maior_dificuldade', 
     'pontos_fortes',
@@ -55,9 +55,9 @@ const TRANSCRIPTION_RESPONSE_SCHEMA = {
   },
 };
 
-// --- INTERFACES ---
+// --- INTERFACES SINCRONIZADAS ---
 export interface AnalysisResult {
-  status_final: string;
+  status_final: 'APROVADO' | 'REPROVADO' | 'ATENCAO' | 'NAO_SE_APLICA';
   nota_spin: number | null;
   resumo: string;
   alertas: string[];
@@ -66,6 +66,7 @@ export interface AnalysisResult {
   pontos_fortes: string[];
   perguntas_sugeridas: string[];
   analise_escuta: string;
+  playbook_detalhado: string[]; 
 }
 
 export interface AnalysisWithDebug {
@@ -73,6 +74,14 @@ export interface AnalysisWithDebug {
   rawPrompt: string;
   rawResponse: string;
 }
+
+// 🚩 VERIFICAÇÃO DE EXISTÊNCIA: Centraliza a validação do cliente Gemini
+const getGeminiModel = () => {
+  if (!gemini) {
+    throw new Error('GEMINI_API_KEY não configurada ou cliente não inicializado.');
+  }
+  return gemini;
+};
 
 // --- FUNÇÃO DE LIMPEZA PARA MODELOS MODERNOS ---
 function cleanGeminiResponse(text: string): string {
@@ -84,23 +93,19 @@ function cleanGeminiResponse(text: string): string {
 // --- FUNÇÕES PRINCIPAIS ---
 
 /**
- * 🎙️ TRANSCRIÇÃO DE ÁUDIO
- * Implementa atalho para transcrição nativa do HubSpot para economia de tokens.
+ * 🎙️ TRANSCRIÇÃO DE ÁUDIO BLINDADA
  */
 export async function transcribeRecordingFromHubSpot(call: CallData): Promise<string> {
-  // 1. Curto-circuito: Se já existe transcrição válida, retorna imediatamente
   if (call.hasTranscript && call.transcript && call.transcript.length >= 100) {
-    console.log(`⚡ [Short-circuit] Usando transcrição nativa (HUBSPOT) para call: ${call.callId || call.id}`);
+    console.log(`⚡ [Short-circuit] Usando transcrição nativa para: ${call.callId || call.id}`);
     return call.transcript;
   }
 
-  // 2. Se não houver, prossegue com a lógica de baixar áudio e processar via IA
-  console.log(`🎙️ [IA] Transcrevendo áudio via Gemini para call: ${call.callId || call.id}`);
-  
-  if (!gemini) throw new Error('GEMINI_API_KEY não configurada no cliente.');
   if (!call?.recordingUrl) {
     throw new Error(`Nenhum áudio disponível para transcrição na call: ${call.callId || call.id}`);
   }
+
+  console.log(`🎙️ [IA] Iniciando download e transcrição: ${call.callId || call.id}`);
   
   let localFilePath = '';
   let uploadedFile: { name?: string; uri?: string; mimeType?: string } | null = null;
@@ -109,26 +114,33 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
     const audioResponse = await axios.get(call.recordingUrl, {
       responseType: 'arraybuffer',
       timeout: 120000,
-      headers: { Authorization: `Bearer ${CONFIG.HUBSPOT_TOKEN}` },
+      headers: { 
+        'Authorization': `Bearer ${CONFIG.HUBSPOT_TOKEN}`,
+        'User-Agent': 'Nibo-SDR-Analyzer/1.0',
+        'Accept': '*/*'
+      },
     });
+
+    const buffer = Buffer.from(audioResponse.data as ArrayBuffer);
+    console.log(`✅ [DOWNLOAD] Sucesso! Tamanho: ${buffer.byteLength} bytes`);
+    
+    if (buffer.byteLength === 0) {
+      throw new Error('Arquivo de áudio baixado está vazio (0 bytes).');
+    }
 
     const contentType = String(audioResponse.headers['content-type'] || 'audio/mpeg');
     const ext = detectAudioExtension(contentType);
-    const buffer = Buffer.from(audioResponse.data as ArrayBuffer);
-    
-    if (!buffer || buffer.byteLength === 0) {
-      throw new Error('Arquivo de áudio vazio ou corrompido(0 bytes).');
-    }
-
     localFilePath = path.join(os.tmpdir(), `call-${randomUUID()}.${ext}`);
+    
     await writeFile(localFilePath, buffer);
 
-    uploadedFile = await gemini.files.upload({ 
+    // 🚩 USO DO ACESSOR SEGURO
+    uploadedFile = await getGeminiModel().files.upload({ 
       file: localFilePath, 
       config: { mimeType: contentType } 
     });
 
-    const response = await gemini.models.generateContent({
+    const response = await getGeminiModel().models.generateContent({
       model: CONFIG.GEMINI_TRANSCRIPTION_MODEL,
       contents: createUserContent([
         createPartFromUri(uploadedFile.uri!, uploadedFile.mimeType!),
@@ -145,27 +157,31 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
     const parsed = safeJsonParse(rawText);
     const aiTranscript = sanitizeText(parsed?.transcript || '');
 
-    // Validação pós-processamento
     if (!aiTranscript || aiTranscript.trim().length < 50) {
-      console.error(`❌ Falha na transcrição IA para call: ${call.callId || call.id}. Resultado vazio ou insuficiente.`);
-      throw new Error('Transcription failed: AI returned empty or insufficient content');
+      throw new Error('IA retornou transcrição insuficiente.');
     }
 
-    console.log(`✅ Transcrição IA concluída com sucesso para call: ${call.callId || call.id}`);
     return aiTranscript;
 
   } catch (error: any) {
-    console.error(`[TRANSCRIPTION ERROR] Falha na Call ${call.id}:`, error.message);
+    const status = error.response?.status;
+    console.error(`❌ [TRANSCRIPTION ERROR] Call ${call.id} | Status: ${status} | Msg: ${error.message}`);
+    
+    if (status === 403 || status === 401) {
+      console.error("⚠️ ERRO DE PERMISSÃO: O HubSpot negou o acesso ao arquivo. Verifique o Token.");
+    }
     throw error;
   } finally {
-    if (uploadedFile?.name) await gemini.files.delete({ name: uploadedFile.name }).catch(() => {});
-    if (localFilePath) await unlink(localFilePath).catch(() => {});
+    if (uploadedFile?.name) {
+      getGeminiModel().files.delete({ name: uploadedFile.name }).catch(e => console.error("Erro ao deletar arquivo remoto:", e.message));
+    }
+    if (localFilePath) {
+      unlink(localFilePath).catch(e => console.error("Erro ao deletar arquivo local:", e.message));
+    }
   }
 }
 
 export async function analyzeCallWithGemini(call: CallData, ownerDetails: OwnerDetails): Promise<AnalysisWithDebug> {
-  if (!gemini) throw new Error('GEMINI_API_KEY não configurada.');
-
   console.log(`\n--- 🧠 INICIANDO ANÁLISE IA (Call: ${call.id}) ---`);
   const wordCount = (call.transcript || '').split(/\s+/).length;
 
@@ -216,7 +232,8 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
   `.trim();
 
   try {
-    const response = await gemini.models.generateContent({
+    // 🚩 USO DO ACESSOR SEGURO
+    const response = await getGeminiModel().models.generateContent({
       model: CONFIG.GEMINI_ANALYSIS_MODEL,
       contents: prompt,
       config: {
@@ -242,23 +259,15 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
   }
 }
 
-/**
- * 📊 ATUALIZAÇÃO DO COFRE DE SALDOS
- */
 export async function updateDailyStats(callData: any, analysis: any, isUpdate: boolean = false) {
   try {
     const callDate = callData.callTimestamp ? callData.callTimestamp.toDate() : new Date();
-    
     const nowInBrazil = new Intl.DateTimeFormat('pt-BR', {
       timeZone: 'America/Sao_Paulo',
       year: 'numeric', month: '2-digit', day: '2-digit',
     }).format(callDate);
-    
-    const dayId = nowInBrazil.split('/').reverse().join('-'); // Gera YYYY-MM-DD
-    
+    const dayId = nowInBrazil.split('/').reverse().join('-'); 
     const statsRef = db.collection('dashboard_stats').doc(dayId);
-    
-    // 🚩 USE O E-MAIL COMO CHAVE NO RANKING DIÁRIO
     const sdrKey = callData.ownerEmail || callData.ownerName || "Desconhecido";
     const sdrName = callData.ownerName || "Desconhecido";
 
@@ -278,8 +287,8 @@ export async function updateDailyStats(callData: any, analysis: any, isUpdate: b
     };
 
     updatePayload[`sdr_ranking.${sdrKey}.total`] = FieldValue.increment(totalIncrement);
-    updatePayload[`sdr_ranking.${sdrKey}.ownerName`] = sdrName; // Salva o nome para exibição
-    updatePayload[`sdr_ranking.${sdrKey}.ownerEmail`] = sdrKey; // Salva o e-mail
+    updatePayload[`sdr_ranking.${sdrKey}.ownerName`] = sdrName;
+    updatePayload[`sdr_ranking.${sdrKey}.ownerEmail`] = sdrKey;
     
     if (isUpdate && isValidaParaRanking) {
       updatePayload[`sdr_ranking.${sdrKey}.sum_notes`] = FieldValue.increment(nota);
@@ -287,26 +296,18 @@ export async function updateDailyStats(callData: any, analysis: any, isUpdate: b
     }
 
     await statsRef.set(updatePayload, { merge: true });
-    console.log(`📊 [COFRE] ${isUpdate ? 'IA_FINISH' : 'WEBHOOK'}: ${sdrKey} | Nota: ${nota} | Valida: ${isValidaParaRanking}`);
   } catch (error) {
     console.error("❌ [COFRE ERROR]:", error);
   }
 }
 
-/**
- * 🏆 ATUALIZAÇÃO DO PLACAR GLOBAL POR SDR
- */
 export async function updateSdrGlobalStats(ownerEmail: string, ownerName: string, nota: number) {
   if (!ownerEmail) return;
-  
-  // 🚩 O ID DO DOCUMENTO AGORA É O E-MAIL (Safe ID)
   const safeId = ownerEmail.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
   const sdrRef = db.collection('sdr_stats').doc(safeId);
-  
   try {
     await db.runTransaction(async (transaction) => {
       const doc = await transaction.get(sdrRef);
-      
       if (!doc.exists) {
         transaction.set(sdrRef, {
           ownerName: ownerName,
@@ -321,7 +322,6 @@ export async function updateSdrGlobalStats(ownerEmail: string, ownerName: string
         const newTotalCalls = (data.totalCalls || 0) + 1;
         const newTotalScore = (data.totalScore || 0) + nota;
         const newAverage = newTotalScore / newTotalCalls;
-
         transaction.update(sdrRef, {
           totalCalls: newTotalCalls,
           totalScore: newTotalScore,
@@ -330,72 +330,40 @@ export async function updateSdrGlobalStats(ownerEmail: string, ownerName: string
         });
       }
     });
-    console.log(`🏆 [PLACAR] SDR ${ownerEmail} atualizado. Nova Média: ${nota}`);
   } catch (error) {
     console.error(`❌ [ERRO NO PLACAR] Falha ao atualizar ${ownerEmail}:`, error);
   }
 }
 
-/**
- * 🔍 BUSCA PAGINADA DE ANÁLISES (Data Access Layer)
- * Implementada com suporte ao índice composto (ownerEmail + callTimestamp)
- */
 export async function listAnalyses(filters: any, limitCount: number = 10) {
   try {
-    console.log(`\n--- 🔍 BUSCA DE ANÁLISES: limit=${limitCount} ---`);
-
-    // 1. Referência base com a ordenação obrigatória do índice composto
     let query: FirebaseFirestore.Query = db.collection('calls_analysis')
       .orderBy('callTimestamp', 'desc')
-      .orderBy('__name__', 'asc'); // Desempate obrigatório para paginação estável
+      .orderBy('__name__', 'asc');
 
-    // 2. Filtros Dinâmicos (Cláusulas WHERE)
-    // Nota: O índice composto suporta (ownerEmail == '...') + (callTimestamp DESC)
-    if (filters.ownerEmail) {
-      query = query.where('ownerEmail', '==', filters.ownerEmail);
-    }
+    if (filters.ownerEmail) query = query.where('ownerEmail', '==', filters.ownerEmail);
+    if (filters.status_final) query = query.where('status_final', '==', filters.status_final);
 
-    if (filters.status_final) {
-      query = query.where('status_final', '==', filters.status_final);
-    }
-
-    // 3. Paginação por Cursor (Performance Sênior)
-    // Em vez de 'offset' (lento), usamos 'startAfter' com o último ID processado
     if (filters.lastVisible) {
       const lastDoc = await db.collection('calls_analysis').doc(filters.lastVisible).get();
-      if (lastDoc.exists) {
-        query = query.startAfter(lastDoc);
-      }
+      if (lastDoc.exists) query = query.startAfter(lastDoc);
     }
 
-    // 4. Execução da Query
     const snapshot = await query.limit(limitCount).get();
+    if (snapshot.empty) return { calls: [], lastVisible: null };
 
-    if (snapshot.empty) {
-      return { calls: [], lastVisible: null };
-    }
-
-    // 5. Mapeamento e Formatação
     const calls = snapshot.docs.map(doc => {
       const data = doc.data();
       return {
         id: doc.id,
         ...data,
-        // Garante que timestamps do Firestore virem ISO strings para o Frontend
         callTimestamp: data.callTimestamp?.toDate?.()?.toISOString() || data.callTimestamp,
         createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
       };
     });
 
-    const lastVisible = snapshot.docs[snapshot.docs.length - 1].id;
-
-    return {
-      calls,
-      lastVisible
-    };
-
+    return { calls, lastVisible: snapshot.docs[snapshot.docs.length - 1].id };
   } catch (error: any) {
-    console.error("❌ [LIST_ANALYSES ERROR]:", error.message);
     throw new Error(`Erro ao listar análises: ${error.message}`);
   }
 }
