@@ -1,8 +1,11 @@
+import dotenv from 'dotenv';
+dotenv.config();
 import { db } from "../firebase.js";
+
 import { processCall } from "../services/processCall.js";
 
 async function reprocess() {
-  const callId = "107124210586"; // ID da chamada que você mandou
+  const callId = "107874268503"; // ID da chamada que você mandou
   console.log(`🔄 Resetando chamada ${callId} para reanálise...`);
   
   await db.collection('calls_analysis').doc(callId).update({

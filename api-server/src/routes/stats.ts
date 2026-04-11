@@ -16,7 +16,7 @@ let lastCacheTime = 0;
 
 /**
  * GET /summary (Relativo ao prefixo /api/stats)
- * Retorna o resumo de performance extraído do Placar Consolidado (sdr_stats).
+ * Retorna o resumo de performance extraído do Placar Consolidado (sdr_stats) com lógica Bayesiana.
  */
 router.get('/summary', async (req: Request, res: Response) => {
   try {
@@ -28,7 +28,7 @@ router.get('/summary', async (req: Request, res: Response) => {
     const isAdmin = await checkIfAdmin(userEmail);
     const now = Date.now();
 
-    // 🚩 PERMITE SIMULAÇÃO NO RANKING:
+    // 🚩 PERMITE SIMULAÇÃO NO RANKING
     const requestedEmail = req.query.ownerEmail as string;
     const targetEmail = (isAdmin && requestedEmail) ? requestedEmail.toLowerCase().trim() : userEmail.toLowerCase().trim();
     
@@ -38,80 +38,67 @@ router.get('/summary', async (req: Request, res: Response) => {
       return res.json(cachedStats);
     }
 
-    console.log(`📊 [STATS] Gerando ranking global. Solicitado por: ${userEmail} | Alvo: ${requestedEmail || 'TODOS'}`);
-
+    // 1. Busca os dados limpos do Firestore (sdr_stats)
     let query: FirebaseFirestore.Query = db.collection('sdr_stats');
     
-    // Aplica filtro se não for admin ou se um e-mail específico foi solicitado
     if (!isAdmin || requestedEmail) {
       query = query.where("ownerEmail", "==", targetEmail);
     }
 
     const snapshot = await query.get();
-
-    const sdr_ranking: Record<string, any> = {};
-    let total_calls = 0;
-    let sum_notes = 0;
-
-    snapshot.docs.forEach(doc => {
-      const data = doc.data();
-      if (data.ownerEmail && data.ownerEmail.includes('@')) {
-        const name = data.ownerName || "SDR Desconhecido";
-        const email = data.ownerEmail;
-
-        sdr_ranking[name] = {
-          ownerName: name,
-          ownerEmail: email,
-          calls: data.totalCalls || 0,
-          valid_calls: data.totalCalls || 0,
-          sum_notes: data.totalScore || 0,
-          nota_media: data.averageScore || 0
-        };
-
-        total_calls += Number(data.totalCalls || 0);
-        sum_notes += Number(data.totalScore || 0);
-      }
-    });
-
-    const sdrNames = Object.keys(sdr_ranking || {});
-
-    if (sdrNames.length === 0) {
-      console.log("⚠️ [STATS] Nenhum dado de SDR encontrado. Retornando estrutura EMPTY_SAFE.");
-      return res.json({
-        total_calls: 0,
-        valid_calls: 0,
-        sum_notes: 0,
-        media_geral: 0,
-        sdr_ranking: {},
-        version: "V6_EMPTY_SAFE"
-      });
+    
+    if (snapshot.empty) {
+      return res.json({ total_calls: 0, media_geral: 0, sdr_ranking: {}, version: "V7_SANATIZED_BAYESIAN_EMPTY" });
     }
 
+    const sdr_ranking: Record<string, any> = {};
+    let total_calls_time = 0;
+    let sum_notes_time = 0;
+
+    // 2. Agregação Inicial
+    snapshot.docs.forEach(doc => {
+      const data = doc.data();
+      const name = data.ownerName || "SDR Desconhecido";
+      
+      sdr_ranking[name] = {
+        ownerName: name,
+        ownerEmail: data.ownerEmail,
+        calls: data.totalCalls || 0,
+        sum_notes: data.totalScore || 0,
+        nota_media: 0 // Será calculado pela lógica Bayesiana abaixo
+      };
+
+      total_calls_time += (data.totalCalls || 0);
+      sum_notes_time += (data.totalScore || 0);
+    });
+
+    const sdrNames = Object.keys(sdr_ranking);
     const totalSDRs = sdrNames.length;
-    const v_bar = total_calls / totalSDRs;
-    const m_bar = total_calls > 0 ? (sum_notes / total_calls) : 0;
+
+    // 🚩 3. MATEMÁTICA BAYESIANA (O "Turbo Score")
+    const v_bar = total_calls_time / totalSDRs; // Média de volume do time
+    const m_bar = total_calls_time > 0 ? (sum_notes_time / total_calls_time) : 0; // Média de nota do time
 
     sdrNames.forEach(name => {
       const s = sdr_ranking[name];
       const V = s.calls;
-      const M = s.valid_calls > 0 ? (s.sum_notes / s.valid_calls) : 0;
+      const M = V > 0 ? (s.sum_notes / V) : 0;
 
       if (V > 0) {
+        // Qualidade Bayesiana: Suaviza notas de quem tem pouco volume
         const qualidade = (V * M + v_bar * m_bar) / (V + v_bar);
+        // Fator de Tração: Premia quem tem volume acima da média
         const tracao = Math.sqrt(V / (v_bar || 1));
-        s.nota_media = Number((qualidade * tracao).toFixed(1));
-      } else {
-        s.nota_media = 0;
+        
+        s.nota_media = Number((qualidade * tracao).toFixed(2));
       }
     });
 
     const resultado = {
-      total_calls,
-      valid_calls: total_calls,
-      sum_notes,
-      media_geral: total_calls > 0 ? Number((sum_notes / total_calls).toFixed(2)) : 0,
+      total_calls: total_calls_time,
+      media_geral: Number(m_bar.toFixed(2)),
       sdr_ranking: sdr_ranking,
-      version: "V7_PUBLIC_LEADERBOARD"
+      version: "V7_SANATIZED_BAYESIAN"
     };
 
     // 🚩 ATUALIZAÇÃO DO CACHE: Apenas se for a query global de Admin
@@ -124,7 +111,7 @@ router.get('/summary', async (req: Request, res: Response) => {
 
   } catch (error: any) {
     console.error("❌ [STATS ERROR]:", error.message);
-    return res.status(500).json({ error: "Erro interno no processamento de estatísticas" });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -139,28 +126,22 @@ router.get('/personal-summary', async (req: Request, res: Response) => {
     }
 
     const userEmail = (req.user as any).email;
-    
-    // 1. Normalização rigorosa
     const rawEmail = (req.query.ownerEmail as string) || userEmail || "";
     const targetEmail = rawEmail.toLowerCase().trim();
 
-    // 🚩 LOG DE AUDITORIA: Rastreamento do alvo da busca
     console.log(`⚠️ [DEBUG] Buscando insights para: ${targetEmail}`);
 
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
 
-    // 2. Filtro resiliente
     if (targetEmail.includes('@')) {
       query = query.where("ownerEmail", "==", targetEmail);
     } else {
       query = query.where("ownerName", "==", rawEmail);
     }
 
-    // 3. Execução da Query
     const snapshot = await query.orderBy("callTimestamp", "desc").limit(15).get();
 
     if (snapshot.empty) {
-      // 🚩 CORREÇÃO DO CRASH: targetEmail em vez de target
       console.log(`⚠️ [DEBUG DASHBOARD] Nenhum documento encontrado para: ${targetEmail}`);
       return res.json({ gaps: [], insights: [], totalAnalisadas: 0 });
     }
@@ -170,7 +151,6 @@ router.get('/personal-summary', async (req: Request, res: Response) => {
 
     snapshot.docs.forEach((doc) => {
       const c = doc.data();
-
       const rawGaps = (Array.isArray(c.alertas) && c.alertas.length > 0)
         ? c.alertas
         : (c.ponto_atencao ? [c.ponto_atencao] : []);
@@ -204,6 +184,42 @@ router.get('/personal-summary', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error("❌ [CRASH NO PERSONAL-SUMMARY]:", error); 
     res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /leaderboard-vitrine
+ * Retorna o Pódio de SDRs e as Top 5 chamadas globais.
+ */
+router.get('/leaderboard-vitrine', async (req: Request, res: Response) => {
+  try {
+    if (!req.isAuthenticated() || !req.user) {
+      return res.status(401).json({ error: "Não autorizado" });
+    }
+
+    const sdrSnapshot = await db.collection('sdr_stats')
+      .orderBy('averageScore', 'desc')
+      .limit(6)
+      .get();
+
+    const top6 = sdrSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+
+    const topCallsSnapshot = await db.collection(CONFIG.CALLS_COLLECTION)
+      .where("processingStatus", "==", "DONE")
+      .orderBy("nota_spin", "desc")
+      .limit(5)
+      .get();
+
+    return res.json({
+      top6,
+      topCalls: topCallsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+    });
+  } catch (error: any) {
+    console.error("❌ [VITRINE ERROR]:", error.message);
+    return res.status(500).json({ error: "Erro ao carregar vitrine" });
   }
 });
 
