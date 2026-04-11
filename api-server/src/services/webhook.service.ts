@@ -4,8 +4,8 @@ import { CONFIG } from '../config.js';
 import { HUBSPOT_CALL_PROPERTIES } from '../constants/hubspot.js';
 import axios from 'axios';
 
-// 🚩 DURAÇÃO MÍNIMA: 2 minutos (120.000 milissegundos)
-const MIN_DURATION_MS = 120000;
+// 🚩 DURAÇÃO MÍNIMA:  110000 (1:50 min)
+const MIN_DURATION_MS = 110000;;
 
 export async function handleIncomingCall(payload: any) {
   // 1. Extração Inteligente do ID (O HubSpot pode mandar como callId ou objectId num array)

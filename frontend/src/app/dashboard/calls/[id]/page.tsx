@@ -149,17 +149,43 @@ export default function CallDetailPage() {
                     </div>
                   </section>
 
-                  {/* SUGESTÕES DE ABORDAGEM (ALERTAS) */}
+                  {/* 🚩 PLAYBOOK DE OURO: Sugestões de Abordagem com Timestamps */}
                   <section className="space-y-6">
-                    <h4 className="text-[11px] font-black text-orange-400 uppercase tracking-[0.3em]">Sugestões de Abordagem</h4>
+                    <h4 className="text-[11px] font-black text-orange-400 uppercase tracking-[0.3em]">
+                      Sugestões de Abordagem
+                    </h4>
                     <Accordion type="single" collapsible className="w-full space-y-4">
-                      {call.alertas?.map((alerta: string, index: number) => (
-                        <AccordionItem key={index} value={`item-${index}`} className="border border-slate-800 rounded-3xl px-6 bg-slate-900/40">
-                          <AccordionTrigger className="hover:no-underline py-6 text-left font-bold text-slate-200 leading-snug">
-                            {alerta.substring(0, 70)}...
+                      {/* 🚩 LÓGICA SÊNIOR: Prioriza o novo campo detalhado, mas mantém alertas como fallback */}
+                      {(call.playbook_detalhado || call.alertas)?.map((item: string, index: number) => (
+                        <AccordionItem 
+                          key={index} 
+                          value={`item-${index}`} 
+                          className="border border-slate-800 rounded-3xl px-6 bg-slate-900/40 hover:bg-slate-900/60 transition-all"
+                        >
+                          <AccordionTrigger className="hover:no-underline py-6 group">
+                            <div className="flex items-center gap-5 text-left">
+                              {/* Ícone de Direção */}
+                              <div className="bg-orange-500/10 p-2 rounded-lg group-data-[state=open]:bg-orange-500 group-data-[state=open]:text-slate-950 transition-colors">
+                                <ArrowRight className="w-4 h-4 text-orange-500 group-data-[state=open]:text-slate-950" />
+                              </div>
+                              {/* Título: Mostra o início (geralmente o timestamp) */}
+                              <span className="font-bold text-slate-200 text-lg leading-tight tracking-tight">
+                                {item.substring(0, 75)}...
+                              </span>
+                            </div>
                           </AccordionTrigger>
-                          <AccordionContent className="pb-8 pt-2 border-t border-slate-800/50 mt-2 text-slate-300 leading-relaxed whitespace-pre-wrap">
-                            {alerta}
+                          <AccordionContent className="pb-8 pt-2 border-t border-slate-800/50 mt-2">
+                            <div className="pt-6">
+                              <div className="bg-orange-500/5 p-6 rounded-2xl border border-orange-500/10">
+                                <span className="text-[10px] font-black text-orange-400 uppercase tracking-widest flex items-center gap-2 mb-4">
+                                  <Zap className="w-3 h-3 fill-current" /> Análise Detalhada da IA
+                                </span>
+                                {/* 🚩 O OURO: whitespace-pre-wrap preserva a formatação [MM:SS] e as quebras de linha */}
+                                <p className="text-base text-orange-100/90 font-medium leading-relaxed whitespace-pre-wrap">
+                                  {item}
+                                </p>
+                              </div>
+                            </div>
                           </AccordionContent>
                         </AccordionItem>
                       ))}

@@ -21,6 +21,7 @@ const ANALYSIS_RESPONSE_SCHEMA = {
     'nota_spin', 
     'resumo', 
     'alertas', 
+    'playbook_detalhado', // 🚩 O NOVO CAMPO DO OURO
     'ponto_atencao', 
     'maior_dificuldade', 
     'pontos_fortes',
@@ -31,6 +32,11 @@ const ANALYSIS_RESPONSE_SCHEMA = {
     status_final: { type: 'string', enum: ['APROVADO', 'REPROVADO', 'ATENCAO', 'NAO_SE_APLICA'] },
     nota_spin: { type: ['number', 'null'] }, 
     resumo: { type: 'string' },
+    playbook_detalhado: { 
+      type: 'array', 
+      items: { type: 'string' },
+      description: "Lista de insights no formato [MM:SS] Citação do Lead: '...' -> Dica de Ouro: '...'"
+    },
     alertas: { type: 'array', items: { type: 'string' } },
     ponto_atencao: { type: 'string' },
     maior_dificuldade: { type: 'string' },
@@ -111,7 +117,7 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
     const buffer = Buffer.from(audioResponse.data as ArrayBuffer);
     
     if (!buffer || buffer.byteLength === 0) {
-      throw new Error('Arquivo de áudio vazio ou corrompido.');
+      throw new Error('Arquivo de áudio vazio ou corrompido(0 bytes).');
     }
 
     localFilePath = path.join(os.tmpdir(), `call-${randomUUID()}.${ext}`);
@@ -190,8 +196,9 @@ PASSO 2: CRITÉRIOS DE PONTUAÇÃO (TOTAL 10 PONTOS)
 2. Coleta de Inteligência (+4,0 pts): Conseguiu nome do decisor, e-mail direto ou processo de decisão?
 3. Próximo Passo (+3,0 pts): Conseguiu transferência, agenda com o decisor ou prometeu retorno específico?
 
-PASSO 3: RADAR DE OPORTUNIDADES (FEEDBACK DO COACH)
-Formato: "Aos [00:00], o cliente disse [Citação]. Oportunidade desperdiçada: [Explicação de como aprofundar]."
+PASSO 3: PLAYBOOK DO OURO (OBRIGATÓRIO) (FEEDBACK DO COACH)
+Para cada falha ou oportunidade, você deve gerar um item no campo 'playbook_detalhado' seguindo RIGOROSAMENTE este formato:
+ "Aos[MM:SS] -, o cliente disse [Citação]. Oportunidade desperdiçada: [Explicação de como aprofundar]."
 
 PASSO 4: STATUS FINAL (RIGOROSO)
 - 0 a 4.9: REPROVADO | 5.0 a 7.9: ATENCAO | 8.0 a 10: APROVADO | ROTA D: NAO_SE_APLICA
