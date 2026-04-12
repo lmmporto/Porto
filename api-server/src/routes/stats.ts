@@ -7,54 +7,36 @@ import { checkIfAdmin } from '../utils/auth.js';
 import NodeCache from 'node-cache';
 
 const router = Router();
-const BRAZIL_TIMEZONE = 'America/Sao_Paulo';
-
-// 🏛️ Cache de 1 hora
 const cache = new NodeCache({ stdTTL: 3600, checkperiod: 600 });
 
 /**
  * GET /summary
- * Retorna o resumo com Cache de 1 Hora e isolamento por usuário.
+ * Ranking Global Público + Métricas Individuais Filtradas.
  */
 router.get('/summary', async (req: Request, res: Response) => {
   try {
-    if (!req.isAuthenticated() || !req.user) {
-      return res.status(401).json({ error: "Não autorizado" });
-    }
+    if (!req.isAuthenticated() || !req.user) return res.status(401).json({ error: "Não autorizado" });
 
     const userEmail = (req.user as any).email.toLowerCase().trim();
     const isAdmin = await checkIfAdmin(userEmail);
-    const requestedEmail = (req.query.ownerEmail as string)?.toLowerCase().trim();
-    
-    const targetEmail = (isAdmin && requestedEmail) ? requestedEmail : userEmail;
-    const isGlobalQuery = isAdmin && !requestedEmail;
-    const cacheKey = `summary_${isGlobalQuery ? 'GLOBAL' : targetEmail}`;
+    const cacheKey = `summary_${isAdmin ? 'ADMIN' : userEmail}`;
 
     const cachedData = cache.get(cacheKey);
-    if (cachedData) {
-      console.log(`📊 [CACHE HIT] Resumo para: ${cacheKey}`);
-      return res.json(cachedData);
-    }
+    if (cachedData) return res.json(cachedData);
 
     const nowDate = new Date();
     const currentMonthKey = `${nowDate.getFullYear()}_${String(nowDate.getMonth() + 1).padStart(2, '0')}`;
 
     const snapshot = await db.collection('sdr_stats').get();
-    let monthlyDocs = snapshot.docs.filter(doc => doc.id.endsWith(currentMonthKey));
-
-    if (!isGlobalQuery) {
-      monthlyDocs = monthlyDocs.filter(doc => doc.data().ownerEmail === targetEmail);
-    }
+    const allMonthlyDocs = snapshot.docs.filter(doc => doc.id.endsWith(currentMonthKey));
     
-    if (monthlyDocs.length === 0) {
+    if (allMonthlyDocs.length === 0) {
       return res.json({ total_calls: 0, media_geral: 0, sdr_ranking: {}, version: "V7_MONTHLY_BAYESIAN_EMPTY" });
     }
 
+    // 1. Montagem do Ranking (Global - Público para logados)
     const sdr_ranking: Record<string, any> = {};
-    let total_calls_time = 0;
-    let sum_notes_time = 0;
-
-    monthlyDocs.forEach(doc => {
+    allMonthlyDocs.forEach(doc => {
       const data = doc.data();
       const name = data.ownerName || "SDR";
       sdr_ranking[name] = {
@@ -65,13 +47,13 @@ router.get('/summary', async (req: Request, res: Response) => {
         sum_notes: data.totalScore || 0,
         nota_media: 0 
       };
-      total_calls_time += (data.totalCalls || 0);
-      sum_notes_time += (data.totalScore || 0);
     });
 
     const sdrNames = Object.keys(sdr_ranking);
-    const v_bar = total_calls_time / (sdrNames.length || 1);
-    const m_bar = total_calls_time > 0 ? (sum_notes_time / total_calls_time) : 0;
+    const total_global_calls = allMonthlyDocs.reduce((acc, doc) => acc + (doc.data().totalCalls || 0), 0);
+    const total_global_notes = allMonthlyDocs.reduce((acc, doc) => acc + (doc.data().totalScore || 0), 0);
+    const v_bar = total_global_calls / (sdrNames.length || 1);
+    const m_bar = total_global_calls > 0 ? (total_global_notes / total_global_calls) : 0;
 
     sdrNames.forEach(name => {
       const s = sdr_ranking[name];
@@ -82,11 +64,17 @@ router.get('/summary', async (req: Request, res: Response) => {
       }
     });
 
+    // 2. Filtro de Métricas Pessoais
+    const dadosPessoais = isAdmin ? allMonthlyDocs : allMonthlyDocs.filter(doc => doc.data().ownerEmail === userEmail);
+    const total_calls_pessoais = dadosPessoais.reduce((acc, doc) => acc + (doc.data().totalCalls || 0), 0);
+    const sum_notes_pessoais = dadosPessoais.reduce((acc, doc) => acc + (doc.data().totalScore || 0), 0);
+    const media_pessoal = total_calls_pessoais > 0 ? (sum_notes_pessoais / total_calls_pessoais) : 0;
+
     const resultado = {
-      total_calls: total_calls_time,
-      media_geral: Number(m_bar.toFixed(2)),
+      total_calls: total_calls_pessoais,
+      media_geral: Number(media_pessoal.toFixed(2)),
       sdr_ranking,
-      version: "V7_MONTHLY_BAYESIAN_CACHED"
+      version: "V7_BAYESIAN_PUBLIC_RANKING"
     };
 
     cache.set(cacheKey, resultado);
@@ -96,10 +84,6 @@ router.get('/summary', async (req: Request, res: Response) => {
   }
 });
 
-/**
- * GET /performance
- * Otimizado com Aggregation Query.
- */
 router.get("/performance", async (req: Request, res: Response) => {
   try {
     if (!req.isAuthenticated() || !req.user) return res.status(401).json({ error: "Não autorizado" });
@@ -109,7 +93,6 @@ router.get("/performance", async (req: Request, res: Response) => {
     const isAdmin = await checkIfAdmin(userEmail);
 
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
-
     if (!isAdmin) query = query.where("ownerEmail", "==", userEmail);
     else if (ownerEmail) query = query.where("ownerEmail", "==", (ownerEmail as string).toLowerCase().trim());
 
@@ -139,21 +122,16 @@ router.get("/performance", async (req: Request, res: Response) => {
 router.get('/personal-summary', async (req: Request, res: Response) => {
   try {
     if (!req.isAuthenticated() || !req.user) return res.status(401).json({ error: "Não autorizado" });
-
     const userEmail = (req.user as any).email;
     const rawEmail = (req.query.ownerEmail as string) || userEmail || "";
     const targetEmail = rawEmail.toLowerCase().trim();
-
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
     if (targetEmail.includes('@')) query = query.where("ownerEmail", "==", targetEmail);
     else query = query.where("ownerName", "==", rawEmail);
-
     const snapshot = await query.orderBy("callTimestamp", "desc").limit(15).get();
     if (snapshot.empty) return res.json({ gaps: [], insights: [], totalAnalisadas: 0 });
-
     const gapMap: Record<string, { text: string, count: number }> = {};
     const insightMap: Record<string, { text: string, count: number }> = {};
-
     snapshot.docs.forEach((doc) => {
       const c = doc.data();
       const rawGaps = (Array.isArray(c.alertas) && c.alertas.length > 0) ? c.alertas : (c.ponto_atencao ? [c.ponto_atencao] : []);
@@ -172,7 +150,6 @@ router.get('/personal-summary', async (req: Request, res: Response) => {
         });
       }
     });
-
     return res.json({
       gaps: Object.values(gapMap).sort((a, b) => b.count - a.count).map(e => e.text).slice(0, 3),
       insights: Object.values(insightMap).sort((a, b) => b.count - a.count).map(e => e.text).slice(0, 3),
