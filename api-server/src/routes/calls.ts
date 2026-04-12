@@ -19,7 +19,7 @@ router.get("/", async (req: Request, res: Response) => {
     
     // 🚩 CAPTURA DOS PARÂMETROS
     const mode = req.query.mode as string; 
-    const rota = req.query.rota as string; // 🚩 Novo filtro de Rota capturado
+    const rota = req.query.rota as string; 
     const filterEmail = (req.query.ownerEmail as string || "").toLowerCase().trim();
     
     const limit = Math.min(Number(req.query.limit || 10), 50);
@@ -45,7 +45,7 @@ router.get("/", async (req: Request, res: Response) => {
     // 🚩 2. FILTRO DE QUALIDADE (Obrigatório)
     query = query.where("processingStatus", "==", "DONE");
 
-    // 🚩 3. FILTRO DE CATEGORIA (ROTA)
+    // 🏛️ ADICIONE ESTA TRAVA:
     if (rota && rota !== 'ALL') {
       console.log(`🎯 [BACKEND] Aplicando filtro de Rota: ${rota}`);
       query = query.where("rota", "==", rota);
