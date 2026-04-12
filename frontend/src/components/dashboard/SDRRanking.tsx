@@ -2,7 +2,6 @@
 
 import { useMemo } from 'react';
 import { Trophy, ArrowRight, CheckCircle2, AlertCircle, Phone, Timer, Users } from 'lucide-react';
-import Link from 'next/link';
 import type { DashboardSummary } from '@/types';
 import { cn } from '@/lib/utils';
 import { useCallContext } from '@/context/CallContext';
@@ -45,10 +44,14 @@ export function SDRRanking({ summary }: SDRRankingProps) {
     return { color: "text-rose-500", bg: "bg-rose-50", icon: <ArrowRight className="w-3 h-3 rotate-45" /> };
   };
 
-  // 🚩 AÇÃO DE FILTRO ATUALIZADA: Agora envia ownerEmail
+  // 🚩 AÇÃO DE FILTRO: Dispara a Vitrine (Top 10) para o SDR clicado
   const handleSdrClick = (sdr: any) => {
-    console.log("🚀 DISPARANDO FILTRO PARA EMAIL:", sdr.email);
-    applyFilter({ ownerEmail: sdr.email });
+    console.log(`🏆 [RANKING CLICK] Solicitando Vitrine (Top 10) para: ${sdr.email}`);
+    
+    applyFilter({ 
+      ownerEmail: sdr.email, 
+      mode: 'ranking' 
+    });
   };
 
   if (ranking.length === 0) {
@@ -78,14 +81,12 @@ export function SDRRanking({ summary }: SDRRankingProps) {
           const uniqueKey = `${sdr.email || 'no-email'}-${index}`;
           
           return (
-            <Link 
+            <button 
               key={uniqueKey} 
-              // 🚩 URL visual usa o NOME
-              href={`/dashboard/sdrs/${encodeURIComponent(sdr.name)}`}
-              // 🚩 Lógica de filtro usa o EMAIL
+              type="button"
               onClick={() => handleSdrClick(sdr)}
               className={cn(
-                "flex items-center justify-between p-4 transition-all group",
+                "w-full flex items-center justify-between p-4 transition-all group text-left",
                 sdr.totalCalls > 0 ? "hover:bg-slate-50" : "opacity-60 grayscale-[0.5]"
               )}
             >
@@ -134,7 +135,7 @@ export function SDRRanking({ summary }: SDRRankingProps) {
                 </div>
                 <ArrowRight className="w-3.5 h-3.5 text-slate-200 group-hover:text-indigo-500 group-hover:translate-x-1 transition-all" />
               </div>
-            </Link>
+            </button>
           );
         })}
       </div>

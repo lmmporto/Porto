@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, ReactNode, useCallback } from 'react';
+import { createContext, useContext, ReactNode, useCallback, useMemo } from 'react';
 import { useCalls } from '@/hooks/useCallsEngine';
 import type { SDRCall, CallFilters } from '@/types';
 
@@ -17,14 +17,21 @@ interface CallContextType {
 const CallContext = createContext<CallContextType | undefined>(undefined);
 
 export function CallProvider({ children }: { children: ReactNode }) {
-  // 🚩 Agora recebemos o setCalls do hook
-  const { calls, setCalls, isLoading, error, filters, fetchData, updateFilters, hasMore } = useCalls();
+  // 🚩 CORREÇÃO: Removido 'error' da desestruturação pois o hook useCalls não o retorna
+  const { 
+    calls, 
+    setCalls, 
+    isLoading, 
+    filters, 
+    fetchData, 
+    updateFilters, 
+    hasMore 
+  } = useCalls();
 
   const applyFilter = useCallback((newFilters: CallFilters) => {
-    setCalls([]); // 🚩 LIMPEZA AGRESSIVA: A lista antiga some instantaneamente
     updateFilters(newFilters);
     fetchData(true, newFilters); 
-  }, [updateFilters, fetchData, setCalls]);
+  }, [updateFilters, fetchData]);
 
   const loadMore = useCallback(() => {
     if (!isLoading && hasMore) {
@@ -36,10 +43,20 @@ export function CallProvider({ children }: { children: ReactNode }) {
     fetchData(true);
   }, [fetchData]);
 
+  // 🏛️ ARQUITETO: Memorização obrigatória para evitar re-renders em cascata
+  const contextValue = useMemo(() => ({ 
+    calls, 
+    isLoading, 
+    filters, 
+    error: null, // 🚩 Valor padrão para satisfazer a interface CallContextType
+    hasMore, 
+    applyFilter, 
+    loadMore, 
+    refresh 
+  }), [calls, isLoading, filters, hasMore, applyFilter, loadMore, refresh]);
+
   return (
-    <CallContext.Provider value={{ 
-      calls, isLoading, filters, error, hasMore, applyFilter, loadMore, refresh 
-    }}>
+    <CallContext.Provider value={contextValue}>
       {children}
     </CallContext.Provider>
   );

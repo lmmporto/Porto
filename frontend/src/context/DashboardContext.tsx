@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode, useRef } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, ReactNode, useRef, useMemo } from 'react';
 
 // --- INTERFACES ---
 interface User {
@@ -101,35 +101,36 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     checkUser();
   }, [checkUser]);
 
-  // 🚩 LÓGICA DE SIMULAÇÃO COM PERSISTÊNCIA
-  const startImpersonation = (sdr: User) => {
+  // 🚩 LÓGICA DE SIMULAÇÃO COM PERSISTÊNCIA (Estabilizada com useCallback)
+  const startImpersonation = useCallback((sdr: User) => {
     console.warn(`⚠️ SIMULAÇÃO ATIVA: Agindo como ${sdr.name}`);
     setImpersonatedUser(sdr);
-    // Salva no navegador para não perder no refresh
     sessionStorage.setItem('impersonated_sdr', JSON.stringify(sdr));
-  };
+  }, []);
 
-  const stopImpersonation = () => {
+  const stopImpersonation = useCallback(() => {
     console.warn(`✅ SIMULAÇÃO ENCERRADA: Retornando ao perfil Admin.`);
     setImpersonatedUser(null);
-    // Remove do navegador
     sessionStorage.removeItem('impersonated_sdr');
-  };
+  }, []);
 
   const effectiveUser = impersonatedUser || user;
   const isAdmin = !impersonatedUser && (serverIsAdmin || user?.email === 'lucas.porto@nibo.com.br');
 
+  // 🏛️ ARQUITETO: Memorização obrigatória para parar a cascata de re-renders
+  const contextValue = useMemo(() => ({
+    user: effectiveUser,
+    isAdmin,
+    isImpersonating: !!impersonatedUser,
+    isLoading,
+    isInitialized,
+    checkUser,
+    startImpersonation,
+    stopImpersonation
+  }), [effectiveUser, isAdmin, impersonatedUser, isLoading, isInitialized, checkUser, startImpersonation, stopImpersonation]);
+
   return (
-    <DashboardContext.Provider value={{
-      user: effectiveUser,
-      isAdmin,
-      isImpersonating: !!impersonatedUser,
-      isLoading,
-      isInitialized,
-      checkUser,
-      startImpersonation,
-      stopImpersonation
-    }}>
+    <DashboardContext.Provider value={contextValue}>
       {isInitialized ? children : (
         <div className="min-h-screen flex items-center justify-center bg-white">
           <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />

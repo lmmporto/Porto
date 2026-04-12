@@ -14,42 +14,52 @@ router.get("/", async (req: Request, res: Response) => {
       return res.status(401).json({ error: "Não autorizado" });
     }
 
-    const userEmail = (req.user as any).email;
+    const userEmail = (req.user as any).email.toLowerCase().trim();
     const isAdmin = await checkIfAdmin(userEmail);
-
-    // 🚩 SONDA DE DIAGNÓSTICO: Auditoria de Identidade
-    console.log(`🕵️ [PROD DEBUG] Buscando chamadas para: "${userEmail}" | isAdmin: ${isAdmin}`);
-
+    
+    // 🚩 CAPTURA DOS PARÂMETROS
+    const mode = req.query.mode as string; 
+    const rota = req.query.rota as string; // 🚩 Novo filtro de Rota capturado
+    const filterEmail = (req.query.ownerEmail as string || "").toLowerCase().trim();
+    
     const limit = Math.min(Number(req.query.limit || 10), 50);
     const startAfter = req.query.lastVisible as string;
     const startDateParam = req.query.startDate as string;
     const endDateParam = req.query.endDate as string;
-    const filterEmail = req.query.ownerEmail as string;
-    const mode = req.query.mode as string;
 
-    console.log(`🔎 [BUSCA] User: ${userEmail} | Admin: ${isAdmin} | Filtro: ${filterEmail} | Datas: ${startDateParam} a ${endDateParam} | Mode: ${mode}`);
+    console.log(`🔎 [BUSCA] User: ${userEmail} | Admin: ${isAdmin} | Mode: ${mode} | Rota: ${rota || 'ALL'}`);
 
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
 
-    // 1. Filtro de Autoria (Resiliência e Segurança)
-    if (filterEmail || !isAdmin) {
-      const rawEmail = filterEmail || userEmail || "";
-      const targetEmail = rawEmail.toLowerCase().trim();
-      console.log(`🔎 [DEBUG] Buscando dados para e-mail normalizado: "${targetEmail}"`);
-      query = query.where("ownerEmail", "==", targetEmail);
+    // 🚩 1. REGRA DE ACESSO:
+    if (isAdmin || mode === 'ranking') {
+      if (filterEmail) {
+        query = query.where("ownerEmail", "==", filterEmail);
+      } else if (!isAdmin) {
+        query = query.where("ownerEmail", "==", userEmail);
+      }
+    } else {
+      query = query.where("ownerEmail", "==", userEmail);
     }
 
-    // 2. 🚩 MUDANÇA SÊNIOR: Tornar o status 'DONE' opcional para não sumir com o histórico
-    // Comentamos esta linha até que o Backfill processe tudo.
-    // query = query.where("processingStatus", "==", "DONE");
+    // 🚩 2. FILTRO DE QUALIDADE (Obrigatório)
+    query = query.where("processingStatus", "==", "DONE");
 
+    // 🚩 3. FILTRO DE CATEGORIA (ROTA)
+    if (rota && rota !== 'ALL') {
+      console.log(`🎯 [BACKEND] Aplicando filtro de Rota: ${rota}`);
+      query = query.where("rota", "==", rota);
+    }
+
+    // 🚩 4. LÓGICA DE MODO (VITRINE vs FEED)
     if (mode === 'ranking') {
-      // VITRINE: Performance absoluta (Top 10)
+      // --- MODO VITRINE ---
       query = query
         .orderBy("nota_spin", "desc")
-        .limit(10);
+        .limit(10); 
+
     } else {
-      // FEED: Cronológico (Fluxo normal com filtros de data)
+      // --- MODO FEED (Padrão) ---
       if (startDateParam && endDateParam) {
         const start = new Date(startDateParam);
         const end = new Date(endDateParam);
@@ -72,8 +82,6 @@ router.get("/", async (req: Request, res: Response) => {
     }
 
     const snapshot = await query.get();
-    console.log(`✅ [BUSCA] Encontrados ${snapshot.size} documentos`);
-
     const calls = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     res.json({
@@ -81,6 +89,7 @@ router.get("/", async (req: Request, res: Response) => {
       isAdmin,
       lastVisible: snapshot.docs.length > 0 ? snapshot.docs[snapshot.docs.length - 1].id : null
     });
+
   } catch (error: any) {
     console.error("❌ [BUSCA ERROR]:", error.message);
     res.status(500).json({ error: error.message });
@@ -103,7 +112,7 @@ router.get("/:id", async (req: Request, res: Response) => {
     if (!doc.exists) return res.status(404).json({ error: "Ligação não encontrada." });
 
     const callData = doc.data();
-    const userEmail = (req.user as any).email;
+    const userEmail = (req.user as any).email.toLowerCase().trim();
     const isAdmin = await checkIfAdmin(userEmail);
 
     if (!isAdmin && callData?.ownerEmail !== userEmail) {

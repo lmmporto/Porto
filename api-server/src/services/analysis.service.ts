@@ -18,7 +18,8 @@ const ANALYSIS_RESPONSE_SCHEMA = {
   additionalProperties: false,
   required: [
     'status_final', 
-    'nota_spin', 
+    'nota_spin',
+    'rota', // 🚩 ADICIONADO 
     'resumo', 
     'alertas', 
     'playbook_detalhado', 
@@ -30,6 +31,7 @@ const ANALYSIS_RESPONSE_SCHEMA = {
   ],
   properties: {
     status_final: { type: 'string', enum: ['APROVADO', 'REPROVADO', 'ATENCAO', 'NAO_SE_APLICA'] },
+    rota: { type: 'string', enum: ['ROTA_A', 'ROTA_B', 'ROTA_C', 'ROTA_D'] },
     nota_spin: { type: ['number', 'null'] }, 
     resumo: { type: 'string' },
     playbook_detalhado: { 
@@ -134,7 +136,6 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
     
     await writeFile(localFilePath, buffer);
 
-    // 🚩 USO DO ACESSOR SEGURO
     uploadedFile = await getGeminiModel().files.upload({ 
       file: localFilePath, 
       config: { mimeType: contentType } 
@@ -234,7 +235,6 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
   `.trim();
 
   try {
-    // 🚩 USO DO ACESSOR SEGURO
     const response = await getGeminiModel().models.generateContent({
       model: CONFIG.GEMINI_ANALYSIS_MODEL,
       contents: prompt,
@@ -303,17 +303,29 @@ export async function updateDailyStats(callData: any, analysis: any, isUpdate: b
   }
 }
 
+/**
+ * 🏆 ATUALIZAÇÃO DO PLACAR GLOBAL POR SDR (MENSAL)
+ */
 export async function updateSdrGlobalStats(ownerEmail: string, ownerName: string, nota: number) {
   if (!ownerEmail) return;
-  const safeId = ownerEmail.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase();
+  
+  // 🚩 SAFRA MENSAL: Gera a chave do mês atual (Ex: 2024_04)
+  const now = new Date();
+  const monthKey = `${now.getFullYear()}_${String(now.getMonth() + 1).padStart(2, '0')}`;
+  
+  // 🚩 ID ÚNICO: Composto por e-mail sanitizado + mês
+  const safeId = `${ownerEmail.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase()}_${monthKey}`;
   const sdrRef = db.collection('sdr_stats').doc(safeId);
+  
   try {
     await db.runTransaction(async (transaction) => {
       const doc = await transaction.get(sdrRef);
+      
       if (!doc.exists) {
         transaction.set(sdrRef, {
           ownerName: ownerName,
           ownerEmail: ownerEmail,
+          monthKey: monthKey, // Auditoria de safra
           totalCalls: 1,
           totalScore: nota,
           averageScore: nota,
@@ -324,6 +336,7 @@ export async function updateSdrGlobalStats(ownerEmail: string, ownerName: string
         const newTotalCalls = (data.totalCalls || 0) + 1;
         const newTotalScore = (data.totalScore || 0) + nota;
         const newAverage = newTotalScore / newTotalCalls;
+
         transaction.update(sdrRef, {
           totalCalls: newTotalCalls,
           totalScore: newTotalScore,
@@ -332,6 +345,7 @@ export async function updateSdrGlobalStats(ownerEmail: string, ownerName: string
         });
       }
     });
+    console.log(`🏆 [PLACAR MENSAL] SDR ${ownerEmail} atualizado para ${monthKey}.`);
   } catch (error) {
     console.error(`❌ [ERRO NO PLACAR] Falha ao atualizar ${ownerEmail}:`, error);
   }

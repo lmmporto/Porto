@@ -16,7 +16,7 @@ let lastCacheTime = 0;
 
 /**
  * GET /summary (Relativo ao prefixo /api/stats)
- * Retorna o resumo de performance extraído do Placar Consolidado (sdr_stats) com lógica Bayesiana.
+ * Retorna o resumo de performance extraído do Placar Consolidado (sdr_stats) com lógica Bayesiana e filtro mensal.
  */
 router.get('/summary', async (req: Request, res: Response) => {
   try {
@@ -27,45 +27,44 @@ router.get('/summary', async (req: Request, res: Response) => {
     const userEmail = (req.user as any).email;
     const isAdmin = await checkIfAdmin(userEmail);
     const now = Date.now();
+    
+    const nowDate = new Date();
+    const currentMonthKey = `${nowDate.getFullYear()}_${String(nowDate.getMonth() + 1).padStart(2, '0')}`;
 
-    // 🚩 PERMITE SIMULAÇÃO NO RANKING
     const requestedEmail = req.query.ownerEmail as string;
     const targetEmail = (isAdmin && requestedEmail) ? requestedEmail.toLowerCase().trim() : userEmail.toLowerCase().trim();
     
-    // 🚩 PROTEÇÃO DE MEMÓRIA: Verifica cache global apenas se for a busca geral (sem filtro de e-mail)
     if (!requestedEmail && isAdmin && cachedStats && (now - lastCacheTime < 60000)) {
       console.log(`📊 [STATS] Retornando resumo de performance do CACHE.`);
       return res.json(cachedStats);
     }
 
-    // 1. Busca os dados limpos do Firestore (sdr_stats)
-    let query: FirebaseFirestore.Query = db.collection('sdr_stats');
-    
-    if (!isAdmin || requestedEmail) {
-      query = query.where("ownerEmail", "==", targetEmail);
-    }
+    const snapshot = await db.collection('sdr_stats').get();
+    let monthlyDocs = snapshot.docs.filter(doc => doc.id.endsWith(currentMonthKey));
 
-    const snapshot = await query.get();
+    if (!isAdmin || requestedEmail) {
+      monthlyDocs = monthlyDocs.filter(doc => doc.data().ownerEmail === targetEmail);
+    }
     
-    if (snapshot.empty) {
-      return res.json({ total_calls: 0, media_geral: 0, sdr_ranking: {}, version: "V7_SANATIZED_BAYESIAN_EMPTY" });
+    if (monthlyDocs.length === 0) {
+      return res.json({ total_calls: 0, media_geral: 0, sdr_ranking: {}, version: "V7_MONTHLY_BAYESIAN_EMPTY" });
     }
 
     const sdr_ranking: Record<string, any> = {};
     let total_calls_time = 0;
     let sum_notes_time = 0;
 
-    // 2. Agregação Inicial
-    snapshot.docs.forEach(doc => {
+    monthlyDocs.forEach(doc => {
       const data = doc.data();
-      const name = data.ownerName || "SDR Desconhecido";
+      const name = data.ownerName || "SDR";
       
       sdr_ranking[name] = {
         ownerName: name,
         ownerEmail: data.ownerEmail,
         calls: data.totalCalls || 0,
+        valid_calls: data.totalCalls || 0, 
         sum_notes: data.totalScore || 0,
-        nota_media: 0 // Será calculado pela lógica Bayesiana abaixo
+        nota_media: 0 
       };
 
       total_calls_time += (data.totalCalls || 0);
@@ -75,9 +74,8 @@ router.get('/summary', async (req: Request, res: Response) => {
     const sdrNames = Object.keys(sdr_ranking);
     const totalSDRs = sdrNames.length;
 
-    // 🚩 3. MATEMÁTICA BAYESIANA (O "Turbo Score")
-    const v_bar = total_calls_time / totalSDRs; // Média de volume do time
-    const m_bar = total_calls_time > 0 ? (sum_notes_time / total_calls_time) : 0; // Média de nota do time
+    const v_bar = total_calls_time / totalSDRs;
+    const m_bar = total_calls_time > 0 ? (sum_notes_time / total_calls_time) : 0;
 
     sdrNames.forEach(name => {
       const s = sdr_ranking[name];
@@ -85,11 +83,8 @@ router.get('/summary', async (req: Request, res: Response) => {
       const M = V > 0 ? (s.sum_notes / V) : 0;
 
       if (V > 0) {
-        // Qualidade Bayesiana: Suaviza notas de quem tem pouco volume
         const qualidade = (V * M + v_bar * m_bar) / (V + v_bar);
-        // Fator de Tração: Premia quem tem volume acima da média
         const tracao = Math.sqrt(V / (v_bar || 1));
-        
         s.nota_media = Number((qualidade * tracao).toFixed(2));
       }
     });
@@ -98,10 +93,9 @@ router.get('/summary', async (req: Request, res: Response) => {
       total_calls: total_calls_time,
       media_geral: Number(m_bar.toFixed(2)),
       sdr_ranking: sdr_ranking,
-      version: "V7_SANATIZED_BAYESIAN"
+      version: "V7_MONTHLY_BAYESIAN"
     };
 
-    // 🚩 ATUALIZAÇÃO DO CACHE: Apenas se for a query global de Admin
     if (isAdmin && !requestedEmail) {
       cachedStats = resultado;
       lastCacheTime = now;
@@ -112,6 +106,63 @@ router.get('/summary', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error("❌ [STATS ERROR]:", error.message);
     res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /performance
+ * Retorna métricas detalhadas com suporte a filtro por Categoria (Rota).
+ */
+router.get("/performance", async (req: Request, res: Response) => {
+  try {
+    if (!req.isAuthenticated() || !req.user) {
+      return res.status(401).json({ error: "Não autorizado" });
+    }
+
+    const { startDate, endDate, ownerEmail, rota } = req.query;
+    const userEmail = (req.user as any).email.toLowerCase().trim();
+    const isAdmin = await checkIfAdmin(userEmail);
+
+    let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
+
+    // 1. Filtro de Identidade (Segurança)
+    if (!isAdmin) {
+      query = query.where("ownerEmail", "==", userEmail);
+    } else if (ownerEmail) {
+      query = query.where("ownerEmail", "==", (ownerEmail as string).toLowerCase().trim());
+    }
+
+    // 2. 🚩 FILTRO DE CATEGORIA (ROTA)
+    if (rota && rota !== 'ALL') {
+      console.log(`🎯 [METRICS] Filtrando por Categoria: ${rota}`);
+      query = query.where("rota", "==", rota);
+    }
+
+    // 3. Filtro de Período
+    if (startDate && endDate) {
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+      start.setUTCHours(0, 0, 0, 0);
+      end.setUTCHours(23, 59, 59, 999);
+
+      query = query
+        .where("callTimestamp", ">=", admin.firestore.Timestamp.fromDate(start))
+        .where("callTimestamp", "<=", admin.firestore.Timestamp.fromDate(end));
+    }
+
+    // Ordenação padrão para métricas
+    query = query.orderBy("callTimestamp", "desc");
+
+    const snapshot = await query.get();
+    
+    res.json({ 
+      count: snapshot.size,
+      data: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+    });
+
+  } catch (error: any) {
+    console.error("❌ [METRICS ERROR]:", error.message);
+    res.status(500).json({ error: "Erro ao carregar métricas de performance" });
   }
 });
 
