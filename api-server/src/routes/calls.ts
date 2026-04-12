@@ -1,4 +1,4 @@
-import { Router, type Request, type Response } from "express";
+import { Router, Request, Response } from "express";
 import admin from "firebase-admin";
 import { db } from "../firebase.js";
 import { CONFIG } from "../config.js";
@@ -17,7 +17,6 @@ router.get("/", async (req: Request, res: Response) => {
     const userEmail = (req.user as any).email.toLowerCase().trim();
     const isAdmin = await checkIfAdmin(userEmail);
     
-    // 🚩 CAPTURA DOS PARÂMETROS
     const mode = req.query.mode as string; 
     const rota = req.query.rota as string; 
     const filterEmail = (req.query.ownerEmail as string || "").toLowerCase().trim();
@@ -31,7 +30,6 @@ router.get("/", async (req: Request, res: Response) => {
 
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
 
-    // 🚩 1. REGRA DE ACESSO:
     if (isAdmin || mode === 'ranking') {
       if (filterEmail) {
         query = query.where("ownerEmail", "==", filterEmail);
@@ -42,33 +40,23 @@ router.get("/", async (req: Request, res: Response) => {
       query = query.where("ownerEmail", "==", userEmail);
     }
 
-    // 🚩 2. FILTRO DE QUALIDADE (Obrigatório)
     query = query.where("processingStatus", "==", "DONE");
 
-    // 🏛️ ADICIONE ESTA TRAVA:
     if (rota && rota !== 'ALL') {
       console.log(`🎯 [BACKEND] Aplicando filtro de Rota: ${rota}`);
       query = query.where("rota", "==", rota);
     }
 
-    // 🚩 4. LÓGICA DE MODO (VITRINE vs FEED)
     if (mode === 'ranking') {
-      // --- MODO VITRINE ---
-      query = query
-        .orderBy("nota_spin", "desc")
-        .limit(10); 
-
+      query = query.orderBy("nota_spin", "desc").limit(10); 
     } else {
-      // --- MODO FEED (Padrão) ---
       if (startDateParam && endDateParam) {
         const start = new Date(startDateParam);
         const end = new Date(endDateParam);
         start.setUTCHours(0, 0, 0, 0);
         end.setUTCHours(23, 59, 59, 999);
-
-        query = query
-          .where("callTimestamp", ">=", admin.firestore.Timestamp.fromDate(start))
-          .where("callTimestamp", "<=", admin.firestore.Timestamp.fromDate(end));
+        query = query.where("callTimestamp", ">=", admin.firestore.Timestamp.fromDate(start))
+                     .where("callTimestamp", "<=", admin.firestore.Timestamp.fromDate(end));
       }
 
       query = query.orderBy("callTimestamp", "desc");
@@ -115,8 +103,12 @@ router.get("/:id", async (req: Request, res: Response) => {
     const userEmail = (req.user as any).email.toLowerCase().trim();
     const isAdmin = await checkIfAdmin(userEmail);
 
-    if (!isAdmin && callData?.ownerEmail !== userEmail) {
-      return res.status(403).json({ error: "Permissão negada." });
+    // 🏛️ O ARQUITETO: A Regra de Ouro da Vitrine
+    const isOwner = callData?.ownerEmail === userEmail;
+    const isEliteCall = (callData?.nota_spin || 0) >= 7.0;
+
+    if (!isAdmin && !isOwner && !isEliteCall) {
+      return res.status(403).json({ error: "Permissão negada. Esta ligação não é pública." });
     }
 
     res.json({ id: doc.id, ...callData });
@@ -131,9 +123,7 @@ router.post("/hubspot-webhook", async (req: Request, res: Response) => {
   try {
     const body = req.body;
     const callId = body?.callId || body?.objectId || (Array.isArray(body) ? body[0]?.objectId : undefined);
-
     if (!callId) return res.status(200).json({ ignored: true });
-
     const result = await handleIncomingCall({ ...body, callId: String(callId).trim() });
     res.status(202).json(result);
   } catch (error) {
