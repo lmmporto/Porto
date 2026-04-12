@@ -54,6 +54,7 @@ export interface SDRCall {
   analyzedAt: string | null;
 
   title: string;
+   contactName?: string;
   ownerId: string | null;
   ownerName: string;
   ownerEmail: string; 

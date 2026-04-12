@@ -48,7 +48,11 @@ router.get("/", async (req: Request, res: Response) => {
     }
 
     if (mode === 'ranking') {
-      query = query.orderBy("nota_spin", "desc").limit(10); 
+      // 🏛️ O ARQUITETO: A vitrine agora é estritamente para a elite (>= 7.0)
+      query = query
+        .where("nota_spin", ">=", 7.0)
+        .orderBy("nota_spin", "desc")
+        .limit(10); 
     } else {
       if (startDateParam && endDateParam) {
         const start = new Date(startDateParam);
@@ -87,14 +91,10 @@ router.get("/", async (req: Request, res: Response) => {
 // 2. DETALHE DA LIGAÇÃO
 router.get("/:id", async (req: Request, res: Response) => {
   try {
-    if (!req.isAuthenticated() || !req.user) {
-      return res.status(401).json({ error: "Não autorizado" });
-    }
+    if (!req.isAuthenticated() || !req.user) return res.status(401).json({ error: "Não autorizado" });
 
     const callId = req.params.id ? String(req.params.id).trim() : null;
-    if (!callId || callId === 'undefined' || callId === 'null') {
-      return res.status(400).json({ error: "ID inválido." });
-    }
+    if (!callId || callId === 'undefined' || callId === 'null') return res.status(400).json({ error: "ID inválido." });
 
     const doc = await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).get();
     if (!doc.exists) return res.status(404).json({ error: "Ligação não encontrada." });
@@ -103,7 +103,6 @@ router.get("/:id", async (req: Request, res: Response) => {
     const userEmail = (req.user as any).email.toLowerCase().trim();
     const isAdmin = await checkIfAdmin(userEmail);
 
-    // 🏛️ O ARQUITETO: A Regra de Ouro da Vitrine
     const isOwner = callData?.ownerEmail === userEmail;
     const isEliteCall = (callData?.nota_spin || 0) >= 7.0;
 

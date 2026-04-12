@@ -1,5 +1,6 @@
 "use client";
 import { createContext, useContext, ReactNode, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { useCalls } from '@/hooks/useCallsEngine';
 import type { SDRCall, CallFilters } from '@/types';
 
@@ -12,15 +13,15 @@ interface CallContextType {
   applyFilter: (newFilters: CallFilters) => void;
   loadMore: () => void;
   refresh: () => void;
+  openCall: (id: string) => void;
 }
 
 const CallContext = createContext<CallContextType | undefined>(undefined);
 
 export function CallProvider({ children }: { children: ReactNode }) {
-  // 🚩 CORREÇÃO: Removido 'error' da desestruturação pois o hook useCalls não o retorna
+  const router = useRouter();
   const { 
     calls, 
-    setCalls, 
     isLoading, 
     filters, 
     fetchData, 
@@ -43,20 +44,24 @@ export function CallProvider({ children }: { children: ReactNode }) {
     fetchData(true);
   }, [fetchData]);
 
-  // 🏛️ ARQUITETO: Memorização obrigatória para evitar re-renders em cascata
-  const contextValue = useMemo(() => ({ 
+  const openCall = useCallback((id: string) => {
+    router.push(`/dashboard/calls/${id}`);
+  }, [router]);
+
+  const value = useMemo<CallContextType>(() => ({ 
     calls, 
     isLoading, 
     filters, 
-    error: null, // 🚩 Valor padrão para satisfazer a interface CallContextType
+    error: null, 
     hasMore, 
     applyFilter, 
     loadMore, 
-    refresh 
-  }), [calls, isLoading, filters, hasMore, applyFilter, loadMore, refresh]);
+    refresh,
+    openCall
+  }), [calls, isLoading, filters, hasMore, applyFilter, loadMore, refresh, openCall]);
 
   return (
-    <CallContext.Provider value={contextValue}>
+    <CallContext.Provider value={value}>
       {children}
     </CallContext.Provider>
   );
