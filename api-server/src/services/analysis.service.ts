@@ -12,7 +12,7 @@ import { db } from '../firebase.js';
 import { FieldValue } from 'firebase-admin/firestore';
 
 // 🏛️ ARQUITETO: Versão atual do motor de análise.
-const CURRENT_ANALYSIS_VERSION = "V8_NEW_MODEL";
+const CURRENT_ANALYSIS_VERSION = "V10_MESTRE_MENTOR";
 
 // --- SCHEMAS ---
 const ANALYSIS_RESPONSE_SCHEMA = {
