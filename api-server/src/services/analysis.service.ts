@@ -8,36 +8,30 @@ import { gemini } from '../clients.js';
 import { CONFIG } from '../config.js';
 import { sanitizeText, safeJsonParse, detectAudioExtension } from '../utils.js';
 import type { CallData, OwnerDetails } from './hubspot.js';
-
 import { db } from '../firebase.js';
 import { FieldValue } from 'firebase-admin/firestore';
+
+// 🏛️ ARQUITETO: Versão atual do motor de análise.
+const CURRENT_ANALYSIS_VERSION = "V8_NEW_MODEL";
 
 // --- SCHEMAS ---
 const ANALYSIS_RESPONSE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   required: [
-    'status_final', 
-    'nota_spin',
-    'rota', // 🚩 ADICIONADO 
-    'resumo', 
-    'alertas', 
-    'playbook_detalhado', 
-    'ponto_atencao', 
-    'maior_dificuldade', 
-    'pontos_fortes',
-    'perguntas_sugeridas', 
-    'analise_escuta'
+    'status_final', 'nota_spin', 'rota', 'resumo', 'alertas',
+    'playbook_detalhado', 'ponto_atencao', 'maior_dificuldade',
+    'pontos_fortes', 'perguntas_sugeridas', 'analise_escuta'
   ],
   properties: {
     status_final: { type: 'string', enum: ['APROVADO', 'REPROVADO', 'ATENCAO', 'NAO_SE_APLICA'] },
     rota: { type: 'string', enum: ['ROTA_A', 'ROTA_B', 'ROTA_C', 'ROTA_D'] },
-    nota_spin: { type: ['number', 'null'] }, 
+    nota_spin: { type: ['number', 'null'] },
     resumo: { type: 'string' },
-    playbook_detalhado: { 
-      type: 'array', 
+    playbook_detalhado: {
+      type: 'array',
       items: { type: 'string' },
-      description: "Lista de insights no formato [MM:SS] Citação do Lead: '...' -> Dica de Ouro: '...'"
+      description: "Lista de insights no formato [MM:SS] Lead disse: '...' | Mentor: '[DIAGNÓSTICO]: [FRASE CORRETIVA TAXATIVA]'"
     },
     alertas: { type: 'array', items: { type: 'string' } },
     ponto_atencao: { type: 'string' },
@@ -52,12 +46,10 @@ const TRANSCRIPTION_RESPONSE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   required: ['transcript'],
-  properties: {
-    transcript: { type: 'string' },
-  },
+  properties: { transcript: { type: 'string' } },
 };
 
-// --- INTERFACES SINCRONIZADAS ---
+// --- INTERFACES ---
 export interface AnalysisResult {
   status_final: 'APROVADO' | 'REPROVADO' | 'ATENCAO' | 'NAO_SE_APLICA';
   nota_spin: number | null;
@@ -68,7 +60,7 @@ export interface AnalysisResult {
   pontos_fortes: string[];
   perguntas_sugeridas: string[];
   analise_escuta: string;
-  playbook_detalhado: string[]; 
+  playbook_detalhado: string[];
 }
 
 export interface AnalysisWithDebug {
@@ -77,38 +69,27 @@ export interface AnalysisWithDebug {
   rawResponse: string;
 }
 
-// 🚩 VERIFICAÇÃO DE EXISTÊNCIA: Centraliza a validação do cliente Gemini
 const getGeminiModel = () => {
-  if (!gemini) {
-    throw new Error('GEMINI_API_KEY não configurada ou cliente não inicializado.');
-  }
+  if (!gemini) throw new Error('GEMINI_API_KEY não configurada.');
   return gemini;
 };
 
-// --- FUNÇÃO DE LIMPEZA PARA MODELOS MODERNOS ---
 function cleanGeminiResponse(text: string): string {
   if (!text) return '';
-  const cleaned = text.replace(/```json/g, '').replace(/```/g, '').trim();
-  return cleaned;
+  return text.replace(/```json/g, '').replace(/```/g, '').trim();
 }
 
 // --- FUNÇÕES PRINCIPAIS ---
 
-/**
- * 🎙️ TRANSCRIÇÃO DE ÁUDIO BLINDADA
- */
 export async function transcribeRecordingFromHubSpot(call: CallData): Promise<string> {
   if (call.hasTranscript && call.transcript && call.transcript.length >= 100) {
-    console.log(`⚡ [Short-circuit] Usando transcrição nativa para: ${call.callId || call.id}`);
     return call.transcript;
   }
 
   if (!call?.recordingUrl) {
-    throw new Error(`Nenhum áudio disponível para transcrição na call: ${call.callId || call.id}`);
+    throw new Error(`Nenhum áudio disponível para: ${call.callId || call.id}`);
   }
 
-  console.log(`🎙️ [IA] Iniciando download e transcrição: ${call.callId || call.id}`);
-  
   let localFilePath = '';
   let uploadedFile: { name?: string; uri?: string; mimeType?: string } | null = null;
 
@@ -116,29 +97,18 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
     const audioResponse = await axios.get(call.recordingUrl, {
       responseType: 'arraybuffer',
       timeout: 120000,
-      headers: { 
-        'Authorization': `Bearer ${CONFIG.HUBSPOT_TOKEN}`,
-        'User-Agent': 'Nibo-SDR-Analyzer/1.0',
-        'Accept': '*/*'
-      },
+      headers: { 'Authorization': `Bearer ${CONFIG.HUBSPOT_TOKEN}` },
     });
 
     const buffer = Buffer.from(audioResponse.data as ArrayBuffer);
-    console.log(`✅ [DOWNLOAD] Sucesso! Tamanho: ${buffer.byteLength} bytes`);
-    
-    if (buffer.byteLength === 0) {
-      throw new Error('Arquivo de áudio baixado está vazio (0 bytes).');
-    }
-
     const contentType = String(audioResponse.headers['content-type'] || 'audio/mpeg');
-    const ext = detectAudioExtension(contentType);
-    localFilePath = path.join(os.tmpdir(), `call-${randomUUID()}.${ext}`);
-    
+    localFilePath = path.join(os.tmpdir(), `call-${randomUUID()}.${detectAudioExtension(contentType)}`);
+
     await writeFile(localFilePath, buffer);
 
-    uploadedFile = await getGeminiModel().files.upload({ 
-      file: localFilePath, 
-      config: { mimeType: contentType } 
+    uploadedFile = await getGeminiModel().files.upload({
+      file: localFilePath,
+      config: { mimeType: contentType }
     });
 
     const response = await getGeminiModel().models.generateContent({
@@ -154,84 +124,62 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
       },
     });
 
-    const rawText = cleanGeminiResponse(response?.text || '');
-    const parsed = safeJsonParse(rawText);
-    const aiTranscript = sanitizeText(parsed?.transcript || '');
+    const parsed = safeJsonParse(cleanGeminiResponse(response?.text || ''));
+    return sanitizeText(parsed?.transcript || '');
 
-    if (!aiTranscript || aiTranscript.trim().length < 50) {
-      throw new Error('IA retornou transcrição insuficiente.');
-    }
-
-    return aiTranscript;
-
-  } catch (error: any) {
-    const status = error.response?.status;
-    console.error(`❌ [TRANSCRIPTION ERROR] Call ${call.id} | Status: ${status} | Msg: ${error.message}`);
-    
-    if (status === 403 || status === 401) {
-      console.error("⚠️ ERRO DE PERMISSÃO: O HubSpot negou o acesso ao arquivo. Verifique o Token.");
-    }
-    throw error;
   } finally {
-    if (uploadedFile?.name) {
-      getGeminiModel().files.delete({ name: uploadedFile.name }).catch(e => console.error("Erro ao deletar arquivo remoto:", e.message));
-    }
-    if (localFilePath) {
-      unlink(localFilePath).catch(e => console.error("Erro ao deletar arquivo local:", e.message));
-    }
+    if (uploadedFile?.name) getGeminiModel().files.delete({ name: uploadedFile.name }).catch(() => { });
+    if (localFilePath) unlink(localFilePath).catch(() => { });
   }
 }
 
 export async function analyzeCallWithGemini(call: CallData, ownerDetails: OwnerDetails): Promise<AnalysisWithDebug> {
-  console.log(`\n--- 🧠 INICIANDO ANÁLISE IA (Call: ${call.id}) ---`);
-  const wordCount = (call.transcript || '').split(/\s+/).length;
+  // 1. Validação de Cache e Integridade
+  if (call.lastAnalysisVersion === CURRENT_ANALYSIS_VERSION && call.analysisResult) {
+    console.log(`✅ [Short-circuit] Análise recuperada do cache: ${CURRENT_ANALYSIS_VERSION}`);
+    return { 
+      analysis: call.analysisResult as AnalysisResult, 
+      rawPrompt: "Cache", 
+      rawResponse: "Cache" 
+    };
+  }
+
+  if (!call.transcript || call.transcript.trim().length < 10) {
+    throw new Error("Transcrição insuficiente ou ausente para análise.");
+  }
+
+  console.log(`🧠 [IA] Processando análise rigorosa (Mestre Mentor) para: ${call.id}`);
 
   const prompt = `
-OBJETIVO: Especialista Sênior em SDR. Avaliação ADITIVA (0 a 10).
-FOCO: Ser construtivo, mas rigoroso. Identificar passividade e falta de "aperto" no cliente.
- 
-PASSO 1: CLASSIFICAÇÃO DA ROTA (OBRIGATÓRIO)
-- ROTA A:Prospecção / Novo Agendamento (Primeiro contato/Filtro com Decisor).
-- ROTA B: Reagendamento / Follow-up (Lead que não apareceu ou pediu retorno).
-- ROTA C: Gatekeeper / Navegação (Falou com secretária/assistente para chegar no decisor).
-- ROTA D: Outros / Descarte (Número errado, spam, ligação caiu). Nota técnica = null.
+Você é o "Mestre Mentor de Vendas", um analista sênior focado em transformar SDRs em máquinas de alta performance através de feedback taxonômico e construtivo.
 
-PASSO 2: CRITÉRIOS DE PONTUAÇÃO (TOTAL 10 PONTOS)
+--- OBJETIVO ---
+Analisar a transcrição e fornecer um diagnóstico técnico. Você deve ser justo: elogie o que foi bem feito, mas seja CIRÚRGICO e TAXATIVO onde houve passividade ou perda de controle da call.
 
---- SE ROTA A (Novo Agendamento) ---
-1. Rapport e Quebra de Gelo (+3,0 pts): Conexão real e abertura personalizada?
-2. Diagnóstico e Implicação (+4,0 pts): Mapeou dor, insatisfação ou ponto cego? "Apertou" o cliente?
-3. Agendamento e Decisores (+3,0 pts): Marcou data/hora e confirmou presença de sócios/decisores?
+--- REGRAS DE OURO DE ESTRUTURA ---
+1. TIMESTAMPS OBRIGATÓRIOS: No campo 'playbook_detalhado', cada entrada DEVE iniciar rigorosamente com [MM:SS].
+2. LINGUAGEM HUMANA: Use "Nesta abordagem" ou "Nesta interação" nos campos de texto. Proibido escrever "Rota A/B/C" para o usuário.
+3. PADRÃO DE FEEDBACK: 
+   - Identifique o erro -> Explique o impacto negativo -> Dê a frase EXATA que deveria ter sido dita.
+4. CLASSIFICAÇÃO TÉCNICA: No campo JSON 'rota', você DEVE classificar obrigatoriamente como 'ROTA_A', 'ROTA_B', 'ROTA_C' ou 'ROTA_D' para fins de banco de dados.
 
---- SE ROTA B (Reagendamento) ---
-1. Conexão e Contexto (+3,0 pts): Retomou sem parecer cobrador e validou o motivo do reagendamento?
-2. Re-ancoragem da Dor (+4,0 pts): Relembrou os problemas que motivaram o interesse original?
-3. Fechamento e Compromisso (+3,0 pts): Garantiu novo horário e próximo passo claro?
+--- CRITÉRIOS DE PONTUAÇÃO (MERITOCRACIA CONSTRUTIVA) ---
+A nota é de 0 a 10, baseada em:
+- Domínio e Direcionamento (Até 4.0 pts): O SDR liderou a conversa ou foi levado pelo lead?
+- Exploração de Dor/Desafio (Até 4.0 pts): O SDR aprofundou no problema ou aceitou respostas superficiais?
+- Firmeza no Próximo Passo (Até 2.0 pts): O agendamento foi cravado com dia e hora? 
 
---- SE ROTA C (Gatekeeper) ---
-1. Posicionamento e Autoridade (+3,0 pts): Falou de igual para igual? Evitou parecer telemarketing?
-2. Coleta de Inteligência (+4,0 pts): Conseguiu nome do decisor, e-mail direto ou processo de decisão?
-3. Próximo Passo (+3,0 pts): Conseguiu transferência, agenda com o decisor ou prometeu retorno específico?
+--- FORMATO DO PLAYBOOK DETALHADO (O PONTO DE OURO) ---
+Para cada falha ou oportunidade de melhoria, use EXATAMENTE este modelo:
+"[MM:SS] Lead disse: '...' | Mentor: '[DIAGNÓSTICO]: [FRASE CORRETIVA TAXATIVA]'"
 
-PASSO 3: PLAYBOOK DO OURO (OBRIGATÓRIO) (FEEDBACK DO COACH)
-Para cada falha ou oportunidade, você deve gerar um item no campo 'playbook_detalhado' seguindo RIGOROSAMENTE este formato:
- "Aos[MM:SS] -, o cliente disse [Citação]. Oportunidade desperdiçada: [Explicação de como abordar]."
- Exemplo:
-"Falta de aprofundamento na dor | [05:00] - O lead disse [Estou corrido] -> Dica de Ouro: O SDR aceitou a objeção passivamente. Deveria ter perguntado: 'Entendo, mas se pudéssemos ganhar 30min/dia, valeria 5min agora?'"
+Exemplo de Rigor:
+"[02:15] Lead disse: 'Pode me mandar por e-mail?' | Mentor: 'PASSIVIDADE DETECTADA: Você aceitou o descarte imediato. Deveria ter dito: "Fulano, o e-mail não explica como resolvemos [DOR]. Na terça às 14h ou quarta às 10h, o que fica melhor para uma demonstração rápida?"'"
 
-PASSO 4: STATUS FINAL (RIGOROSO)
-- 0 a 4.9: REPROVADO | 5.0 a 7.9: ATENCAO | 8.0 a 10: APROVADO | ROTA D: NAO_SE_APLICA
-
-INSTRUÇÕES TÉCNICAS (BLOQUEIO LÓGICO):
-1. ADITIVIDADE: A nota DEVE começar em 0. Some os pontos apenas se o critério for explicitamente atendido.
-2. EXCLUSIVIDADE: Use APENAS os critérios da rota identificada. Se for Rota C, ignore os critérios de Rota A e B.
-3. RIGOR: Se o SDR foi passivo em um momento crucial de dor, penalize a pontuação do critério correspondente, mas o feedback se mantem construtivo.
-
-SDR: ${ownerDetails.ownerName} | Equipe: ${ownerDetails.teamName}
-Duração: ${call.durationMs}ms | Palavras: ${wordCount}
-
-Transcrição:
-${call.transcript || '[SEM TRANSCRIÇÃO]'}
+--- DADOS PARA ANÁLISE ---
+SDR: ${ownerDetails.ownerName}
+TRANSCRIÇÃO:
+${call.transcript}
   `.trim();
 
   try {
@@ -241,145 +189,71 @@ ${call.transcript || '[SEM TRANSCRIÇÃO]'}
       config: {
         responseMimeType: 'application/json',
         responseJsonSchema: ANALYSIS_RESPONSE_SCHEMA,
-        temperature: 0.3, 
+        temperature: 0.1,
       },
     });
 
     const rawResponse = cleanGeminiResponse(response?.text || '');
     const parsed = safeJsonParse(rawResponse);
-    if (!parsed) throw new Error(`Falha crítica no parse JSON: ${rawResponse}`);
+    
+    if (!parsed || typeof parsed !== 'object' || !parsed.playbook_detalhado) {
+      throw new Error("Falha na validação da estrutura de resposta da IA.");
+    }
 
     return {
       analysis: parsed as unknown as AnalysisResult,
       rawPrompt: prompt,
       rawResponse: rawResponse
     };
-
-  } catch (error: any) {
-    console.error(`[ANALYSIS ERROR] Falha na Call ${call.id}:`, error.message);
+  } catch (error) {
+    console.error("Erro na análise Gemini:", error);
     throw error;
   }
 }
 
 export async function updateDailyStats(callData: any, analysis: any, isUpdate: boolean = false) {
   try {
-    const callDate = callData.callTimestamp ? callData.callTimestamp.toDate() : new Date();
-    const nowInBrazil = new Intl.DateTimeFormat('pt-BR', {
-      timeZone: 'America/Sao_Paulo',
-      year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(callDate);
-    const dayId = nowInBrazil.split('/').reverse().join('-'); 
+    const dayId = new Date().toISOString().split('T')[0];
     const statsRef = db.collection('dashboard_stats').doc(dayId);
-    const sdrKey = callData.ownerEmail || callData.ownerName || "Desconhecido";
-    const sdrName = callData.ownerName || "Desconhecido";
+    const sdrKey = callData.ownerEmail || "Desconhecido";
 
-    const isValidaParaRanking = analysis.status_final !== 'NAO_SE_APLICA' && 
-                                analysis.status_final !== 'NAO_IDENTIFICADO' &&
-                                analysis.nota_spin !== null;
+    const isValida = analysis.status_final !== 'NAO_SE_APLICA' && analysis.nota_spin !== null;
+    const nota = isValida ? Number(analysis.nota_spin || 0) : 0;
 
-    const nota = isValidaParaRanking ? Number(analysis.nota_spin || 0) : 0;
-    const totalIncrement = isUpdate ? 0 : 1;
-
-    const updatePayload: any = {
-      date: dayId,
-      updatedAt: FieldValue.serverTimestamp(),
-      total_calls: FieldValue.increment(totalIncrement),
-      valid_calls: isValidaParaRanking && isUpdate ? FieldValue.increment(1) : FieldValue.increment(0),
-      sum_notes: isValidaParaRanking && isUpdate ? FieldValue.increment(nota) : FieldValue.increment(0),
-    };
-
-    updatePayload[`sdr_ranking.${sdrKey}.total`] = FieldValue.increment(totalIncrement);
-    updatePayload[`sdr_ranking.${sdrKey}.ownerName`] = sdrName;
-    updatePayload[`sdr_ranking.${sdrKey}.ownerEmail`] = sdrKey;
-    
-    if (isUpdate && isValidaParaRanking) {
-      updatePayload[`sdr_ranking.${sdrKey}.sum_notes`] = FieldValue.increment(nota);
-      updatePayload[`sdr_ranking.${sdrKey}.valid_count`] = FieldValue.increment(1);
-    }
-
-    await statsRef.set(updatePayload, { merge: true });
+    await statsRef.set({
+      [`sdr_ranking.${sdrKey}.total`]: FieldValue.increment(isUpdate ? 0 : 1),
+      [`sdr_ranking.${sdrKey}.sum_notes`]: FieldValue.increment(isUpdate && isValida ? nota : 0),
+      [`sdr_ranking.${sdrKey}.ownerName`]: callData.ownerName || "SDR",
+      [`sdr_ranking.${sdrKey}.ownerEmail`]: sdrKey,
+    }, { merge: true });
   } catch (error) {
-    console.error("❌ [COFRE ERROR]:", error);
+    console.error("❌ [STATS ERROR]:", error);
   }
 }
 
-/**
- * 🏆 ATUALIZAÇÃO DO PLACAR GLOBAL POR SDR (MENSAL)
- */
 export async function updateSdrGlobalStats(ownerEmail: string, ownerName: string, nota: number) {
-  if (!ownerEmail) return;
-  
-  // 🚩 SAFRA MENSAL: Gera a chave do mês atual (Ex: 2024_04)
-  const now = new Date();
-  const monthKey = `${now.getFullYear()}_${String(now.getMonth() + 1).padStart(2, '0')}`;
-  
-  // 🚩 ID ÚNICO: Composto por e-mail sanitizado + mês
-  const safeId = `${ownerEmail.replace(/[^a-zA-Z0-9]/g, "_").toLowerCase()}_${monthKey}`;
-  const sdrRef = db.collection('sdr_stats').doc(safeId);
-  
-  try {
-    await db.runTransaction(async (transaction) => {
-      const doc = await transaction.get(sdrRef);
-      
-      if (!doc.exists) {
-        transaction.set(sdrRef, {
-          ownerName: ownerName,
-          ownerEmail: ownerEmail,
-          monthKey: monthKey, // Auditoria de safra
-          totalCalls: 1,
-          totalScore: nota,
-          averageScore: nota,
-          lastUpdated: FieldValue.serverTimestamp()
-        });
-      } else {
-        const data = doc.data()!;
-        const newTotalCalls = (data.totalCalls || 0) + 1;
-        const newTotalScore = (data.totalScore || 0) + nota;
-        const newAverage = newTotalScore / newTotalCalls;
+  const monthKey = `${new Date().getFullYear()}_${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+  const sdrRef = db.collection('sdr_stats').doc(`${ownerEmail}_${monthKey}`);
 
-        transaction.update(sdrRef, {
-          totalCalls: newTotalCalls,
-          totalScore: newTotalScore,
-          averageScore: Number(newAverage.toFixed(2)),
-          lastUpdated: FieldValue.serverTimestamp()
-        });
-      }
-    });
-    console.log(`🏆 [PLACAR MENSAL] SDR ${ownerEmail} atualizado para ${monthKey}.`);
-  } catch (error) {
-    console.error(`❌ [ERRO NO PLACAR] Falha ao atualizar ${ownerEmail}:`, error);
-  }
+  await db.runTransaction(async (transaction) => {
+    const doc = await transaction.get(sdrRef);
+    if (!doc.exists) {
+      transaction.set(sdrRef, { ownerName, ownerEmail, totalCalls: 1, totalScore: nota, averageScore: nota });
+    } else {
+      const data = doc.data()!;
+      const newTotal = (data.totalCalls || 0) + 1;
+      const newScore = (data.totalScore || 0) + nota;
+      transaction.update(sdrRef, { totalCalls: newTotal, totalScore: newScore, averageScore: newScore / newTotal });
+    }
+  });
 }
 
 export async function listAnalyses(filters: any, limitCount: number = 10) {
-  try {
-    let query: FirebaseFirestore.Query = db.collection('calls_analysis')
-      .orderBy('callTimestamp', 'desc')
-      .orderBy('__name__', 'asc');
-
-    if (filters.ownerEmail) query = query.where('ownerEmail', '==', filters.ownerEmail);
-    if (filters.status_final) query = query.where('status_final', '==', filters.status_final);
-
-    if (filters.lastVisible) {
-      const lastDoc = await db.collection('calls_analysis').doc(filters.lastVisible).get();
-      if (lastDoc.exists) query = query.startAfter(lastDoc);
-    }
-
-    const snapshot = await query.limit(limitCount).get();
-    if (snapshot.empty) return { calls: [], lastVisible: null };
-
-    const calls = snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...data,
-        callTimestamp: data.callTimestamp?.toDate?.()?.toISOString() || data.callTimestamp,
-        createdAt: data.createdAt?.toDate?.()?.toISOString() || data.createdAt,
-      };
-    });
-
-    return { calls, lastVisible: snapshot.docs[snapshot.docs.length - 1].id };
-  } catch (error: any) {
-    throw new Error(`Erro ao listar análises: ${error.message}`);
-  }
+  let query: FirebaseFirestore.Query = db.collection('calls_analysis').orderBy('callTimestamp', 'desc');
+  if (filters.ownerEmail) query = query.where('ownerEmail', '==', filters.ownerEmail);
+  const snapshot = await query.limit(limitCount).get();
+  return {
+    calls: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })),
+    lastVisible: snapshot.docs[snapshot.docs.length - 1]?.id
+  };
 }

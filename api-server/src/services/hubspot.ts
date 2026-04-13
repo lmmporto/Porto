@@ -1,13 +1,14 @@
 import { hubspot } from "../clients.js";
 import { CONFIG } from "../config.js";
 import { firstFilled } from "../utils.js";
+import type { AnalysisResult } from "./analysis.service.js"; // 🚩 IMPORT ADICIONADO
 
 // --- INTERFACES ---
 
 export interface OwnerDetails {
   ownerId: string | null;
   ownerName: string;
-  ownerEmail: string | null; 
+  ownerEmail: string | null;
   teamId: string | null;
   teamName: string;
   userId: string | null;
@@ -16,19 +17,21 @@ export interface OwnerDetails {
 export interface CallData {
   id: string;
   portalId: string;
-  hubspotCallId?: string; 
-  callId?: string;        
+  hubspotCallId?: string;
+  callId?: string;
   title: string;
   ownerId: string;
   durationMs: number;
   status: string;
-  disposition: string; 
-  wasConnected: boolean; 
+  disposition: string;
+  wasConnected: boolean;
   timestamp: string;
   recordingUrl: string;
   transcript: string;
   transcriptSourceType: string;
   transcriptLength: number;
+  lastAnalysisVersion?: string;
+  analysisResult?: AnalysisResult; // 🚩 AGORA RECONHECIDO CORRETAMENTE
 
   // Novos campos operacionais
   transcriptSource?: string | null;
@@ -73,13 +76,13 @@ async function fetchTranscriptFromHubSpot(transcriptId: string): Promise<string>
 export async function fetchOwnerDetails(ownerId: string | null): Promise<OwnerDetails> {
   try {
     if (!ownerId) {
-      return { 
-        ownerId: null, 
-        ownerName: "Sem owner", 
+      return {
+        ownerId: null,
+        ownerName: "Sem owner",
         ownerEmail: null,
-        teamId: null, 
-        teamName: "Sem equipe", 
-        userId: null 
+        teamId: null,
+        teamName: "Sem equipe",
+        userId: null
       };
     }
 
@@ -95,14 +98,15 @@ export async function fetchOwnerDetails(ownerId: string | null): Promise<OwnerDe
       teamName: data?.teams?.[0]?.name || "Sem equipe",
       userId: data?.userId || data?.userIdIncludingInactive || null,
     };
+
   } catch (error) {
-    return { 
-      ownerId: String(ownerId), 
-      ownerName: `Owner ${ownerId}`, 
+    return {
+      ownerId: String(ownerId),
+      ownerName: `Owner ${ownerId}`,
       ownerEmail: null,
-      teamId: null, 
-      teamName: "Sem equipe", 
-      userId: null 
+      teamId: null,
+      teamName: "Sem equipe",
+      userId: null
     };
   }
 }
@@ -110,8 +114,8 @@ export async function fetchOwnerDetails(ownerId: string | null): Promise<OwnerDe
 export async function fetchCall(callId: string): Promise<CallData> {
   // 🚩 LISTA EXPANDIDA: Cobrindo todas as variações de nomes de campos do HubSpot
   const propertiesToFetch = [
-    'hs_call_title', 'hs_call_duration', 'hs_call_recording_url', 
-    'hs_call_status', 'hs_call_body', 'hs_call_transcript', 
+    'hs_call_title', 'hs_call_duration', 'hs_call_recording_url',
+    'hs_call_status', 'hs_call_body', 'hs_call_transcript',
     'hs_analytics_transcript_id', 'hubspot_owner_id', 'hs_portal_id',
     'url_gravacao_chamada', 'recording_url', 'hs_call_disposition', 'hs_createdate'
   ];
@@ -121,7 +125,7 @@ export async function fetchCall(callId: string): Promise<CallData> {
   });
 
   const props: Record<string, any> = data?.properties || {};
-  
+
   // 🚩 LÓGICA DE FALLBACK (O "OU" LÓGICO):
   const recording = props.hs_call_recording_url || props.url_gravacao_chamada || props.recording_url || "";
   const transcript = props.hs_call_transcript || "";
@@ -157,12 +161,12 @@ export async function fetchCall(callId: string): Promise<CallData> {
 
 export async function searchCallsInHubSpot({ limit = 100 }: { limit?: number }) {
   const properties = [
-    'hs_call_title', 'hs_call_duration', 'hs_call_recording_url', 
+    'hs_call_title', 'hs_call_duration', 'hs_call_recording_url',
     'hs_call_status', 'hs_analytics_transcript_id', 'hubspot_owner_id', 'hs_portal_id'
   ];
-  
+
   const body = {
-    limit: Number(limit) || 100, 
+    limit: Number(limit) || 100,
     sorts: [{ propertyName: "hs_timestamp", direction: "DESCENDING" }],
     properties,
     filterGroups: [
