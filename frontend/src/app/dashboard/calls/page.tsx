@@ -11,9 +11,8 @@ import {
   Loader2,
   Hourglass,
   MinusCircle,
-  RefreshCw
+  RefreshCw,
 } from 'lucide-react';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -25,6 +24,80 @@ import { useToast } from '@/hooks/use-toast';
 import { useCallContext } from '@/context/CallContext';
 import { ManualTriggerCard } from '@/components/dashboard/ManualTriggerCard';
 
+// ─── Badge helper ─────────────────────────────────────────────────────────────
+
+function StatusBadge({ call }: { call: SDRCall }) {
+  const isDone = call.processingStatus === 'DONE';
+  const isRotaC = call.status_final === 'NAO_SE_APLICA';
+  const nota = Number(call.nota_spin || 0);
+
+  if (isRotaC) {
+    return (
+      <Badge className="bg-slate-800 text-slate-400 border-slate-700 shadow-none uppercase text-[9px] font-bold">
+        <MinusCircle className="w-3 h-3 mr-1" /> Descarte
+      </Badge>
+    );
+  }
+
+  if (!isDone) {
+    const isProcessing = call.processingStatus === 'PROCESSING';
+    return (
+      <Badge className="bg-sky-500/10 text-sky-400 border-sky-500/20 shadow-none uppercase text-[9px] font-bold">
+        {isProcessing
+          ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+          : <Hourglass className="w-3 h-3 mr-1" />}
+        {isProcessing ? 'Analisando' : 'Tentativa'}
+      </Badge>
+    );
+  }
+
+  if (nota >= 8) {
+    return (
+      <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-none uppercase text-[9px] font-bold">
+        <CheckCircle2 className="w-3 h-3 mr-1" /> Aprovado
+      </Badge>
+    );
+  }
+  if (nota >= 5) {
+    return (
+      <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/20 shadow-none uppercase text-[9px] font-bold">
+        <AlertCircle className="w-3 h-3 mr-1" /> Atenção
+      </Badge>
+    );
+  }
+  return (
+    <Badge className="bg-rose-500/10 text-rose-400 border-rose-500/20 shadow-none uppercase text-[9px] font-bold">
+      <XCircle className="w-3 h-3 mr-1" /> Reprovado
+    </Badge>
+  );
+}
+
+// ─── Nota cell ────────────────────────────────────────────────────────────────
+
+function NotaCell({ call }: { call: SDRCall }) {
+  const isDone = call.processingStatus === 'DONE';
+  const isApplicable = call.status_final !== 'NAO_SE_APLICA';
+  if (!isDone || !isApplicable) {
+    return <span className="text-slate-600 font-bold">--</span>;
+  }
+  const nota = Number(call.nota_spin || 0);
+  const colorClass =
+    nota >= 8 ? 'text-emerald-400' :
+      nota >= 5 ? 'text-amber-400' :
+        'text-rose-400';
+  return <span className={`font-black tabular-nums ${colorClass}`}>{nota.toFixed(1)}</span>;
+}
+
+// ─── Duração ─────────────────────────────────────────────────────────────────
+
+function formatDuration(ms: number) {
+  const min = Math.floor(ms / 60000);
+  const sec = Math.floor((ms % 60000) / 1000);
+  return min > 0 ? `${min}m ${sec}s` : `${sec}s`;
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
+
 export default function CallsListPage() {
   const { calls, isLoading, applyFilter, loadMore, refresh, hasMore } = useCallContext();
 
@@ -33,20 +106,23 @@ export default function CallsListPage() {
   const { toast } = useToast();
 
   useEffect(() => {
-    // 🚩 "as any" desativa o alerta vermelho do TypeScript para propriedades flexíveis
     applyFilter({
       startDate: '',
       endDate: '',
       sort: 'date_desc',
-      minScore: 0
+      minScore: 0,
     } as any);
-
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const filteredCalls = calls.filter(call =>
+    call.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    call.ownerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    call.teamName?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   const handleExportZip = async () => {
     if (filteredCalls.length === 0) return;
-
     setIsExporting(true);
     try {
       const zip = new JSZip();
@@ -56,185 +132,180 @@ export default function CallsListPage() {
       });
       const content = await zip.generateAsync({ type: 'blob' });
       saveAs(content, `analise-chamadas-export-${new Date().toISOString().split('T')[0]}.zip`);
-      toast({ title: "Exportação Concluída", description: `${filteredCalls.length} chamadas exportadas.` });
-    } catch (err) {
-      toast({ variant: "destructive", title: "Erro na Exportação" });
+      toast({ title: 'Exportação Concluída', description: `${filteredCalls.length} chamadas exportadas.` });
+    } catch {
+      toast({ variant: 'destructive', title: 'Erro na Exportação' });
     } finally {
       setIsExporting(false);
     }
   };
 
-  const getStatusBadge = (call: SDRCall) => {
-    const isDone = call.processingStatus === "DONE";
-    const isRotaC = call.status_final === "NAO_SE_APLICA";
-    const nota = Number(call.nota_spin || 0);
-
-    if (isRotaC) {
-      return (
-        <Badge className="bg-slate-100 text-slate-500 border-slate-200 shadow-none uppercase text-[9px] font-bold">
-          <MinusCircle className="w-3 h-3 mr-1" /> Descarte
-        </Badge>
-      );
-    }
-
-    if (!isDone) {
-      const isProcessing = call.processingStatus === "PROCESSING";
-      return (
-        <Badge className="bg-blue-50 text-blue-600 border-blue-100 shadow-none uppercase text-[9px] font-bold">
-          {isProcessing ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : <Hourglass className="w-3 h-3 mr-1" />}
-          {isProcessing ? "Analisando" : "Tentativa"}
-        </Badge>
-      );
-    }
-
-    if (nota >= 8) {
-      return (
-        <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 shadow-none uppercase text-[9px] font-bold">
-          <CheckCircle2 className="w-3 h-3 mr-1" /> Aprovado
-        </Badge>
-      );
-    }
-    if (nota >= 5) {
-      return (
-        <Badge className="bg-sky-50 text-sky-700 border-sky-200 shadow-none uppercase text-[9px] font-bold">
-          <AlertCircle className="w-3 h-3 mr-1" /> Atenção
-        </Badge>
-      );
-    }
-    return (
-      <Badge className="bg-rose-50 text-rose-700 border-rose-200 shadow-none uppercase text-[9px] font-bold">
-        <XCircle className="w-3 h-3 mr-1" /> Reprovado
-      </Badge>
-    );
-  };
-
-  const filteredCalls = calls.filter(call =>
-    call.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    call.ownerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    call.teamName?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
   return (
     <div className="space-y-6">
+
+      {/* ─── Header ──────────────────────────────────────────────────── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-headline font-bold text-slate-900">Histórico de Chamadas</h1>
-          <p className="text-slate-400 text-sm mt-1">Dados consolidados de todas as avaliações e tentativas.</p>
+          <p className="text-indigo-400 text-[10px] font-black uppercase tracking-[0.3em] mb-1">
+            Histórico
+          </p>
+          <h1 className="text-2xl font-black text-white tracking-tight">Chamadas Analisadas</h1>
+          <p className="text-slate-500 text-sm mt-1">
+            Avaliações consolidadas do seu time.
+          </p>
         </div>
+
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 text-xs font-bold uppercase tracking-wider"
+          <button
             onClick={() => refresh()}
             disabled={isLoading}
+            className="flex items-center gap-2 h-9 px-4 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700 disabled:opacity-40 transition-all text-xs font-bold uppercase tracking-wider"
           >
-            {isLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+            <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
             Atualizar
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 text-xs font-bold uppercase tracking-wider"
+          </button>
+
+          <button
             onClick={handleExportZip}
             disabled={isExporting || filteredCalls.length === 0}
+            className="flex items-center gap-2 h-9 px-4 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700 disabled:opacity-30 transition-all text-xs font-bold uppercase tracking-wider"
           >
-            {isExporting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <FileArchive className="w-4 h-4 mr-2" />}
+            {isExporting
+              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              : <FileArchive className="w-3.5 h-3.5" />}
             Exportar ZIP
-          </Button>
+          </button>
         </div>
       </div>
 
-      <ManualTriggerCard theme="light" />
+      {/* ─── Gatilho manual ──────────────────────────────────────────── */}
+      <ManualTriggerCard theme="dark" />
 
-      <Card className="border-slate-100 shadow-none">
-        <CardHeader className="pb-4">
-          <div className="flex flex-col md:flex-row md:items-center gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-300" />
-              <Input
-                className="pl-10 h-9 text-sm border-slate-100 focus:border-slate-300"
-                placeholder="Buscar por título, SDR ou time..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
+      {/* ─── Tabela ──────────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 overflow-hidden">
+
+        {/* Search bar */}
+        <div className="px-4 py-3 border-b border-slate-800">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
+            <Input
+              className="pl-10 h-9 text-sm bg-slate-800 border-slate-700 text-slate-200 placeholder:text-slate-600 focus:border-indigo-500 focus:ring-0 rounded-lg"
+              placeholder="Buscar por título, SDR ou time..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="rounded-xl border border-slate-100 overflow-hidden">
-            <div className="relative w-full overflow-auto">
-              <table className="w-full caption-bottom text-sm">
-                <thead className="bg-slate-50/50">
-                  <tr className="border-b border-slate-100 transition-colors">
-                    <th className="h-10 px-4 text-left align-middle font-bold text-[10px] text-slate-400 uppercase tracking-widest">Título</th>
-                    <th className="h-10 px-4 text-left align-middle font-bold text-[10px] text-slate-400 uppercase tracking-widest">SDR / Time</th>
-                    <th className="h-10 px-4 text-left align-middle font-bold text-[10px] text-slate-400 uppercase tracking-widest">Status</th>
-                    <th className="h-10 px-4 text-left align-middle font-bold text-[10px] text-slate-400 uppercase tracking-widest text-center">Nota</th>
-                    <th className="h-10 px-4 text-left align-middle font-bold text-[10px] text-slate-400 uppercase tracking-widest">Duração</th>
-                    <th className="h-10 px-4 text-right align-middle font-medium text-slate-400 uppercase tracking-widest"></th>
+        </div>
+
+        {/* Table */}
+        <div className="relative w-full overflow-auto">
+          <table className="w-full caption-bottom text-sm">
+            <thead>
+              <tr className="border-b border-slate-800 bg-slate-800/40">
+                <th className="h-10 px-4 text-left align-middle font-bold text-[9px] text-slate-500 uppercase tracking-widest">Título</th>
+                <th className="h-10 px-4 text-left align-middle font-bold text-[9px] text-slate-500 uppercase tracking-widest">SDR / Time</th>
+                <th className="h-10 px-4 text-left align-middle font-bold text-[9px] text-slate-500 uppercase tracking-widest">Status</th>
+                <th className="h-10 px-4 text-center align-middle font-bold text-[9px] text-slate-500 uppercase tracking-widest">Nota</th>
+                <th className="h-10 px-4 text-left align-middle font-bold text-[9px] text-slate-500 uppercase tracking-widest">Duração</th>
+                <th className="h-10 px-4" />
+              </tr>
+            </thead>
+
+            <tbody className="[&_tr:last-child]:border-0 divide-y divide-slate-800/60">
+              {isLoading && calls.length === 0 ? (
+
+                <tr>
+                  <td colSpan={6} className="h-40 text-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <Loader2 className="w-5 h-5 text-slate-600 animate-spin" />
+                      <span className="text-slate-600 text-xs italic">Carregando chamadas…</span>
+                    </div>
+                  </td>
+                </tr>
+
+              ) : filteredCalls.length === 0 ? (
+
+                <tr>
+                  <td colSpan={6} className="h-40 text-center">
+                    <span className="text-slate-600 text-xs italic">Nenhuma chamada encontrada.</span>
+                  </td>
+                </tr>
+
+              ) : (
+
+                filteredCalls.map((call) => (
+                  <tr
+                    key={call.id}
+                    className="border-b border-slate-800/60 transition-colors hover:bg-slate-800/30 group"
+                  >
+                    {/* Título */}
+                    <td className="p-4 align-middle">
+                      <span className="font-semibold text-slate-200 text-xs leading-snug line-clamp-2">
+                        {call.title || 'Chamada sem Título'}
+                      </span>
+                    </td>
+
+                    {/* SDR / Time */}
+                    <td className="p-4 align-middle">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="font-bold text-xs text-slate-300">{call.ownerName}</span>
+                        <span className="text-[10px] text-slate-600 uppercase tracking-tight">{call.teamName}</span>
+                      </div>
+                    </td>
+
+                    {/* Status */}
+                    <td className="p-4 align-middle">
+                      <StatusBadge call={call} />
+                    </td>
+
+                    {/* Nota */}
+                    <td className="p-4 align-middle text-center text-xs">
+                      <NotaCell call={call} />
+                    </td>
+
+                    {/* Duração */}
+                    <td className="p-4 align-middle text-slate-500 text-xs font-medium tabular-nums">
+                      {formatDuration(Number(call.durationMs || 0))}
+                    </td>
+
+                    {/* Ação */}
+                    <td className="p-4 align-middle text-right">
+                      <Button
+                        asChild
+                        size="sm"
+                        variant="ghost"
+                        className="h-8 px-3 text-[10px] font-bold uppercase tracking-widest text-slate-600 hover:text-indigo-400 hover:bg-indigo-500/10 transition-colors"
+                      >
+                        <Link href={`/dashboard/calls/${call.id}`}>
+                          Revisar <ChevronRight className="w-3 h-3 ml-1" />
+                        </Link>
+                      </Button>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="[&_tr:last-child]:border-0">
-                  {isLoading && calls.length === 0 ? (
-                    <tr><td colSpan={6} className="h-32 text-center text-slate-400 text-xs italic">Carregando chamadas...</td></tr>
-                  ) : filteredCalls.length === 0 ? (
-                    <tr><td colSpan={6} className="h-32 text-center text-slate-400 text-xs italic">Nenhuma chamada encontrada.</td></tr>
-                  ) : (
-                    filteredCalls.map((call) => (
-                      <tr key={call.id} className="border-b border-slate-50 transition-colors hover:bg-slate-50/30 group">
-                        <td className="p-4 align-middle font-semibold text-slate-900 text-xs">{call.title || 'Chamada sem Título'}</td>
-                        <td className="p-4 align-middle">
-                          <div className="flex flex-col">
-                            <span className="font-bold text-xs text-slate-700">{call.ownerName}</span>
-                            <span className="text-[10px] text-slate-400 uppercase tracking-tight">{call.teamName}</span>
-                          </div>
-                        </td>
-                        <td className="p-4 align-middle">
-                          {getStatusBadge(call)}
-                        </td>
-                        <td className={`p-4 align-middle font-bold text-center ${call.processingStatus === 'DONE' && Number(call.nota_spin) < 5 ? 'text-rose-600' : 'text-slate-900'}`}>
-                          {call.processingStatus === "DONE" && call.status_final !== "NAO_SE_APLICA"
-                            ? Number(call.nota_spin || 0).toFixed(1)
-                            : "--"}
-                        </td>
-                        <td className="p-4 align-middle text-slate-500 text-xs font-medium">
-                          {(() => {
-                            const ms = Number(call.durationMs || 0);
-                            const min = Math.floor(ms / 60000);
-                            const sec = Math.floor((ms % 60000) / 1000);
-                            return min > 0 ? `${min}m ${sec}s` : `${sec}s`;
-                          })()}
-                        </td>
-                        <td className="p-4 align-middle text-right">
-                          <Button asChild size="sm" variant="ghost" className="h-8 text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-900">
-                            <Link href={`/dashboard/calls/${call.id}`}>
-                              Revisar <ChevronRight className="w-3 h-3 ml-1" />
-                            </Link>
-                          </Button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                ))
 
-            {hasMore && (
-              <div className="p-4 border-t border-slate-100 flex justify-center bg-slate-50/50">
-                <Button
-                  variant="ghost"
-                  className="w-full max-sm py-6 text-slate-400 hover:text-indigo-600 font-bold text-xs tracking-widest uppercase border-2 border-dashed border-slate-200 rounded-xl"
-                  onClick={() => loadMore()}
-                  disabled={isLoading}
-                >
-                  {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : "Carregar mais chamadas"}
-                </Button>
-              </div>
-            )}
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Carregar mais */}
+        {hasMore && (
+          <div className="p-4 border-t border-slate-800 flex justify-center bg-slate-900/40">
+            <Button
+              variant="ghost"
+              className="w-full py-5 text-slate-600 hover:text-indigo-400 hover:bg-indigo-500/10 font-bold text-xs tracking-widest uppercase border border-dashed border-slate-800 hover:border-indigo-500/30 rounded-xl transition-all"
+              onClick={() => loadMore()}
+              disabled={isLoading}
+            >
+              {isLoading
+                ? <Loader2 className="w-3.5 h-3.5 mr-2 animate-spin" />
+                : 'Carregar mais chamadas'}
+            </Button>
           </div>
-        </CardContent>
-      </Card>
+        )}
+
+      </div>
     </div>
   );
 }

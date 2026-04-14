@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { 
-  UploadCloud, 
+import {
+  UploadCloud,
   LogOut,
   Users,
   LayoutDashboard,
@@ -73,9 +73,9 @@ export function SidebarNav() {
   ];
 
   return (
-    <Sidebar variant="sidebar" collapsible="icon" className="border-r border-slate-100 bg-white">
+    <Sidebar variant="sidebar" collapsible="icon" className="border-r border-slate-800 bg-slate-950">
       <SidebarHeader className="p-6">
-        <Link href={isAdmin ? "/dashboard" : "/me"} className="flex items-center gap-3 text-slate-900 group">
+        <Link href={isAdmin ? "/dashboard" : "/me"} className="flex items-center gap-3 text-slate-200 group">
           <NiboLogo className="text-sm group-data-[collapsible=icon]:hidden" />
         </Link>
       </SidebarHeader>
@@ -86,26 +86,26 @@ export function SidebarNav() {
             <SidebarMenu className="gap-1">
               {menuItems.map((item) => {
                 const isActive = item.href === '/dashboard' || item.href === '/me'
-                  ? pathname === item.href 
+                  ? pathname === item.href
                   : pathname.startsWith(item.href);
 
                 return (
                   <SidebarMenuItem key={item.name}>
-                    <SidebarMenuButton 
-                      asChild 
+                    <SidebarMenuButton
+                      asChild
                       isActive={isActive}
                       tooltip={item.name}
                       className={cn(
                         "transition-all duration-200 rounded-lg h-10 px-3",
                         isActive
-                          ? "bg-indigo-50 text-indigo-700 font-bold" 
-                          : "text-slate-400 hover:text-slate-900 hover:bg-slate-50"
+                          ? "bg-indigo-500/10 text-indigo-400 font-bold"
+                          : "text-slate-500 hover:text-slate-200 hover:bg-slate-800"
                       )}
                     >
                       <Link href={item.href} className="flex items-center gap-3">
                         <item.icon className={cn(
-                          "w-4 h-4", 
-                          isActive ? "text-indigo-600" : "text-slate-300"
+                          "w-4 h-4",
+                          isActive ? "text-indigo-400" : "text-slate-600"
                         )} />
                         <span className="text-[10px] font-black uppercase tracking-widest">
                           {item.name}
@@ -120,15 +120,15 @@ export function SidebarNav() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-6 border-t border-slate-50">
+      <SidebarFooter className="p-6 border-t border-slate-800">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton 
+            <SidebarMenuButton
               onClick={handleLogout}
-              className="text-slate-400 hover:text-red-500 transition-colors h-10 px-3"
+              className="text-slate-600 hover:text-rose-400 hover:bg-rose-500/10 transition-colors h-10 px-3"
               tooltip="Sair"
             >
-              <LogOut className="w-4 h-4 text-slate-300 group-hover:text-red-500" />
+              <LogOut className="w-4 h-4" />
               <span className="text-[10px] font-black uppercase tracking-widest">Sair</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
