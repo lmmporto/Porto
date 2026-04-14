@@ -20,6 +20,7 @@ router.get("/", async (req: Request, res: Response) => {
     const mode = req.query.mode as string; 
     const rota = req.query.rota as string; 
     const filterEmail = (req.query.ownerEmail as string || "").toLowerCase().trim();
+    const minScore = req.query.minScore ? Number(req.query.minScore) : null;
     
     const limit = Math.min(Number(req.query.limit || 10), 50);
     const startAfter = req.query.lastVisible as string;
@@ -47,8 +48,15 @@ router.get("/", async (req: Request, res: Response) => {
       query = query.where("rota", "==", rota);
     }
 
+    // 🏛️ ARQUITETO: Filtro de Nota Mínima
+    if (minScore !== null && !isNaN(minScore)) {
+      console.log(`🎯 [BACKEND] Aplicando filtro de Nota Mínima: ${minScore}`);
+      query = query.where("nota_spin", ">=", minScore);
+    }
+
     if (mode === 'ranking') {
       // 🏛️ O ARQUITETO: A vitrine agora é estritamente para a elite (>= 7.0)
+      // Se minScore for passado, ele pode sobrescrever ou complementar esta lógica
       query = query
         .where("nota_spin", ">=", 7.0)
         .orderBy("nota_spin", "desc")
@@ -119,7 +127,6 @@ router.get("/:id", async (req: Request, res: Response) => {
 
 // 3. WEBHOOK
 router.post("/hubspot-webhook", async (req: Request, res: Response) => {
-  // 🏛️ ARQUITETO: Log de entrada bruto para debug total
   console.log(`📩 [WEBHOOK] Sinal recebido do HubSpot. Itens no lote: ${Array.isArray(req.body) ? req.body.length : 1}`);
   
   try {

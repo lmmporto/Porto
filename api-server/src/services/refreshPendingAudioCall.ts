@@ -31,7 +31,7 @@ export async function refreshPendingAudioCall(callId: string) {
     const props = response.data.properties;
     const durationMs = Number(props.hs_call_duration || 0);
 
-    // 🚩 O FILTRO AGORA VIVE AQUI: Descarte por duração
+    // 🚩 O FILTRO: Descarte por duração
     if (durationMs < MIN_DURATION_MS) {
       console.log(`⏭️ [WORKER] Chamada ${callId} descartada por ser curta demais (${durationMs}ms)`);
       
@@ -49,6 +49,11 @@ export async function refreshPendingAudioCall(callId: string) {
     const hubspotTranscript = String(props.hs_call_transcript || '').trim();
     const recordingUrl = String(props.hs_call_recording_url || '').trim();
     
+    // 🏛️ ARQUITETO: Capturando a data real da ligação para evitar 'Invalid Date'
+    const hsTimestamp = props.hs_timestamp || props.hs_createdate;
+    const actualCallDate = hsTimestamp ? new Date(hsTimestamp) : new Date();
+    const safeDate = isNaN(actualCallDate.getTime()) ? new Date() : actualCallDate;
+
     const hasTranscript = hubspotTranscript.length >= 100;
     const hasAudio = Boolean(recordingUrl);
 
@@ -75,6 +80,7 @@ export async function refreshPendingAudioCall(callId: string) {
       hasTranscript,
       durationMs,
       audioFetchAttempts: newAttempts,
+      callTimestamp: safeDate, // 🚩 CORREÇÃO DA DATA AQUI
       lastAudioCheckAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp()
     };
