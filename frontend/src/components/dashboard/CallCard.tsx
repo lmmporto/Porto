@@ -1,7 +1,7 @@
 "use client";
 
 import Link from 'next/link';
-import { ChevronRight, Clock, Database, Radio, Hourglass, MinusCircle, Phone, ArrowRight } from 'lucide-react';
+import { Phone, ArrowRight } from 'lucide-react';
 import type { SDRCall } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -10,28 +10,22 @@ interface CallCardProps {
 }
 
 export function CallCard({ call }: CallCardProps) {
-  // 🚩 LÓGICA DE PROCESSAMENTO E SCORE
+  // 🏛️ ARQUITETO: Lógica de Processamento e Identificação de Rota
   const isDone = call.processingStatus === 'DONE';
-  const isRotaC = call.status_final === "NAO_SE_APLICA";
-  const isSkipped = call.processingStatus === "SKIPPED_FOR_AUDIT" || call.processingStatus === "SKIPPED_SHORT_CALL";
+  const isRotaC = call.rota === "ROTA_C" || call.status_final === "NAO_SE_APLICA";
   
-  const displayScore = isDone && !isRotaC ? Number(call.nota_spin || 0).toFixed(1) : '--';
-  
-  const statusText = isRotaC 
-    ? 'ROTA C' 
-    : isSkipped 
-      ? 'TENTATIVA' 
-      : isDone 
-        ? 'NOTA SPIN' 
-        : 'PROCESSANDO';
+  // 🏛️ ARQUITETO: displayScore agora é mais honesto com o estado da ligação
+  const displayScore = isDone && typeof call.nota_spin === 'number' ? call.nota_spin.toFixed(1) : '--';
 
-  // 🚩 SISTEMA DE CORES ATUALIZADO
+  // 🚩 SISTEMA DE CORES E LABELS ATUALIZADO
   const getTheme = () => {
-    if (!isDone || isRotaC || isSkipped) return { bg: "bg-slate-200", text: "text-slate-400" };
-    const score = Number(call.nota_spin || 0);
-    if (score >= 8) return { bg: "bg-emerald-500", text: "text-emerald-600" }; // Verde
-    if (score >= 5) return { bg: "bg-sky-300", text: "text-sky-500" };      // Azul Bebê
-    return { bg: "bg-rose-500", text: "text-rose-600" };                   // Vermelho
+    if (!isDone) return { color: "text-slate-500", label: "PROCESSANDO" };
+    if (isRotaC) return { color: "text-sky-400", label: "ROTA C" };
+    
+    const score = call.nota_spin || 0;
+    if (score >= 8) return { color: "text-emerald-400", label: "NOTA SPIN" };
+    if (score >= 5) return { color: "text-amber-400", label: "NOTA SPIN" };
+    return { color: "text-rose-400", label: "NOTA SPIN" };
   };
 
   const theme = getTheme();
@@ -52,20 +46,6 @@ export function CallCard({ call }: CallCardProps) {
     }
   };
 
-  const formatDuration = (ms: number | undefined) => {
-    if (!ms) return '0 min';
-    const minutes = Math.floor(Number(ms) / 60000);
-    const seconds = Math.floor((Number(ms) % 60000) / 1000);
-    return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-  };
-
-  const getInitials = (name: string) => {
-    if (!name || name === 'Desconhecido') return '?';
-    const parts = name.trim().split(' ');
-    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  };
-
   return (
     <Link href={`/dashboard/calls/${call.id}`}>
       <div className="bg-slate-900/50 border border-slate-800 hover:border-indigo-500/50 transition-all rounded-2xl p-5 group cursor-pointer">
@@ -75,18 +55,22 @@ export function CallCard({ call }: CallCardProps) {
               <Phone className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              <h3 className="text-sm font-bold text-slate-200 uppercase tracking-tight truncate">{call.title || 'Cliente Externo'}</h3>
-              <p className="text-[10px] text-slate-500 font-medium">{formatSimpleDate(call.callTimestamp || call.updatedAt)}</p>
+              <h3 className="text-sm font-bold text-slate-200 uppercase tracking-tight truncate">
+                {call.title || 'Cliente Externo'}
+              </h3>
+              {/* 🏛️ ARQUITETO: Prioridade para a data real da ligação */}
+              <p className="text-[10px] text-slate-500 font-medium">
+                {formatSimpleDate(call.callTimestamp || call.updatedAt)}
+              </p>
             </div>
           </div>
           
           <div className="flex items-center gap-6 shrink-0">
             <div className="text-right">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Score</p>
-              <p className={cn(
-                "text-xl font-black",
-                Number(call.nota_spin) >= 7 ? "text-emerald-400" : "text-amber-400"
-              )}>
+              <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+                {theme.label}
+              </p>
+              <p className={cn("text-xl font-black", theme.color)}>
                 {displayScore}
               </p>
             </div>

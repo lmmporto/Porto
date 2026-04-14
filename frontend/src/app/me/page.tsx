@@ -76,13 +76,16 @@ export default function SDRDashboardPage() {
   }, []);
 
   const stats = useMemo(() => {
-    const analisadas = calls.filter(c => c.nota_spin !== null);
-    const somaNotas = analisadas.reduce((acc, c) => acc + (Number(c.nota_spin) || 0), 0);
-    const media = analisadas.length > 0 ? (somaNotas / analisadas.length).toFixed(1) : "0";
+    // 🏛️ Filtramos apenas chamadas que REALMENTE têm nota para não distorcer a média
+    const analisadas = calls.filter(c => typeof c.nota_spin === 'number');
+    const totalAnalisadas = analisadas.length;
+    
+    const somaNotas = analisadas.reduce((acc, c) => acc + (c.nota_spin || 0), 0);
+    const mediaCalculada = totalAnalisadas > 0 ? (somaNotas / totalAnalisadas) : 0;
 
     return {
-      media: Number(media),
-      analisadas: analisadas.length,
+      media: Number(mediaCalculada.toFixed(1)),
+      analisadas: totalAnalisadas,
       total: calls.length,
       gaps: personalInsights?.gaps || [],
       insights: personalInsights?.insights || []
@@ -166,7 +169,6 @@ export default function SDRDashboardPage() {
                 <h2 className="text-xl font-bold text-white">Atividades Recentes</h2>
               </div>
 
-              {/* BARRA DE FILTROS */}
               <div className="flex flex-wrap gap-3">
                 <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-xl px-3 py-2">
                   <Calendar className="w-3.5 h-3.5 text-slate-500" />

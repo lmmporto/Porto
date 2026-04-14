@@ -1,21 +1,16 @@
-/**
- * Tipos de status final de uma análise.
- */
-export type StatusFinal = 
-  | "APROVADO" 
-  | "ATENCAO" 
-  | "REPROVADO" 
-  | "NAO_IDENTIFICADO" 
-  | "NAO_SE_APLICA";
+// --- ENUMS ---
+export type StatusFinal = "APROVADO" | "ATENCAO" | "REPROVADO" | "NAO_IDENTIFICADO" | "NAO_SE_APLICA";
+export type CallSource = "HUBSPOT" | "MANUAL" | "API4COM";
 
-export type CallSource = "HUBSPOT" | "MANUAL";
-
-/**
- * Status de processamento no Backend.
- */
 export type ProcessingStatus = 
+  | 'RECEIVED' 
+  | 'PENDING_AUDIO' 
+  | 'QUEUED' 
+  | 'PROCESSING' 
   | 'DONE' 
-  | 'PROCESSING'
+  | 'ERROR' 
+  | 'SKIPPED' 
+  | 'FAILED_NO_AUDIO'
   | 'SKIPPED_FOR_AUDIT' 
   | 'NOT_CONNECTED' 
   | 'SHORT_CALL' 
@@ -26,77 +21,79 @@ export type ProcessingStatus =
   | 'SKIPPED_EMPTY_TRANSCRIPT'
   | 'FAILED_ANALYSIS';
 
-/**
- * Filtros globais para listagem de ligações e dashboards.
- * 🚩 ALINHADO COM BACKEND (ownerName)
- */
+// --- FILTROS ---
 export interface CallFilters {
-  ownerName?: string;     // Identificador do SDR no Firestore
+  ownerEmail?: string;
+  ownerName?: string;
   startDate?: string;
   endDate?: string;
-  minScore?: number;
-  sort?: string;
-  [key: string]: any;     // Flexibilidade controlada
+  rota?: string;      // 🏛️ Adicionado
+  minScore?: number;  // 🏛️ Adicionado
+  mode?: 'ranking' | 'feed';
+  limit?: number;
+  [key: string]: any; // Mantém a flexibilidade que você já tinha
 }
 
-/**
- * Entidade principal representativa de uma ligação.
- */
+// --- ENTIDADE PRINCIPAL ---
 export interface SDRCall {
   id: string;
   callId: string;
-  
   hubspotCallId?: string; 
   portalId?: string;
-  callTimestamp: any; // Mantemos 'any' ou 'string' conforme seu uso atual
-  createdAt: any; 
-  updatedAt: any;
-  analyzedAt: string | null;
-
   title: string;
-   contactName?: string;
+  contactName?: string; // 🏛️ Preservado (Vital para a UI)
+  
   ownerId: string | null;
   ownerName: string;
   ownerEmail: string; 
-  teamId: string | null;
-  teamName: string;
+  teamId?: string | null;
+  teamName?: string;
+  
   durationMs: number;
   recordingUrl: string | null;
   
+  // 🚩 AJUSTE SÊNIOR: nota_spin deve aceitar null para não quebrar o front em chamadas novas
+  nota_spin: number | null; 
   status_final: StatusFinal;
-  nota_spin: number;
+  rota?: string; // 🏛️ Adicionado para o filtro de Rota A/B/C
+  
   source?: CallSource; 
   processingStatus?: ProcessingStatus;
   
-  // Conteúdo da análise
-  resumo: string;
-  alertas: string[];
-  playbook_detalhado?: string[]; // 🚩 ADICIONADO: O novo campo do ouro
-  ponto_atencao: string;
-  maior_dificuldade: string;
-  pontos_fortes: string[];
+  callTimestamp: any; 
+  createdAt: any; 
+  updatedAt: any;
+  analyzedAt?: string | null;
+
+  // Conteúdo da análise Gemini
+  resumo?: string;
+  alertas?: string[];
+  playbook_detalhado?: string[]; // 🏛️ Adicionado para o formato "[MM:SS] | Mentor:"
+  ponto_atencao?: string;
+  maior_dificuldade?: string;
+  pontos_fortes?: string[];
   perguntas_sugeridas?: string[];
   analise_escuta?: string;
+  rawPrompt?: string;
+  rawResponse?: string;
 }
 
-/**
- * Entrada de dados para o ranking de performance.
- */
+// --- RANKING E RESUMO ---
 export interface SDRRankingEntry {
+  ownerName: string;
+  ownerEmail: string;
   calls: number;         
   valid_calls: number;  
   sum_notes: number;    
   nota_media: number;   
 }
 
-/**
- * Resumo estatístico do Dashboard.
- */
 export interface DashboardSummary {
   total_calls: number;
   valid_calls: number;
   sum_notes: number;
   media_geral: number;
   sdr_ranking: Record<string, SDRRankingEntry>;
+  version?: string;
   empty?: boolean;
 }
