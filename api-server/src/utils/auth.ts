@@ -12,11 +12,11 @@ export async function checkIfAdmin(email: string): Promise<boolean> {
     const normalizedUserEmail = email.toLowerCase().trim();
 
     // 🚩 TRATAMENTO MULTI-TIPO (O Segredo da Resiliência)
-    
+
     // Caso 1: O banco tem uma LISTA de admins
     if (Array.isArray(adminsRaw)) {
-      return adminsRaw.some(adminEmail => 
-        typeof adminEmail === 'string' && 
+      return adminsRaw.some(adminEmail =>
+        typeof adminEmail === 'string' &&
         adminEmail.toLowerCase().trim() === normalizedUserEmail
       );
     }
@@ -29,6 +29,6 @@ export async function checkIfAdmin(email: string): Promise<boolean> {
     return false;
   } catch (error) {
     console.error("❌ [AUTH ERROR] Erro ao verificar admin:", error);
-    return false; 
+    return false;
   }
 }

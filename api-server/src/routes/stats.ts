@@ -6,53 +6,29 @@ import { updateDailyStats } from '../services/analysis.service.js';
 import { checkIfAdmin } from '../utils/auth.js';
 import NodeCache from 'node-cache';
 
-const router = Router();
-const cache = new NodeCache({ stdTTL: 3600, checkperiod: 600 });
-
-/**
- * GET /summary
- * Ranking Global Público + Métricas Individuais Filtradas.
- */
-router.get('/summary', async (req: Request, res: Response) => {
-  try {
-    if (!req.isAuthenticated() || !req.user) return res.status(401).json({ error: "Não autorizado" });
-
-    const userEmail = (req.user as any).email.toLowerCase().trim();
-    const isAdmin = await checkIfAdmin(userEmail);
-    const cacheKey = `summary_${isAdmin ? 'ADMIN' : userEmail}`;
-
-    const cachedData = cache.get(cacheKey);
-    if (cachedData) return res.json(cachedData);
-
-    const nowDate = new Date();
-    const currentMonthKey = `${nowDate.getFullYear()}_${String(nowDate.getMonth() + 1).padStart(2, '0')}`;
-
-    const snapshot = await db.collection('sdr_stats').get();
-    const allMonthlyDocs = snapshot.docs.filter(doc => doc.id.endsWith(currentMonthKey));
-    
-    if (allMonthlyDocs.length === 0) {
-      return res.json({ total_calls: 0, media_geral: 0, sdr_ranking: {}, version: "V7_MONTHLY_BAYESIAN_EMPTY" });
-    }
-
-    // 1. Montagem do Ranking (Global - Público para logados)
+// 🏛️ ARQUITETO: Service Layer para lógica de negócio
+class StatsService {
+  static calculateBayesianRanking(docs: any[]) {
     const sdr_ranking: Record<string, any> = {};
-    allMonthlyDocs.forEach(doc => {
-      const data = doc.data();
+    let total_global_calls = 0;
+    let total_global_notes = 0;
+
+    docs.forEach(data => {
       const name = data.ownerName || "SDR";
       sdr_ranking[name] = {
         ownerName: name,
         ownerEmail: data.ownerEmail,
         calls: data.totalCalls || 0,
-        valid_calls: data.totalCalls || 0, 
         sum_notes: data.totalScore || 0,
-        nota_media: 0 
+        nota_media: 0
       };
+      total_global_calls += (data.totalCalls || 0);
+      total_global_notes += (data.totalScore || 0);
     });
 
     const sdrNames = Object.keys(sdr_ranking);
-    const total_global_calls = allMonthlyDocs.reduce((acc, doc) => acc + (doc.data().totalCalls || 0), 0);
-    const total_global_notes = allMonthlyDocs.reduce((acc, doc) => acc + (doc.data().totalScore || 0), 0);
-    const v_bar = total_global_calls / (sdrNames.length || 1);
+    const totalSDRs = sdrNames.length;
+    const v_bar = total_global_calls / (totalSDRs || 1);
     const m_bar = total_global_calls > 0 ? (total_global_notes / total_global_calls) : 0;
 
     sdrNames.forEach(name => {
@@ -64,29 +40,75 @@ router.get('/summary', async (req: Request, res: Response) => {
       }
     });
 
-    // 2. Filtro de Métricas Pessoais
-    const dadosPessoais = isAdmin ? allMonthlyDocs : allMonthlyDocs.filter(doc => doc.data().ownerEmail === userEmail);
-    const total_calls_pessoais = dadosPessoais.reduce((acc, doc) => acc + (doc.data().totalCalls || 0), 0);
-    const sum_notes_pessoais = dadosPessoais.reduce((acc, doc) => acc + (doc.data().totalScore || 0), 0);
-    const media_pessoal = total_calls_pessoais > 0 ? (sum_notes_pessoais / total_calls_pessoais) : 0;
+    return { ranking: sdr_ranking, total_calls: total_global_calls, media_geral: m_bar };
+  }
+}
 
-    const resultado = {
-      total_calls: total_calls_pessoais,
-      media_geral: Number(media_pessoal.toFixed(2)),
-      sdr_ranking,
-      version: "V7_BAYESIAN_PUBLIC_RANKING"
+const router = Router();
+const cache = new NodeCache({ stdTTL: 600, checkperiod: 120 });
+
+const getCurrentMonthKey = () => {
+  const now = new Date();
+  return `${now.getFullYear()}_${String(now.getMonth() + 1).padStart(2, '0')}`;
+};
+
+/**
+ * GET /summary
+ */
+router.get('/summary', async (req: Request, res: Response) => {
+  try {
+    if (!req.isAuthenticated()) return res.status(401).json({ error: "Não autorizado" });
+
+    const userEmail = (req.user as any).email.toLowerCase().trim();
+    const isAdmin = await checkIfAdmin(userEmail);
+    const requestedEmail = (req.query.ownerEmail as string)?.toLowerCase().trim();
+
+    const cacheKey = isAdmin && !requestedEmail ? 'summary_GLOBAL_ADMIN' : `summary_${requestedEmail || userEmail}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const currentMonthKey = getCurrentMonthKey();
+
+    const snapshot = await db.collection('sdr_stats')
+      .orderBy(admin.firestore.FieldPath.documentId())
+      .startAt(currentMonthKey)
+      .endAt(currentMonthKey + '\uf8ff')
+      .get();
+
+    if (snapshot.empty) return res.json({ total_calls: 0, media_geral: 0, sdr_ranking: {}, version: "V11_STRICT" });
+
+    const rawData = snapshot.docs.map(d => d.data());
+    const processed = StatsService.calculateBayesianRanking(rawData);
+
+    let resultRanking = processed.ranking;
+    if (!isAdmin || requestedEmail) {
+      const target = requestedEmail || userEmail;
+      resultRanking = Object.fromEntries(
+        Object.entries(processed.ranking).filter(([_, v]: any) => v.ownerEmail === target)
+      );
+    }
+
+    const response = {
+      total_calls: processed.total_calls,
+      media_geral: Number(processed.media_geral.toFixed(2)),
+      sdr_ranking: resultRanking,
+      version: "V11_STRICT"
     };
 
-    cache.set(cacheKey, resultado);
-    return res.json(resultado);
+    cache.set(cacheKey, response);
+    return res.json(response);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    console.error("💥 [STATS ERROR]:", error.message);
+    res.status(500).json({ error: "Erro interno ao processar estatísticas." });
   }
 });
 
+/**
+ * GET /performance
+ */
 router.get("/performance", async (req: Request, res: Response) => {
   try {
-    if (!req.isAuthenticated() || !req.user) return res.status(401).json({ error: "Não autorizado" });
+    if (!req.isAuthenticated()) return res.status(401).json({ error: "Não autorizado" });
 
     const { startDate, endDate, ownerEmail, rota } = req.query;
     const userEmail = (req.user as any).email.toLowerCase().trim();
@@ -101,17 +123,19 @@ router.get("/performance", async (req: Request, res: Response) => {
     if (startDate && endDate) {
       const start = new Date(startDate as string);
       const end = new Date(endDate as string);
-      start.setUTCHours(0, 0, 0, 0);
-      end.setUTCHours(23, 59, 59, 999);
-      query = query.where("callTimestamp", ">=", admin.firestore.Timestamp.fromDate(start))
-                   .where("callTimestamp", "<=", admin.firestore.Timestamp.fromDate(end));
+      if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+        start.setUTCHours(0, 0, 0, 0);
+        end.setUTCHours(23, 59, 59, 999);
+        query = query.where("callTimestamp", ">=", admin.firestore.Timestamp.fromDate(start))
+          .where("callTimestamp", "<=", admin.firestore.Timestamp.fromDate(end));
+      }
     }
 
     const countSnapshot = await query.count().get();
     const snapshot = await query.orderBy("callTimestamp", "desc").limit(50).get();
-    
-    res.json({ 
-      count: countSnapshot.data().count,
+
+    res.json({
+      total: countSnapshot.data().count,
       data: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
     });
   } catch (error: any) {
@@ -119,37 +143,45 @@ router.get("/performance", async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /personal-summary
+ */
 router.get('/personal-summary', async (req: Request, res: Response) => {
   try {
-    if (!req.isAuthenticated() || !req.user) return res.status(401).json({ error: "Não autorizado" });
+    if (!req.isAuthenticated()) return res.status(401).json({ error: "Não autorizado" });
     const userEmail = (req.user as any).email;
     const rawEmail = (req.query.ownerEmail as string) || userEmail || "";
     const targetEmail = rawEmail.toLowerCase().trim();
+
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
     if (targetEmail.includes('@')) query = query.where("ownerEmail", "==", targetEmail);
     else query = query.where("ownerName", "==", rawEmail);
+
     const snapshot = await query.orderBy("callTimestamp", "desc").limit(15).get();
     if (snapshot.empty) return res.json({ gaps: [], insights: [], totalAnalisadas: 0 });
+
     const gapMap: Record<string, { text: string, count: number }> = {};
     const insightMap: Record<string, { text: string, count: number }> = {};
+
     snapshot.docs.forEach((doc) => {
       const c = doc.data();
       const rawGaps = (Array.isArray(c.alertas) && c.alertas.length > 0) ? c.alertas : (c.ponto_atencao ? [c.ponto_atencao] : []);
       rawGaps.forEach((g: string) => {
         if (!g || g.length < 5) return;
-        const key = g.split(' ').slice(0, 5).join(' ').toLowerCase().replace(/[^\w\s]/gi, '');
+        const key = g.split(' ').slice(0, 4).join(' ').toLowerCase().replace(/[^\w\s]/gi, '');
         if (!gapMap[key]) gapMap[key] = { text: g, count: 0 };
         gapMap[key].count++;
       });
       if (Array.isArray(c.pontos_fortes)) {
         c.pontos_fortes.forEach((i: string) => {
           if (!i || i.length < 5) return;
-          const key = i.split(' ').slice(0, 5).join(' ').toLowerCase().replace(/[^\w\s]/gi, '');
+          const key = i.split(' ').slice(0, 4).join(' ').toLowerCase().replace(/[^\w\s]/gi, '');
           if (!insightMap[key]) insightMap[key] = { text: i, count: 0 };
           insightMap[key].count++;
         });
       }
     });
+
     return res.json({
       gaps: Object.values(gapMap).sort((a, b) => b.count - a.count).map(e => e.text).slice(0, 3),
       insights: Object.values(insightMap).sort((a, b) => b.count - a.count).map(e => e.text).slice(0, 3),
@@ -160,6 +192,9 @@ router.get('/personal-summary', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /leaderboard-vitrine
+ */
 router.get('/leaderboard-vitrine', async (req: Request, res: Response) => {
   try {
     const sdrSnapshot = await db.collection('sdr_stats').orderBy('averageScore', 'desc').limit(6).get();
@@ -173,19 +208,82 @@ router.get('/leaderboard-vitrine', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /audit
+ */
+router.get("/audit", async (req: Request, res: Response) => {
+  try {
+    const userEmail = (req.user as any).email;
+    if (!(await checkIfAdmin(userEmail))) return res.status(403).json({ error: "Acesso negado" });
+
+    const { date, ownerEmail } = req.query;
+    const parsedDate = date ? new Date(date as string) : new Date();
+    const safeDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
+
+    const start = new Date(safeDate); start.setHours(0, 0, 0, 0);
+    const end = new Date(safeDate); end.setHours(23, 59, 59, 999);
+
+    let query = db.collection(CONFIG.CALLS_COLLECTION)
+      .where("callTimestamp", ">=", admin.firestore.Timestamp.fromDate(start))
+      .where("callTimestamp", "<=", admin.firestore.Timestamp.fromDate(end));
+
+    if (ownerEmail) query = query.where("ownerEmail", "==", (ownerEmail as string).toLowerCase().trim());
+
+    const snapshot = await query.get();
+    const stats = { DONE: 0, ERROR: 0, PENDING_AUDIO: 0, QUEUED: 0, SKIPPED: 0, OTHER: 0 };
+    const by_reason: Record<string, number> = {};
+
+    const calls = snapshot.docs.map(doc => {
+      const d = doc.data();
+      const status = (d.processingStatus || 'OTHER') as keyof typeof stats;
+
+      if (stats.hasOwnProperty(status)) stats[status]++;
+      else stats.OTHER++;
+
+      const r = d.reason || d.failureReason;
+      if (r) by_reason[r] = (by_reason[r] || 0) + 1;
+
+      return {
+        id: doc.id,
+        t: d.title || "S/T",
+        s: status,
+        o: d.ownerName || "Desconhecido",
+        d: d.durationMs ? Math.round(d.durationMs / 1000) + 's' : '0s'
+      };
+    });
+
+    res.json({ total: snapshot.size, stats, by_reason, calls });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /rebuild-today-stats
+ */
 router.post("/rebuild-today-stats", async (req: Request, res: Response) => {
   try {
+    const userEmail = (req.user as any).email;
+    if (!(await checkIfAdmin(userEmail))) return res.status(403).json({ error: "Proibido" });
+
     const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0); 
-    const snapshot = await db.collection(CONFIG.CALLS_COLLECTION).where("updatedAt", ">=", admin.firestore.Timestamp.fromDate(startOfDay)).get();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const snapshot = await db.collection(CONFIG.CALLS_COLLECTION)
+      .where("updatedAt", ">=", admin.firestore.Timestamp.fromDate(startOfDay))
+      .get();
+
     for (const doc of snapshot.docs) {
       const callData = doc.data();
       await updateDailyStats(callData, { status_final: 'NAO_IDENTIFICADO', nota_spin: null }, false);
-      if (callData.processingStatus === "DONE") await updateDailyStats(callData, callData, true);
+      if (callData.processingStatus === "DONE") {
+        await updateDailyStats(callData, callData, true);
+      }
     }
-    res.json({ success: true, processedCalls: snapshot.size });
+
+    res.json({ success: true, processed: snapshot.size });
   } catch (error: any) {
-    res.status(500).json({ error: "Falha na reconstrução", details: error.message });
+    res.status(500).json({ error: "Falha na reconstrução" });
   }
 });
 
