@@ -119,14 +119,15 @@ router.get("/:id", async (req: Request, res: Response) => {
 
 // 3. WEBHOOK
 router.post("/hubspot-webhook", async (req: Request, res: Response) => {
+  // 🏛️ ARQUITETO: Log de entrada bruto para debug total
+  console.log(`📩 [WEBHOOK] Sinal recebido do HubSpot. Itens no lote: ${Array.isArray(req.body) ? req.body.length : 1}`);
+  
   try {
-    const body = req.body;
-    const callId = body?.callId || body?.objectId || (Array.isArray(body) ? body[0]?.objectId : undefined);
-    if (!callId) return res.status(200).json({ ignored: true });
-    const result = await handleIncomingCall({ ...body, callId: String(callId).trim() });
-    res.status(202).json(result);
-  } catch (error) {
-    res.status(500).json({ success: false, error: "Erro no processamento do webhook" });
+    const result = await handleIncomingCall(req.body);
+    res.status(200).json(result);
+  } catch (error: any) {
+    console.error("💥 [WEBHOOK ROUTE ERROR]:", error.message);
+    res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
