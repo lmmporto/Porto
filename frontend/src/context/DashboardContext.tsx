@@ -55,13 +55,13 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     isChecking.current = true;
 
     setIsLoading(true);
-    
+
     // 🚩 REGRA DE OURO: Bypass de autenticação em ambiente de desenvolvimento
     if (process.env.NODE_ENV === 'development') {
-      setUser({ 
-        email: 'lucas.porto@nibo.com.br', 
+      setUser({
+        email: 'lucas.porto@nibo.com.br',
         name: 'Lucas Porto (Dev)',
-        picture: 'https://github.com/identicons/jedi.png' 
+        picture: 'https://github.com/identicons/jedi.png'
       });
       setServerIsAdmin(true);
       setIsInitialized(true);
@@ -72,7 +72,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     try {
       const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
       const res = await fetch(`${baseUrl}/auth/me`, { credentials: 'include' });
-      
+
       if (!res.ok) {
         setUser(null);
         return;

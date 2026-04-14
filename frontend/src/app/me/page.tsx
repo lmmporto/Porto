@@ -9,15 +9,16 @@ import { SDRRanking } from '@/components/dashboard/SDRRanking';
 import { useSDRDashboardSync } from '@/hooks/useSDRDashboardSync';
 import { useDashboard } from '@/context/DashboardContext';
 import { useCallContext } from '@/context/CallContext';
+import { ManualTriggerCard } from '@/components/dashboard/ManualTriggerCard';
 import type { DashboardSummary } from '@/types';
 import Link from 'next/link';
 
 const BRAZIL_TIMEZONE = 'America/Sao_Paulo';
 
 const getBrazilDateString = (date: Date): string => {
-  return new Intl.DateTimeFormat('fr-CA', { 
-    year: 'numeric', month: '2-digit', day: '2-digit', 
-    timeZone: BRAZIL_TIMEZONE 
+  return new Intl.DateTimeFormat('fr-CA', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    timeZone: BRAZIL_TIMEZONE
   }).format(date);
 };
 
@@ -25,7 +26,7 @@ export default function SDRDashboardPage() {
   const { isAdmin } = useDashboard();
   const { applyFilter, hasMore, loadMore } = useCallContext();
   const { user, calls, isLoading, personalInsights, refresh } = useSDRDashboardSync();
-  
+
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [dateRange, setDateRange] = useState('month');
   const [minScore, setMinScore] = useState(0);
@@ -79,7 +80,7 @@ export default function SDRDashboardPage() {
     // 🏛️ Filtramos apenas chamadas que REALMENTE têm nota para não distorcer a média
     const analisadas = calls.filter(c => typeof c.nota_spin === 'number');
     const totalAnalisadas = analisadas.length;
-    
+
     const somaNotas = analisadas.reduce((acc, c) => acc + (c.nota_spin || 0), 0);
     const mediaCalculada = totalAnalisadas > 0 ? (somaNotas / totalAnalisadas) : 0;
 
@@ -99,7 +100,7 @@ export default function SDRDashboardPage() {
           <p className="text-indigo-400 text-[10px] font-black uppercase tracking-[0.3em] mb-1">Performance Intelligence</p>
           <h1 className="text-3xl font-black text-white">Olá, {firstName}</h1>
         </div>
-        
+
         <div className="flex gap-3">
           <Button onClick={refresh} variant="outline" className="bg-slate-900 border-slate-800 text-white rounded-xl">
             <RefreshCw className={isLoading ? "animate-spin" : ""} />
@@ -115,6 +116,7 @@ export default function SDRDashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <aside className="lg:col-span-3 space-y-6">
           <SDRRanking summary={summary} />
+          <ManualTriggerCard theme="dark" />
           <Card className="bg-slate-900/50 border-slate-800 p-6 rounded-2xl">
             <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-2">Dica do Coach</p>
             <p className="text-xs text-slate-400 leading-relaxed italic">
@@ -126,21 +128,21 @@ export default function SDRDashboardPage() {
         <main className="lg:col-span-9 space-y-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <Card className="bg-slate-900 border-slate-800 shadow-2xl flex flex-col items-center justify-center p-8 rounded-[2rem]">
-                <div className="relative flex items-center justify-center">
-                  <svg className="w-32 h-32 transform -rotate-90">
-                    <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-slate-800" />
-                    <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" 
-                      strokeDasharray={364} strokeDashoffset={364 - (364 * stats.media) / 10}
-                      className="text-indigo-500" strokeLinecap="round" />
-                  </svg>
-                  <div className="absolute text-center">
-                    <span className="text-4xl font-black text-white">{stats.media}</span>
-                    <p className="text-[8px] font-bold text-slate-500 uppercase">Média</p>
-                  </div>
+              <div className="relative flex items-center justify-center">
+                <svg className="w-32 h-32 transform -rotate-90">
+                  <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="6" fill="transparent" className="text-slate-800" />
+                  <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent"
+                    strokeDasharray={364} strokeDashoffset={364 - (364 * stats.media) / 10}
+                    className="text-indigo-500" strokeLinecap="round" />
+                </svg>
+                <div className="absolute text-center">
+                  <span className="text-4xl font-black text-white">{stats.media}</span>
+                  <p className="text-[8px] font-bold text-slate-500 uppercase">Média</p>
                 </div>
-                <p className="mt-4 text-[10px] font-bold text-slate-500 uppercase tracking-tighter">
-                  {stats.analisadas} / {stats.total} Analisadas
-                </p>
+              </div>
+              <p className="mt-4 text-[10px] font-bold text-slate-500 uppercase tracking-tighter">
+                {stats.analisadas} / {stats.total} Analisadas
+              </p>
             </Card>
 
             <Card className="bg-slate-900 border-slate-800 p-8 rounded-[2rem]">

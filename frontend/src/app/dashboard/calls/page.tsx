@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { 
-  Search, 
+import {
+  Search,
   ChevronRight,
   CheckCircle2,
   AlertCircle,
@@ -23,10 +23,11 @@ import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { useToast } from '@/hooks/use-toast';
 import { useCallContext } from '@/context/CallContext';
+import { ManualTriggerCard } from '@/components/dashboard/ManualTriggerCard';
 
 export default function CallsListPage() {
   const { calls, isLoading, applyFilter, loadMore, refresh, hasMore } = useCallContext();
-  
+
   const [searchTerm, setSearchTerm] = useState('');
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
@@ -45,7 +46,7 @@ export default function CallsListPage() {
 
   const handleExportZip = async () => {
     if (filteredCalls.length === 0) return;
-    
+
     setIsExporting(true);
     try {
       const zip = new JSZip();
@@ -92,7 +93,7 @@ export default function CallsListPage() {
           <CheckCircle2 className="w-3 h-3 mr-1" /> Aprovado
         </Badge>
       );
-    } 
+    }
     if (nota >= 5) {
       return (
         <Badge className="bg-sky-50 text-sky-700 border-sky-200 shadow-none uppercase text-[9px] font-bold">
@@ -107,7 +108,7 @@ export default function CallsListPage() {
     );
   };
 
-  const filteredCalls = calls.filter(call => 
+  const filteredCalls = calls.filter(call =>
     call.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     call.ownerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     call.teamName?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -121,9 +122,9 @@ export default function CallsListPage() {
           <p className="text-slate-400 text-sm mt-1">Dados consolidados de todas as avaliações e tentativas.</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             className="h-9 text-xs font-bold uppercase tracking-wider"
             onClick={() => refresh()}
             disabled={isLoading}
@@ -131,9 +132,9 @@ export default function CallsListPage() {
             {isLoading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
             Atualizar
           </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             className="h-9 text-xs font-bold uppercase tracking-wider"
             onClick={handleExportZip}
             disabled={isExporting || filteredCalls.length === 0}
@@ -144,14 +145,16 @@ export default function CallsListPage() {
         </div>
       </div>
 
+      <ManualTriggerCard theme="light" />
+
       <Card className="border-slate-100 shadow-none">
         <CardHeader className="pb-4">
           <div className="flex flex-col md:flex-row md:items-center gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-300" />
-              <Input 
-                className="pl-10 h-9 text-sm border-slate-100 focus:border-slate-300" 
-                placeholder="Buscar por título, SDR ou time..." 
+              <Input
+                className="pl-10 h-9 text-sm border-slate-100 focus:border-slate-300"
+                placeholder="Buscar por título, SDR ou time..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -192,8 +195,8 @@ export default function CallsListPage() {
                         </td>
                         <td className={`p-4 align-middle font-bold text-center ${call.processingStatus === 'DONE' && Number(call.nota_spin) < 5 ? 'text-rose-600' : 'text-slate-900'}`}>
                           {call.processingStatus === "DONE" && call.status_final !== "NAO_SE_APLICA"
-                             ? Number(call.nota_spin || 0).toFixed(1) 
-                             : "--"}
+                            ? Number(call.nota_spin || 0).toFixed(1)
+                            : "--"}
                         </td>
                         <td className="p-4 align-middle text-slate-500 text-xs font-medium">
                           {(() => {
@@ -216,12 +219,12 @@ export default function CallsListPage() {
                 </tbody>
               </table>
             </div>
-            
+
             {hasMore && (
               <div className="p-4 border-t border-slate-100 flex justify-center bg-slate-50/50">
-                <Button 
-                  variant="ghost" 
-                  className="w-full max-sm py-6 text-slate-400 hover:text-indigo-600 font-bold text-xs tracking-widest uppercase border-2 border-dashed border-slate-200 rounded-xl" 
+                <Button
+                  variant="ghost"
+                  className="w-full max-sm py-6 text-slate-400 hover:text-indigo-600 font-bold text-xs tracking-widest uppercase border-2 border-dashed border-slate-200 rounded-xl"
                   onClick={() => loadMore()}
                   disabled={isLoading}
                 >
