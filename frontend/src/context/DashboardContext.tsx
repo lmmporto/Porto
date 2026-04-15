@@ -1,7 +1,8 @@
 "use client";
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode, useRef, useMemo } from 'react';
 
-// --- INTERFACES ---
+import type { ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+
 interface User {
   email: string;
   name?: string;
@@ -21,28 +22,27 @@ interface DashboardContextType {
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
 
-export function DashboardProvider({ children }: { children: ReactNode }) {
+interface DashboardProviderProps {
+  children: ReactNode;
+}
+
+export function DashboardProvider({ children }: DashboardProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [serverIsAdmin, setServerIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
-
-  // 🚩 TRAVA DE EXECUÇÃO ÚNICA
+  const [impersonatedUser, setImpersonatedUser] = useState<User | null>(null);
   const isChecking = useRef(false);
 
-  // 🚩 ESTADO DE SIMULAÇÃO
-  const [impersonatedUser, setImpersonatedUser] = useState<User | null>(null);
-
-  // 🚩 RECUPERAÇÃO: Ao carregar o app, verifica se havia uma simulação ativa no sessionStorage
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
       const savedSdr = sessionStorage.getItem('impersonated_sdr');
       if (savedSdr) {
         try {
-          const parsedSdr = JSON.parse(savedSdr);
-          console.log("🔄 [DEV MODE]: Restaurando simulação de:", parsedSdr.name);
+          const parsedSdr = JSON.parse(savedSdr) as User;
+          console.log('[DEV MODE]: Restaurando simulacao de:', parsedSdr.name);
           setImpersonatedUser(parsedSdr);
-        } catch (e) {
+        } catch {
           sessionStorage.removeItem('impersonated_sdr');
         }
       }
@@ -50,50 +50,51 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const checkUser = useCallback(async () => {
-    // 🚩 PROTEÇÃO: Impede chamadas redundantes ao /auth/me
-    if (isChecking.current) return;
-    isChecking.current = true;
-
-    setIsLoading(true);
-
-    // 🚩 REGRA DE OURO: Bypass de autenticação em ambiente de desenvolvimento
-    if (process.env.NODE_ENV === 'development') {
-      setUser({
-        email: 'lucas.porto@nibo.com.br',
-        name: 'Lucas Porto (Dev)',
-        picture: 'https://github.com/identicons/jedi.png'
-      });
-      setServerIsAdmin(true);
-      setIsInitialized(true);
-      setIsLoading(false);
+    if (isChecking.current) {
       return;
     }
 
-    try {
-      const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
-      const res = await fetch(`${baseUrl}/auth/me`, { credentials: 'include' });
+    isChecking.current = true;
+    setIsLoading(true);
 
-      if (!res.ok) {
-        setUser(null);
+    try {
+      if (process.env.NODE_ENV === 'development') {
+        setUser({
+          email: 'lucas.porto@nibo.com.br',
+          name: 'Lucas Porto (Dev)',
+          picture: 'https://github.com/identicons/jedi.png',
+        });
+        setServerIsAdmin(true);
         return;
       }
 
-      const data = await res.json();
-      if (data.authenticated) {
-        setUser(data.user);
-        setServerIsAdmin(data.isAdmin || false);
-      } else {
-        setUser(null);
-        setServerIsAdmin(false);
+      const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
+      const res = await fetch(`${baseUrl}/auth/me`, { credentials: 'include' });
+
+      if (res.ok) {
+        const data = await res.json();
+
+        if (data.authenticated) {
+          setUser(data.user);
+          setServerIsAdmin(data.isAdmin || false);
+        } else {
+          setUser(null);
+          setServerIsAdmin(false);
+        }
+
+        return;
       }
-    } catch (e) {
-      console.error("🚨 [AUTH FATAL]:", e);
+
+      setUser(null);
+      setServerIsAdmin(false);
+    } catch (error) {
+      console.error('[AUTH FATAL]:', error);
       setUser(null);
       setServerIsAdmin(false);
     } finally {
-      // 🚩 REGRA DE OURO: O sistema DEVE ser marcado como inicializado aqui para evitar telas brancas
       setIsInitialized(true);
       setIsLoading(false);
+      isChecking.current = false;
     }
   }, []);
 
@@ -101,15 +102,14 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     checkUser();
   }, [checkUser]);
 
-  // 🚩 LÓGICA DE SIMULAÇÃO COM PERSISTÊNCIA (Estabilizada com useCallback)
   const startImpersonation = useCallback((sdr: User) => {
-    console.warn(`⚠️ SIMULAÇÃO ATIVA: Agindo como ${sdr.name}`);
+    console.warn(`SIMULACAO ATIVA: Agindo como ${sdr.name}`);
     setImpersonatedUser(sdr);
     sessionStorage.setItem('impersonated_sdr', JSON.stringify(sdr));
   }, []);
 
   const stopImpersonation = useCallback(() => {
-    console.warn(`✅ SIMULAÇÃO ENCERRADA: Retornando ao perfil Admin.`);
+    console.warn('SIMULACAO ENCERRADA: Retornando ao perfil Admin.');
     setImpersonatedUser(null);
     sessionStorage.removeItem('impersonated_sdr');
   }, []);
@@ -117,17 +117,19 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
   const effectiveUser = impersonatedUser || user;
   const isAdmin = !impersonatedUser && (serverIsAdmin || user?.email === 'lucas.porto@nibo.com.br');
 
-  // 🏛️ ARQUITETO: Memorização obrigatória para parar a cascata de re-renders
-  const contextValue = useMemo(() => ({
-    user: effectiveUser,
-    isAdmin,
-    isImpersonating: !!impersonatedUser,
-    isLoading,
-    isInitialized,
-    checkUser,
-    startImpersonation,
-    stopImpersonation
-  }), [effectiveUser, isAdmin, impersonatedUser, isLoading, isInitialized, checkUser, startImpersonation, stopImpersonation]);
+  const contextValue = useMemo(
+    () => ({
+      user: effectiveUser,
+      isAdmin,
+      isImpersonating: Boolean(impersonatedUser),
+      isLoading,
+      isInitialized,
+      checkUser,
+      startImpersonation,
+      stopImpersonation,
+    }),
+    [effectiveUser, isAdmin, impersonatedUser, isLoading, isInitialized, checkUser, startImpersonation, stopImpersonation]
+  );
 
   return (
     <DashboardContext.Provider value={contextValue}>
