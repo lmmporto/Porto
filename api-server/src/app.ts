@@ -26,22 +26,24 @@ interface ErrorWithStatus extends Error {
 }
 
 function requireConfigValue(value: string | undefined, key: string): string {
-  if (!value) {
-    throw new Error(`Missing required config: ${key}`);
-  }
+  if (!value) throw new Error(`Missing required config: ${key}`);
   return value;
 }
 
 const app: Express = express();
 const isDev = process.env.NODE_ENV === 'development';
 
-// 🏛️ 1. TRUST PROXY (DEVE vir antes de tudo para o Render/Vercel)
 app.set('trust proxy', 1);
 
-// 🏛️ 2. CORS (Configuração Estrita para Produção)
+const allowedOrigins = [
+  'https://sdr-pjt.vercel.app', 
+  'http://localhost:3000',
+  'http://localhost:3001'
+];
+
 app.use(
   cors({
-    origin: 'https://sdr-pjt.vercel.app',
+    origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Requested-With'],
@@ -51,19 +53,18 @@ app.use(
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// 🏛️ 3. SESSÃO (Configuração para Cross-Domain Vercel -> Render)
 app.use(
   session({
     name: 'sdr.sid',
     secret: requireConfigValue(CONFIG.SESSION_SECRET, 'SESSION_SECRET'),
     resave: false,
     saveUninitialized: false,
-    proxy: true, // 🚩 Vital para o Render identificar o protocolo HTTPS do proxy
+    proxy: true, 
     cookie: {
       httpOnly: true,
-      secure: true,    // 🚩 Obrigatório para SameSite: 'none'
-      sameSite: 'none', // 🚩 Obrigatório para domínios diferentes
-      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 dias
+      secure: true,    
+      sameSite: 'none', 
+      maxAge: 1000 * 60 * 60 * 24 * 7,
     },
   })
 );
@@ -74,6 +75,7 @@ app.use(passport.session());
 passport.serializeUser((user, done) => done(null, user));
 passport.deserializeUser((user: Express.User, done) => done(null, user));
 
+// 🏛️ CORREÇÃO DA LINHA 95: Mock de Desenvolvimento
 if (isDev) {
   app.use((req: Request, _res: Response, next: NextFunction) => {
     const ownerEmailParam = req.query.ownerEmail;
@@ -85,7 +87,9 @@ if (isDev) {
         email: impersonateEmail || 'lucas.porto@nibo.com.br',
         name: impersonateEmail ? `Simulando: ${impersonateEmail}` : 'Lucas Porto (Dev Mode)',
       };
-      req.isAuthenticated = () => true;
+      
+      // Realizamos o cast para any para permitir a sobrescrita do predicado de tipo
+      (req as any).isAuthenticated = () => true;
     }
     next();
   });
@@ -98,12 +102,7 @@ passport.use(
       clientSecret: requireConfigValue(CONFIG.GOOGLE_CLIENT_SECRET, 'GOOGLE_CLIENT_SECRET'),
       callbackURL: requireConfigValue(CONFIG.GOOGLE_CALLBACK_URL, 'GOOGLE_CALLBACK_URL'),
     },
-    async (
-      _accessToken: string,
-      _refreshToken: string,
-      profile: Profile,
-      done: (err: unknown, user?: Express.User | false) => void
-    ) => {
+    async (_at, _rt, profile, done) => {
       try {
         const email = profile.emails?.[0]?.value?.toLowerCase();
         if (!email) return done(null, false);
@@ -132,7 +131,8 @@ app.get(
 );
 
 app.get('/auth/me', async (req: Request, res: Response) => {
-  if (req.isAuthenticated?.() && req.user) {
+  // Chamada limpa sem opcional, confiando na tipagem do Passport
+  if (req.isAuthenticated() && req.user) {
     const isAdmin = await checkIfAdmin(req.user.email);
     return res.json({ authenticated: true, user: req.user, isAdmin });
   }
@@ -150,6 +150,7 @@ app.post('/auth/logout', (req: Request, res: Response, next: NextFunction) => {
         httpOnly: true,
         secure: true,
         sameSite: 'none',
+        path: '/' 
       });
       res.json({ success: true });
     });
@@ -159,7 +160,8 @@ app.post('/auth/logout', (req: Request, res: Response, next: NextFunction) => {
 app.use('/api/calls', callsRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/sdr-registry', sdrRegistryRouter);
-app.get('/health', (_req: Request, res: Response) => res.json({ status: 'ok' }));
+
+app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
 app.use((err: ErrorWithStatus, _req: Request, res: Response, _next: NextFunction) => {
   console.error('[SERVER ERROR]:', err.message);
