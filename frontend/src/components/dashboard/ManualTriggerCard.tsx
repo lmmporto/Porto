@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 
-// ─── Tipos locais ──────────────────────────────────────────────────────────────
+// Tipos locais
 
 type TriggerUiState =
   | 'IDLE'
@@ -32,7 +32,7 @@ interface TriggerResult {
   callId?: string;
 }
 
-// ─── Mapa de estados → aparência ──────────────────────────────────────────────
+// Mapa de estados -> aparência
 
 const STATE_CONFIG: Record<
   Exclude<TriggerUiState, 'IDLE' | 'SENDING'>,
@@ -81,7 +81,7 @@ const STATE_CONFIG: Record<
   },
 };
 
-// ─── Componente ───────────────────────────────────────────────────────────────
+// Componente
 
 interface ManualTriggerCardProps {
   /** Tema escuro (painel do SDR) ou claro (painel admin) */
@@ -178,7 +178,6 @@ export function ManualTriggerCard({ theme = 'dark' }: ManualTriggerCardProps) {
   return (
     <Card className={cardClass}>
       <CardContent className="p-6 space-y-4">
-
         {/* Header */}
         <div className="flex items-center gap-3">
           <div className={`p-2 rounded-lg ${isDark ? 'bg-indigo-500/10' : 'bg-indigo-50'}`}>
@@ -194,7 +193,7 @@ export function ManualTriggerCard({ theme = 'dark' }: ManualTriggerCardProps) {
         <div className={`flex items-start gap-2 p-3 rounded-xl border ${isDark ? 'bg-slate-800/50 border-slate-700/50' : 'bg-slate-50 border-slate-100'}`}>
           <Info className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${isDark ? 'text-slate-500' : 'text-slate-400'}`} />
           <p className={`text-[11px] leading-relaxed ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-            Cole o link da chamada copiado do HubSpot. O sistema extrai o ID automaticamente e inicia a análise.
+            Cole um link da call ou do contato no HubSpot. O sistema extrai o ID automaticamente e inicia a análise.
           </p>
         </div>
 
@@ -203,7 +202,7 @@ export function ManualTriggerCard({ theme = 'dark' }: ManualTriggerCardProps) {
           <Input
             id="manual-trigger-url"
             type="text"
-            placeholder="https://app.hubspot.com/calls/... ou ID numérico"
+            placeholder="https://app.hubspot.com/calls/... ou /contacts/... ou ID numérico"
             value={url}
             onChange={(e) => {
               setUrl(e.target.value);
@@ -240,7 +239,7 @@ export function ManualTriggerCard({ theme = 'dark' }: ManualTriggerCardProps) {
           <div className={`flex items-center gap-2 p-3 rounded-xl border ${isDark ? 'bg-sky-500/10 border-sky-500/20' : 'bg-sky-50 border-sky-100'}`}>
             <Loader2 className={`w-3.5 h-3.5 animate-spin flex-shrink-0 ${isDark ? 'text-sky-400' : 'text-sky-600'}`} />
             <p className={`text-[11px] font-medium ${isDark ? 'text-sky-300' : 'text-sky-700'}`}>
-              Enviando solicitação…
+              Enviando solicitação...
             </p>
           </div>
         )}
@@ -268,7 +267,6 @@ export function ManualTriggerCard({ theme = 'dark' }: ManualTriggerCardProps) {
             </div>
           );
         })()}
-
       </CardContent>
     </Card>
   );
