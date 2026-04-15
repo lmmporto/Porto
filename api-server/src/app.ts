@@ -29,22 +29,19 @@ function requireConfigValue(value: string | undefined, key: string): string {
   if (!value) {
     throw new Error(`Missing required config: ${key}`);
   }
-
   return value;
 }
 
 const app: Express = express();
 const isDev = process.env.NODE_ENV === 'development';
 
+// 🏛️ 1. TRUST PROXY (DEVE vir antes de tudo para o Render/Vercel)
 app.set('trust proxy', 1);
 
+// 🏛️ 2. CORS (Configuração Estrita para Produção)
 app.use(
   cors({
-    origin: [
-      'https://sdr-pjt.vercel.app',
-      'http://localhost:3000',
-      'http://localhost:3001',
-    ],
+    origin: 'https://sdr-pjt.vercel.app',
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Requested-With'],
@@ -54,18 +51,19 @@ app.use(
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// 🏛️ 3. SESSÃO (Configuração para Cross-Domain Vercel -> Render)
 app.use(
   session({
     name: 'sdr.sid',
     secret: requireConfigValue(CONFIG.SESSION_SECRET, 'SESSION_SECRET'),
     resave: false,
     saveUninitialized: false,
-    proxy: true,
+    proxy: true, // 🚩 Vital para o Render identificar o protocolo HTTPS do proxy
     cookie: {
       httpOnly: true,
-      secure: true,
-      sameSite: 'none',
-      maxAge: 86400000,
+      secure: true,    // 🚩 Obrigatório para SameSite: 'none'
+      sameSite: 'none', // 🚩 Obrigatório para domínios diferentes
+      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 dias
     },
   })
 );
@@ -89,7 +87,6 @@ if (isDev) {
       };
       req.isAuthenticated = () => true;
     }
-
     next();
   });
 }
@@ -109,9 +106,7 @@ passport.use(
     ) => {
       try {
         const email = profile.emails?.[0]?.value?.toLowerCase();
-        if (!email) {
-          return done(null, false);
-        }
+        if (!email) return done(null, false);
 
         return done(null, {
           id: profile.id,
@@ -141,22 +136,15 @@ app.get('/auth/me', async (req: Request, res: Response) => {
     const isAdmin = await checkIfAdmin(req.user.email);
     return res.json({ authenticated: true, user: req.user, isAdmin });
   }
-
   return res.status(401).json({ authenticated: false });
 });
 
 app.post('/auth/logout', (req: Request, res: Response, next: NextFunction) => {
   req.logout((logoutError) => {
-    if (logoutError) {
-      next(logoutError);
-      return;
-    }
+    if (logoutError) return next(logoutError);
 
     req.session.destroy((sessionError) => {
-      if (sessionError) {
-        next(sessionError);
-        return;
-      }
+      if (sessionError) return next(sessionError);
 
       res.clearCookie('sdr.sid', {
         httpOnly: true,
