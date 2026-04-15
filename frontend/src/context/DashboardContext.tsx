@@ -115,7 +115,23 @@ export function DashboardProvider({ children }: DashboardProviderProps) {
   }, []);
 
   const effectiveUser = impersonatedUser || user;
-  const isAdmin = !impersonatedUser && (serverIsAdmin || user?.email === 'lucas.porto@nibo.com.br');
+
+  // 🏛️ ARQUITETO: Normalização para evitar quebras por Case-Sensitivity ou Espaços
+  const isAdmin = useMemo(() => {
+    if (impersonatedUser) return false; // Se está simulando, não é admin da visão atual
+    
+    const userEmail = user?.email?.toLowerCase().trim();
+    const isHardcodedAdmin = userEmail === 'lucas.porto@nibo.com.br';
+    
+    const finalStatus = serverIsAdmin || isHardcodedAdmin;
+    
+    // Log de Debug para você ver no console o que está acontecendo
+    if (userEmail) {
+      console.log(`[AUTH CHECK]: User=${userEmail} | ServerAdmin=${serverIsAdmin} | FinalAdmin=${finalStatus}`);
+    }
+    
+    return finalStatus;
+  }, [impersonatedUser, serverIsAdmin, user?.email]);
 
   const contextValue = useMemo(
     () => ({
