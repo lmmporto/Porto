@@ -232,6 +232,7 @@ export async function updateDailyStats(callData: any, analysis: any, isUpdate: b
 }
 
 export async function updateSdrGlobalStats(ownerEmail: string, ownerName: string, nota: number) {
+  const cleanEmail = ownerEmail.toLowerCase().trim();
   const monthKey = `${new Date().getFullYear()}_${String(new Date().getMonth() + 1).padStart(2, '0')}`;
   const sdrRef = db.collection('sdr_stats').doc(`${ownerEmail}_${monthKey}`);
 

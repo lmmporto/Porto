@@ -1,26 +1,30 @@
 "use client";
 
-import Link from 'next/link';
-import { Phone, ArrowRight } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Phone, ArrowRight, Lock, User } from 'lucide-react';
 import type { SDRCall } from '@/types';
 import { cn } from '@/lib/utils';
+import { useDashboard } from '@/context/DashboardContext';
 
 interface CallCardProps {
   call: SDRCall;
 }
 
 export function CallCard({ call }: CallCardProps) {
-  // 🏛️ ARQUITETO: Lógica de Processamento e Identificação de Rota
-  const isDone = call.processingStatus === 'DONE';
-  const isRotaC = call.rota === "ROTA_C" || call.status_final === "NAO_SE_APLICA";
-  
-  // 🏛️ ARQUITETO: displayScore agora é mais honesto com o estado da ligação
-  const displayScore = isDone && typeof call.nota_spin === 'number' ? call.nota_spin.toFixed(1) : '--';
+  const router = useRouter();
+  const { user, isAdmin } = useDashboard();
 
-  // 🚩 SISTEMA DE CORES E LABELS ATUALIZADO
+  // 🏛️ ARQUITETO: Lógica de Acesso (Gatekeeper)
+  const isOwner = call.ownerEmail?.toLowerCase().trim() === user?.email?.toLowerCase().trim();
+  const isElite = Number(call.nota_spin || 0) >= 7;
+  const isDone = call.processingStatus === 'DONE';
+  
+  // Pode acessar se: for Admin OU for o Dono OU for uma chamada nota 7+
+  const canAccess = isAdmin || isOwner || isElite;
+
   const getTheme = () => {
     if (!isDone) return { color: "text-slate-500", label: "PROCESSANDO" };
-    if (isRotaC) return { color: "text-sky-400", label: "ROTA C" };
+    if (call.rota === "ROTA_C") return { color: "text-sky-400", label: "ROTA C" };
     
     const score = call.nota_spin || 0;
     if (score >= 8) return { color: "text-emerald-400", label: "NOTA SPIN" };
@@ -30,54 +34,67 @@ export function CallCard({ call }: CallCardProps) {
 
   const theme = getTheme();
 
-  const formatSimpleDate = (dateInput: any) => {
-    if (!dateInput) return '--/--';
-    const seconds = dateInput?._seconds || dateInput?.seconds || (typeof dateInput === 'number' ? dateInput : null);
-    try {
-      const date = seconds ? new Date(seconds * 1000) : new Date(dateInput);
-      if (isNaN(date.getTime())) return '--/--';
-      return date.toLocaleDateString('pt-BR', { 
-        day: '2-digit', 
-        month: '2-digit', 
-        year: '2-digit' 
-      });
-    } catch {
-      return '--/--';
+  const handleNavigation = () => {
+    if (canAccess) {
+      router.push(`/dashboard/calls/${call.id}`);
     }
   };
 
   return (
-    <Link href={`/dashboard/calls/${call.id}`}>
-      <div className="bg-slate-900/50 border border-slate-800 hover:border-indigo-500/50 transition-all rounded-2xl p-5 group cursor-pointer">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-slate-800 rounded-xl text-slate-400 group-hover:text-indigo-400 transition-colors shrink-0">
-              <Phone className="w-5 h-5" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-sm font-bold text-slate-200 uppercase tracking-tight truncate">
-                {call.title || 'Cliente Externo'}
-              </h3>
-              {/* 🏛️ ARQUITETO: Prioridade para a data real da ligação */}
-              <p className="text-[10px] text-slate-500 font-medium">
-                {formatSimpleDate(call.callTimestamp || call.updatedAt)}
-              </p>
-            </div>
+    <div 
+      onClick={handleNavigation}
+      className={cn(
+        "bg-slate-900/50 border transition-all rounded-2xl p-5 group",
+        canAccess 
+          ? "border-slate-800 hover:border-indigo-500/50 cursor-pointer" 
+          : "border-slate-800/40 opacity-60 cursor-not-allowed"
+      )}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4 min-w-0">
+          <div className={cn(
+            "p-3 rounded-xl transition-colors shrink-0",
+            canAccess ? "bg-slate-800 text-slate-400 group-hover:text-indigo-400" : "bg-slate-900 text-slate-600"
+          )}>
+            {canAccess ? <Phone className="w-5 h-5" /> : <Lock className="w-5 h-5" />}
           </div>
           
-          <div className="flex items-center gap-6 shrink-0">
-            <div className="text-right">
-              <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
-                {theme.label}
-              </p>
-              <p className={cn("text-xl font-black", theme.color)}>
-                {displayScore}
+          <div className="min-w-0">
+            <h3 className="text-sm font-bold text-slate-200 uppercase tracking-tight truncate">
+              {call.title || 'Cliente Externo'}
+            </h3>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-[10px] text-slate-500 font-medium">
+                {call.ownerName} • {new Date(call.callTimestamp || Date.now()).toLocaleDateString('pt-BR')}
               </p>
             </div>
-            <ArrowRight className="w-5 h-5 text-slate-700 group-hover:text-indigo-500 transform group-hover:translate-x-1 transition-all" />
           </div>
         </div>
+        
+        <div className="flex items-center gap-6 shrink-0">
+          <div className="text-right">
+            <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">
+              {theme.label}
+            </p>
+            <p className={cn("text-xl font-black", theme.color)}>
+              {isDone ? call.nota_spin?.toFixed(1) : '--'}
+            </p>
+          </div>
+          
+          {canAccess ? (
+            <ArrowRight className="w-5 h-5 text-slate-700 group-hover:text-indigo-500 transform group-hover:translate-x-1 transition-all" />
+          ) : (
+            <div className="w-5 h-5" /> // Espaçador para manter o alinhamento
+          )}
+        </div>
       </div>
-    </Link>
+
+      {/* Tooltip de aviso para chamadas bloqueadas */}
+      {!canAccess && (
+        <p className="mt-3 text-[9px] text-slate-600 italic border-t border-slate-800/50 pt-2">
+          Acesso restrito. Apenas chamadas nota 7+ de colegas são abertas para estudo.
+        </p>
+      )}
+    </div>
   );
 }

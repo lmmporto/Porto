@@ -49,85 +49,41 @@ const cache = new NodeCache({ stdTTL: 600, checkperiod: 120 });
 
 const getCurrentMonthSuffix = () => {
   const now = new Date();
-  // Gera o sufixo exato do seu banco: _YYYY_MM (ex: _2026_04)
   return `_${now.getFullYear()}_${String(now.getMonth() + 1).padStart(2, '0')}`;
 };
 
 /**
  * GET /summary
- * Retorna o ranking Bayesiano filtrado por mês e visibilidade.
+ * 🏛️ ARQUITETO: Vitrine Global Turbo
  */
 router.get('/summary', async (req: Request, res: Response) => {
   try {
-    // 1. Trava de Autenticação
-    if (!req.isAuthenticated()) return res.status(401).json({ error: "Não autorizado" });
+    if (!req.isAuthenticated()) return res.status(401).send();
 
-    const userEmail = (req.user as any).email.toLowerCase().trim();
-    const isAdmin = await checkIfAdmin(userEmail);
-    const requestedEmail = (req.query.ownerEmail as string)?.toLowerCase().trim();
-
-    // 2. Cache Inteligente (Evita processamento repetido)
-    const cacheKey = isAdmin && !requestedEmail ? 'summary_GLOBAL_ADMIN' : `summary_${requestedEmail || userEmail}`;
+    const cacheKey = 'summary_GLOBAL_VITRINE';
     const cached = cache.get(cacheKey);
     if (cached) return res.json(cached);
 
     const monthSuffix = getCurrentMonthSuffix();
-    
-    // 3. Busca no Firestore
-    // Como o Firestore não faz "EndsWith" nativo, buscamos a coleção e filtramos no Node.
     const snapshot = await db.collection('sdr_stats').get();
     
     const monthlyDocs = snapshot.docs
-      .filter(doc => doc.id.endsWith(monthSuffix))
-      .map(doc => doc.data());
+      .filter((doc: admin.firestore.QueryDocumentSnapshot) => doc.id.endsWith(monthSuffix))
+      .map((doc: admin.firestore.QueryDocumentSnapshot) => doc.data());
 
-    // 4. Tratamento de Vazio (Resiliência de UI)
-    if (monthlyDocs.length === 0) {
-      console.log(`⚠️ [STATS] Nenhum dado para o sufixo: ${monthSuffix}`);
-      return res.json({ 
-        total_calls: 0, 
-        media_geral: 0, 
-        sdr_ranking: {}, 
-        version: "V11_EMPTY_MONTH" 
-      });
-    }
-
-    // 5. Processamento Estatístico (Bayesiano)
     const processed = StatsService.calculateBayesianRanking(monthlyDocs);
 
-    // 6. Lógica de Visibilidade e Filtro de E-mail
-    let resultRanking = processed.ranking;
-
-    if (!isAdmin || requestedEmail) {
-      const target = requestedEmail || userEmail;
-      
-      // Filtro com normalização total (Mata erros de Case-Sensitivity)
-      resultRanking = Object.fromEntries(
-        Object.entries(processed.ranking).filter(([_, v]: any) => 
-          String(v.ownerEmail || "").toLowerCase().trim() === target
-        )
-      );
-      
-      // Trava de Segurança para Admin: Se o filtro por e-mail falhou, mostra o global.
-      if (Object.keys(resultRanking).length === 0 && isAdmin && !requestedEmail) {
-        resultRanking = processed.ranking;
-      }
-    }
-
-    // 7. Resposta Final
     const response = {
       total_calls: processed.total_calls,
       media_geral: Number(processed.media_geral.toFixed(2)),
-      sdr_ranking: resultRanking,
-      version: "V11_FIXED_SUFFIX"
+      sdr_ranking: processed.ranking, 
+      version: "V12_GLOBAL_VITRINE"
     };
 
-    cache.set(cacheKey, response);
+    cache.set(cacheKey, response, 300);
     return res.json(response);
-
-  } catch (error: any) {
-    console.error("💥 [STATS ERROR]:", error.message);
-    res.status(500).json({ error: "Erro interno ao processar estatísticas." });
+  } catch (error) {
+    res.status(500).json({ error: "Erro na vitrine" });
   }
 });
 
@@ -164,7 +120,7 @@ router.get("/performance", async (req: Request, res: Response) => {
 
     res.json({
       total: countSnapshot.data().count,
-      data: snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+      data: snapshot.docs.map((doc: admin.firestore.QueryDocumentSnapshot) => ({ id: doc.id, ...doc.data() }))
     });
   } catch (error: any) {
     res.status(500).json({ error: "Erro ao carregar métricas" });
@@ -191,7 +147,7 @@ router.get('/personal-summary', async (req: Request, res: Response) => {
     const gapMap: Record<string, { text: string, count: number }> = {};
     const insightMap: Record<string, { text: string, count: number }> = {};
 
-    snapshot.docs.forEach((doc) => {
+    snapshot.docs.forEach((doc: admin.firestore.QueryDocumentSnapshot) => {
       const c = doc.data();
       const rawGaps = (Array.isArray(c.alertas) && c.alertas.length > 0) ? c.alertas : (c.ponto_atencao ? [c.ponto_atencao] : []);
       rawGaps.forEach((g: string) => {
@@ -226,10 +182,19 @@ router.get('/personal-summary', async (req: Request, res: Response) => {
 router.get('/leaderboard-vitrine', async (req: Request, res: Response) => {
   try {
     const sdrSnapshot = await db.collection('sdr_stats').orderBy('averageScore', 'desc').limit(6).get();
-    const topCallsSnapshot = await db.collection(CONFIG.CALLS_COLLECTION).where("processingStatus", "==", "DONE").orderBy("nota_spin", "desc").limit(5).get();
+    
+    const topCallsSnapshot = await db.collection(CONFIG.CALLS_COLLECTION)
+      .orderBy("nota_spin", "desc")
+      .limit(10) 
+      .get();
+
+    const topCalls = topCallsSnapshot.docs
+      .map((doc: admin.firestore.QueryDocumentSnapshot) => ({ id: doc.id, ...doc.data() }))
+      .filter((c: any) => c.processingStatus === "DONE" && Number(c.nota_spin) >= 7);
+
     return res.json({
-      top6: sdrSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })),
-      topCalls: topCallsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+      top6: sdrSnapshot.docs.map((doc: admin.firestore.QueryDocumentSnapshot) => ({ id: doc.id, ...doc.data() })),
+      topCalls: topCalls
     });
   } catch (error: any) {
     res.status(500).json({ error: "Erro ao carregar vitrine" });
@@ -261,7 +226,7 @@ router.get("/audit", async (req: Request, res: Response) => {
     const stats = { DONE: 0, ERROR: 0, PENDING_AUDIO: 0, QUEUED: 0, SKIPPED: 0, OTHER: 0 };
     const by_reason: Record<string, number> = {};
 
-    const calls = snapshot.docs.map(doc => {
+    const calls = snapshot.docs.map((doc: admin.firestore.QueryDocumentSnapshot) => {
       const d = doc.data();
       const status = (d.processingStatus || 'OTHER') as keyof typeof stats;
 

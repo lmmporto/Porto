@@ -89,30 +89,30 @@ router.get("/", async (req: Request, res: Response) => {
   }
 });
 
-// 2. DETALHE DA LIGAÇÃO
-router.get("/:id", async (req: Request, res: Response) => {
+// 2. DETALHE DA LIGAÇÃO (COM TRAVA DE SEGURANÇA ELITE)
+router.get('/:id', async (req: Request, res: Response) => {
   try {
-    if (!req.isAuthenticated() || !req.user) return res.status(401).json({ error: "Não autorizado" });
+    if (!req.isAuthenticated()) return res.status(401).send();
 
-    const callId = req.params.id ? String(req.params.id).trim() : null;
-    if (!callId || callId === 'undefined' || callId === 'null') return res.status(400).json({ error: "ID inválido." });
-
-    const doc = await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).get();
-    if (!doc.exists) return res.status(404).json({ error: "Ligação não encontrada." });
-
-    const callData = doc.data();
     const userEmail = (req.user as any).email.toLowerCase().trim();
     const isAdmin = await checkIfAdmin(userEmail);
+    
+    const callId = String(req.params.id);
+    const doc = await db.collection(CONFIG.CALLS_COLLECTION).doc(callId).get();
+    
+    if (!doc.exists) return res.status(404).send();
+    const data = doc.data()!;
 
-    const isOwner = callData?.ownerEmail === userEmail;
-    const isEliteCall = (callData?.nota_spin || 0) >= 7.0;
+    // 🚩 TRAVA DE SEGURANÇA: Só vê detalhes se for Admin, Dono ou Nota >= 7
+    const isOwner = data.ownerEmail?.toLowerCase().trim() === userEmail;
+    const isElite = Number(data.nota_spin || 0) >= 7;
 
-    if (!isAdmin && !isOwner && !isEliteCall) {
-      return res.status(403).json({ error: "Permissão negada. Esta ligação não é pública." });
+    if (!isAdmin && !isOwner && !isElite) {
+      return res.status(403).json({ error: "Acesso restrito a chamadas Elite (Nota 7+)" });
     }
 
-    res.json({ id: doc.id, ...callData });
-  } catch (error: any) {
+    res.json({ id: doc.id, ...data });
+  } catch (error) {
     res.status(500).json({ error: "Erro interno" });
   }
 });
@@ -134,7 +134,6 @@ router.post("/manual-trigger", async (req: Request, res: Response) => {
 
     const { url } = req.body;
 
-    // Valida presença do campo
     if (!url || typeof url !== 'string' || !url.trim()) {
       return res.status(400).json({
         uiState: 'INVALID_LINK',
@@ -157,7 +156,6 @@ router.post("/manual-trigger", async (req: Request, res: Response) => {
     const doc = await callRef.get();
     const currentStatus = doc.data()?.processingStatus;
 
-    // Já concluída — não precisa de ação
     if (doc.exists && currentStatus === 'DONE') {
       return res.json({
         uiState: 'ALREADY_DONE',
@@ -167,7 +165,6 @@ router.post("/manual-trigger", async (req: Request, res: Response) => {
       });
     }
 
-    // Já está em fila ou processando — evita duplicata desnecessária
     if (doc.exists && (currentStatus === 'PENDING_AUDIO' || currentStatus === 'PROCESSING' || currentStatus === 'QUEUED')) {
       return res.json({
         uiState: 'ALREADY_QUEUED',
@@ -188,7 +185,6 @@ router.post("/manual-trigger", async (req: Request, res: Response) => {
       ...(doc.exists ? {} : { createdAt: admin.firestore.FieldValue.serverTimestamp() })
     }, { merge: true });
 
-    console.log(`🚀 [MANUAL] Chamada ${callId} enfileirada por ${userEmail}`);
     res.json({
       uiState: 'QUEUED',
       success: true,
@@ -197,7 +193,6 @@ router.post("/manual-trigger", async (req: Request, res: Response) => {
     });
 
   } catch (error: any) {
-    console.error("💥 [MANUAL TRIGGER ERROR]:", error.message);
     res.status(500).json({
       uiState: 'SERVER_ERROR',
       error: "Erro ao processar gatilho manual.",

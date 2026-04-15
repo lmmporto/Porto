@@ -1,27 +1,30 @@
-// firebase.ts
 import { initializeApp as initializeAdminApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
+import dotenv from 'dotenv';
+
+// 🚩 FORÇA A CARGA AQUI (Antes de qualquer lógica)
+dotenv.config();
 
 const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT;
 
 const initializeFirebase = () => {
-  if (!getApps().length) {
-    if (!serviceAccountRaw) {
-      console.error("❌ Erro: Variável de serviço do Firebase ausente.");
-      return null;
-    }
-    try {
-      // Tenta limpar possíveis quebras de linha mal formatadas do Render
-      const cleanedJson = serviceAccountRaw.trim();
-      const serviceAccount = JSON.parse(cleanedJson);
-      return initializeAdminApp({ credential: cert(serviceAccount) });
-    } catch (error) {
-      console.error("❌ Erro fatal no JSON do Firebase. Verifique as aspas e quebras de linha.");
-      return null;
-    }
+  if (getApps().length > 0) return getApps()[0];
+
+  if (!serviceAccountRaw) {
+    // Se cair aqui, é porque o .env realmente não tem a chave ou o caminho está errado
+    console.error("❌ [FIREBASE ERROR]: Variável ausente no processo atual.");
+    return null;
   }
-  return getApps()[0];
+
+  try {
+    const serviceAccount = JSON.parse(serviceAccountRaw.trim());
+    return initializeAdminApp({ credential: cert(serviceAccount) });
+  } catch (error) {
+    return null;
+  }
 };
 
-initializeFirebase();
-export const db = getFirestore();
+const app = initializeFirebase();
+
+// 🚩 PROTEÇÃO: Só chama getFirestore se o app existir
+export const db = app ? getFirestore() : null as any;
