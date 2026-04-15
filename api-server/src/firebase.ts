@@ -1,22 +1,27 @@
+// firebase.ts
 import { initializeApp as initializeAdminApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
-// 🚩 Ajustado para o nome exato que aparece no seu print do Render
 const serviceAccountRaw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT;
 
-if (!getApps().length) {
-  if (!serviceAccountRaw) {
-    throw new Error("❌ CRÍTICO: Variável FIREBASE_SERVICE_ACCOUNT_JSON ausente no Render!");
+const initializeFirebase = () => {
+  if (!getApps().length) {
+    if (!serviceAccountRaw) {
+      console.error("❌ Erro: Variável de serviço do Firebase ausente.");
+      return null;
+    }
+    try {
+      // Tenta limpar possíveis quebras de linha mal formatadas do Render
+      const cleanedJson = serviceAccountRaw.trim();
+      const serviceAccount = JSON.parse(cleanedJson);
+      return initializeAdminApp({ credential: cert(serviceAccount) });
+    } catch (error) {
+      console.error("❌ Erro fatal no JSON do Firebase. Verifique as aspas e quebras de linha.");
+      return null;
+    }
   }
+  return getApps()[0];
+};
 
-  try {
-    const serviceAccount = JSON.parse(serviceAccountRaw);
-    initializeAdminApp({ credential: cert(serviceAccount) });
-    console.log('✅ Firebase conectado com sucesso!');
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    throw new Error("❌ Erro no JSON do Firebase: " + msg);
-  }
-}
-
+initializeFirebase();
 export const db = getFirestore();
