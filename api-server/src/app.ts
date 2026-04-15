@@ -31,6 +31,7 @@ function requireConfigValue(value: string | undefined, key: string): string {
 }
 
 const app: Express = express();
+app.set('trust proxy', 1); //
 const isDev = process.env.NODE_ENV === 'development';
 
 app.set('trust proxy', 1);
