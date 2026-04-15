@@ -47,56 +47,84 @@ class StatsService {
 const router = Router();
 const cache = new NodeCache({ stdTTL: 600, checkperiod: 120 });
 
-const getCurrentMonthKey = () => {
+const getCurrentMonthSuffix = () => {
   const now = new Date();
-  return `${now.getFullYear()}_${String(now.getMonth() + 1).padStart(2, '0')}`;
+  // Gera o sufixo exato do seu banco: _YYYY_MM (ex: _2026_04)
+  return `_${now.getFullYear()}_${String(now.getMonth() + 1).padStart(2, '0')}`;
 };
 
 /**
  * GET /summary
+ * Retorna o ranking Bayesiano filtrado por mês e visibilidade.
  */
 router.get('/summary', async (req: Request, res: Response) => {
   try {
+    // 1. Trava de Autenticação
     if (!req.isAuthenticated()) return res.status(401).json({ error: "Não autorizado" });
 
     const userEmail = (req.user as any).email.toLowerCase().trim();
     const isAdmin = await checkIfAdmin(userEmail);
     const requestedEmail = (req.query.ownerEmail as string)?.toLowerCase().trim();
 
+    // 2. Cache Inteligente (Evita processamento repetido)
     const cacheKey = isAdmin && !requestedEmail ? 'summary_GLOBAL_ADMIN' : `summary_${requestedEmail || userEmail}`;
     const cached = cache.get(cacheKey);
     if (cached) return res.json(cached);
 
-    const currentMonthKey = getCurrentMonthKey();
+    const monthSuffix = getCurrentMonthSuffix();
+    
+    // 3. Busca no Firestore
+    // Como o Firestore não faz "EndsWith" nativo, buscamos a coleção e filtramos no Node.
+    const snapshot = await db.collection('sdr_stats').get();
+    
+    const monthlyDocs = snapshot.docs
+      .filter(doc => doc.id.endsWith(monthSuffix))
+      .map(doc => doc.data());
 
-    const snapshot = await db.collection('sdr_stats')
-      .orderBy(admin.firestore.FieldPath.documentId())
-      .startAt(currentMonthKey)
-      .endAt(currentMonthKey + '\uf8ff')
-      .get();
-
-    if (snapshot.empty) return res.json({ total_calls: 0, media_geral: 0, sdr_ranking: {}, version: "V11_STRICT" });
-
-    const rawData = snapshot.docs.map(d => d.data());
-    const processed = StatsService.calculateBayesianRanking(rawData);
-
-    let resultRanking = processed.ranking;
-    if (!isAdmin || requestedEmail) {
-      const target = requestedEmail || userEmail;
-      resultRanking = Object.fromEntries(
-        Object.entries(processed.ranking).filter(([_, v]: any) => v.ownerEmail === target)
-      );
+    // 4. Tratamento de Vazio (Resiliência de UI)
+    if (monthlyDocs.length === 0) {
+      console.log(`⚠️ [STATS] Nenhum dado para o sufixo: ${monthSuffix}`);
+      return res.json({ 
+        total_calls: 0, 
+        media_geral: 0, 
+        sdr_ranking: {}, 
+        version: "V11_EMPTY_MONTH" 
+      });
     }
 
+    // 5. Processamento Estatístico (Bayesiano)
+    const processed = StatsService.calculateBayesianRanking(monthlyDocs);
+
+    // 6. Lógica de Visibilidade e Filtro de E-mail
+    let resultRanking = processed.ranking;
+
+    if (!isAdmin || requestedEmail) {
+      const target = requestedEmail || userEmail;
+      
+      // Filtro com normalização total (Mata erros de Case-Sensitivity)
+      resultRanking = Object.fromEntries(
+        Object.entries(processed.ranking).filter(([_, v]: any) => 
+          String(v.ownerEmail || "").toLowerCase().trim() === target
+        )
+      );
+      
+      // Trava de Segurança para Admin: Se o filtro por e-mail falhou, mostra o global.
+      if (Object.keys(resultRanking).length === 0 && isAdmin && !requestedEmail) {
+        resultRanking = processed.ranking;
+      }
+    }
+
+    // 7. Resposta Final
     const response = {
       total_calls: processed.total_calls,
       media_geral: Number(processed.media_geral.toFixed(2)),
       sdr_ranking: resultRanking,
-      version: "V11_STRICT"
+      version: "V11_FIXED_SUFFIX"
     };
 
     cache.set(cacheKey, response);
     return res.json(response);
+
   } catch (error: any) {
     console.error("💥 [STATS ERROR]:", error.message);
     res.status(500).json({ error: "Erro interno ao processar estatísticas." });
