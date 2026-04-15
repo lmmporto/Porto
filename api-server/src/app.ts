@@ -40,9 +40,14 @@ app.set('trust proxy', 1);
 
 app.use(
   cors({
-    origin: ['https://sdr-pjt.vercel.app', 'http://localhost:3000'],
+    origin: [
+      'https://sdr-pjt.vercel.app',
+      'http://localhost:3000',
+      'http://localhost:3001',
+    ],
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie', 'X-Requested-With'],
   })
 );
 
