@@ -10,6 +10,8 @@ import { sanitizeText, safeJsonParse, detectAudioExtension } from '../utils.js';
 import type { CallData, OwnerDetails } from './hubspot.js';
 import { db } from '../firebase.js';
 import { FieldValue } from 'firebase-admin/firestore';
+import type { Transaction } from 'firebase-admin/firestore';
+import admin from 'firebase-admin';
 
 // 🏛️ ARQUITETO: Versão atual do motor de análise.
 const CURRENT_ANALYSIS_VERSION = "V10_MESTRE_MENTOR";
@@ -19,13 +21,27 @@ const ANALYSIS_RESPONSE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
   required: [
-    'status_final', 'nota_spin', 'rota', 'resumo', 'alertas',
-    'playbook_detalhado', 'ponto_atencao', 'maior_dificuldade',
-    'pontos_fortes', 'perguntas_sugeridas', 'analise_escuta'
+    'status_final', 'nota_spin', 'rota', 'produto_principal', 'objecoes',
+    'insights_estrategicos', 'resumo', 'alertas', 'playbook_detalhado',
+    'ponto_atencao', 'maior_dificuldade', 'pontos_fortes', 'perguntas_sugeridas', 'analise_escuta'
   ],
   properties: {
     status_final: { type: 'string', enum: ['APROVADO', 'REPROVADO', 'ATENCAO', 'NAO_SE_APLICA'] },
     rota: { type: 'string', enum: ['ROTA_A', 'ROTA_B', 'ROTA_C', 'ROTA_D'] },
+    produto_principal: { type: 'string', enum: ['Nibo Obrigações Plus', 'Nibo WhatsApp', 'Nibo Conciliador', 'Nibo Emissor', 'Ferramenta do Radar e CAC', 'NAO_IDENTIFICADO'] },
+    objecoes: { type: 'array', items: { type: 'string' } },
+    insights_estrategicos: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          label: { type: 'string', description: 'Nome dinâmico do insight' },
+          value: { type: 'string', description: 'Valor percentual ou qualitativo' },
+          type: { type: 'string', enum: ['positive', 'negative', 'neutral'] }
+        },
+        required: ['label', 'value', 'type']
+      }
+    },
     nota_spin: { type: ['number', 'null'] },
     resumo: { type: 'string' },
     playbook_detalhado: {
@@ -51,7 +67,11 @@ const TRANSCRIPTION_RESPONSE_SCHEMA = {
 
 // --- INTERFACES ---
 export interface AnalysisResult {
-  status_final: 'APROVADO' | 'REPROVADO' | 'ATENCAO' | 'NAO_SE_APLICA';
+  status_final: string;
+  rota: string;
+  produto_principal: string;
+  objecoes: string[];
+  insights_estrategicos: { label: string; value: string; type: 'positive' | 'negative' | 'neutral' }[];
   nota_spin: number | null;
   resumo: string;
   alertas: string[];
@@ -137,10 +157,10 @@ export async function analyzeCallWithGemini(call: CallData, ownerDetails: OwnerD
   // 1. Validação de Cache e Integridade
   if (call.lastAnalysisVersion === CURRENT_ANALYSIS_VERSION && call.analysisResult) {
     console.log(`✅ [Short-circuit] Análise recuperada do cache: ${CURRENT_ANALYSIS_VERSION}`);
-    return { 
-      analysis: call.analysisResult as AnalysisResult, 
-      rawPrompt: "Cache", 
-      rawResponse: "Cache" 
+    return {
+      analysis: call.analysisResult as AnalysisResult,
+      rawPrompt: "Cache",
+      rawResponse: "Cache"
     };
   }
 
@@ -156,12 +176,21 @@ Você é o "Mestre Mentor de Vendas", um analista sênior focado em transformar 
 --- OBJETIVO ---
 Analisar a transcrição e fornecer um diagnóstico técnico. Você deve ser justo: elogie o que foi bem feito, mas seja CIRÚRGICO e TAXATIVO onde houve passividade ou perda de controle da call.
 
+--- CATÁLOGO DE PRODUTOS NIBO ---
+1. Nibo Obrigações Plus
+2. Nibo WhatsApp
+3. Nibo Conciliador
+4. Nibo Emissor
+5. Ferramenta do Radar e CAC
+
 --- REGRAS DE OURO DE ESTRUTURA ---
 1. TIMESTAMPS OBRIGATÓRIOS: No campo 'playbook_detalhado', cada entrada DEVE iniciar rigorosamente com [MM:SS].
 2. LINGUAGEM HUMANA: Use "Nesta abordagem" ou "Nesta interação" nos campos de texto. Proibido escrever "Rota A/B/C" para o usuário.
 3. PADRÃO DE FEEDBACK: 
    - Identifique o erro -> Explique o impacto negativo -> Dê a frase EXATA que deveria ter sido dita.
 4. CLASSIFICAÇÃO TÉCNICA: No campo JSON 'rota', você DEVE classificar obrigatoriamente como 'ROTA_A', 'ROTA_B', 'ROTA_C' ou 'ROTA_D' para fins de banco de dados.
+5. INSIGHTS ESTRATÉGICOS: No campo 'insights_estrategicos', gere labels dinâmicos baseados no que for mais relevante na call (ex: 'Exploração de Dor', 'Aderência ao Nibo Plus').
+6. METADADOS GESTÃO: Rota, produto_principal e objecoes são campos técnicos para o gestor e NÃO devem aparecer no feedback textual do SDR.
 
 --- CRITÉRIOS DE PONTUAÇÃO (MERITOCRACIA CONSTRUTIVA) ---
 A nota é de 0 a 10, baseada em:
@@ -195,7 +224,7 @@ ${call.transcript}
 
     const rawResponse = cleanGeminiResponse(response?.text || '');
     const parsed = safeJsonParse(rawResponse);
-    
+
     if (!parsed || typeof parsed !== 'object' || !parsed.playbook_detalhado) {
       throw new Error("Falha na validação da estrutura de resposta da IA.");
     }
@@ -231,22 +260,61 @@ export async function updateDailyStats(callData: any, analysis: any, isUpdate: b
   }
 }
 
-export async function updateSdrGlobalStats(ownerEmail: string, ownerName: string, nota: number) {
-  const cleanEmail = ownerEmail.toLowerCase().trim();
-  const monthKey = `${new Date().getFullYear()}_${String(new Date().getMonth() + 1).padStart(2, '0')}`;
-  const sdrRef = db.collection('sdr_stats').doc(`${ownerEmail}_${monthKey}`);
+export async function updateSdrGlobalStats(
+  email: string, 
+  name: string, 
+  nota: number, 
+  transaction?: admin.firestore.Transaction
+) {
+  const sdrId = email.replace(/[.$#[\]]/g, '_');
+  const dayId = new Date().toISOString().split('T')[0];
+  
+  const sdrRef = db.collection('sdrs').doc(sdrId);
+  const dailyRef = db.collection('dashboard_stats').doc(dayId);
+  const globalRef = db.collection('dashboard_stats').doc('global_summary');
 
-  await db.runTransaction(async (transaction) => {
-    const doc = await transaction.get(sdrRef);
-    if (!doc.exists) {
-      transaction.set(sdrRef, { ownerName, ownerEmail, totalCalls: 1, totalScore: nota, averageScore: nota });
-    } else {
-      const data = doc.data()!;
-      const newTotal = (data.totalCalls || 0) + 1;
-      const newScore = (data.totalScore || 0) + nota;
-      transaction.update(sdrRef, { totalCalls: newTotal, totalScore: newScore, averageScore: newScore / newTotal });
-    }
-  });
+  const logic = async (t: admin.firestore.Transaction) => {
+    const sdrDoc = await t.get(sdrRef);
+    const dailyDoc = await t.get(dailyRef);
+    const globalDoc = await t.get(globalRef);
+
+    const sdrData = (sdrDoc.exists ? sdrDoc.data() : {}) as any;
+    const newSdrCount = (sdrData.callCount || 0) + 1;
+    const newSdrTotal = (sdrData.totalScore || 0) + nota;
+
+    const updateStats = (docSnap: admin.firestore.DocumentSnapshot) => {
+      const data = (docSnap.exists ? docSnap.data() : {}) as any;
+      const total_calls = (data.total_calls || 0) + 1;
+      const sum_notes = (data.sum_notes || 0) + nota;
+      return {
+        total_calls,
+        sum_notes,
+        media_geral: Number((sum_notes / total_calls).toFixed(2)),
+        taxa_aprovacao: Math.round(((data.approved_count || 0) + (nota >= 7 ? 1 : 0)) / total_calls * 100),
+        approved_count: (data.approved_count || 0) + (nota >= 7 ? 1 : 0),
+        last_update: admin.firestore.FieldValue.serverTimestamp()
+      };
+    };
+
+    t.set(sdrRef, {
+      ...sdrData,
+      name,
+      email,
+      callCount: newSdrCount,
+      totalScore: newSdrTotal,
+      real_average: Number((newSdrTotal / newSdrCount).toFixed(2)),
+      ranking_score: Number(((newSdrTotal + (5 * 7.0)) / (newSdrCount + 5)).toFixed(2))
+    }, { merge: true });
+
+    t.set(dailyRef, updateStats(dailyDoc), { merge: true });
+    t.set(globalRef, updateStats(globalDoc), { merge: true });
+  };
+
+  if (transaction) {
+    await logic(transaction);
+  } else {
+    await db.runTransaction(logic);
+  }
 }
 
 export async function listAnalyses(filters: any, limitCount: number = 10) {

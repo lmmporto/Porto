@@ -25,6 +25,36 @@
     --input: 240 5.9% 90%;
     --ring: 240 5.9% 10%;
     --radius: 0.5rem;
+
+    /* ── Sidebar (light) ───────────────────────────────────────── */
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* ── SPIN Selling (light) ──────────────────────────────────── */
+    --spin-situation: 214 100% 50%;
+    --spin-situation-foreground: 0 0% 100%;
+    --spin-problem: 43 96% 56%;
+    --spin-problem-foreground: 20 14% 10%;
+    --spin-implication: 25 95% 53%;
+    --spin-implication-foreground: 0 0% 100%;
+    --spin-need: 142 71% 45%;
+    --spin-need-foreground: 0 0% 100%;
+
+    /* ── Status (light) ────────────────────────────────────────── */
+    --status-success: 142 71% 45%;
+    --status-success-foreground: 0 0% 100%;
+    --status-warning: 43 96% 56%;
+    --status-warning-foreground: 20 14% 10%;
+    --status-error: 0 84% 60%;
+    --status-error-foreground: 0 0% 100%;
+    --status-info: 214 100% 50%;
+    --status-info-foreground: 0 0% 100%;
   }
 
   .dark {
@@ -47,6 +77,36 @@
     --border: 240 3.7% 15.9%;
     --input: 240 3.7% 15.9%;
     --ring: 240 4.9% 83.9%;
+
+    /* ── Sidebar (dark) ────────────────────────────────────────── */
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 224.3 76.3% 48%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+
+    /* ── SPIN Selling (dark) ───────────────────────────────────── */
+    --spin-situation: 217 91% 60%;
+    --spin-situation-foreground: 240 5.9% 10%;
+    --spin-problem: 45 93% 58%;
+    --spin-problem-foreground: 240 5.9% 10%;
+    --spin-implication: 27 96% 61%;
+    --spin-implication-foreground: 240 5.9% 10%;
+    --spin-need: 142 69% 58%;
+    --spin-need-foreground: 240 5.9% 10%;
+
+    /* ── Status (dark) ─────────────────────────────────────────── */
+    --status-success: 142 69% 58%;
+    --status-success-foreground: 240 5.9% 10%;
+    --status-warning: 45 93% 58%;
+    --status-warning-foreground: 240 5.9% 10%;
+    --status-error: 0 91% 71%;
+    --status-error-foreground: 240 5.9% 10%;
+    --status-info: 217 91% 60%;
+    --status-info-foreground: 240 5.9% 10%;
   }
 }
 
@@ -55,9 +115,44 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground font-body antialiased;
+    @apply bg-surface text-on-surface font-body antialiased;
   }
   h1, h2, h3, h4, h5, h6 {
     @apply font-headline font-semibold tracking-tight;
   }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-surface-container-highest/40 backdrop-blur-xl border border-white/5;
+  }
+
+  .obsidian-glow {
+    box-shadow: 0 0 40px -10px rgba(128, 131, 255, 0.15);
+  }
+
+  .tonal-layer {
+    @apply bg-surface-container-low transition-colors duration-200 hover:bg-surface-container-high;
+  }
+
+  /* Hierarquia Tipográfica Obsidian Lens */
+  .h1-elite {
+    @apply font-headline text-4xl font-black tracking-tighter text-on-surface;
+  }
+  
+  .label-elite {
+    @apply font-body text-[10px] uppercase tracking-[0.2em] font-bold text-slate-500;
+  }
+}
+
+/* Scrollbar Customizada */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(192, 193, 255, 0.1);
+  border-radius: 10px;
 }

@@ -3,6 +3,7 @@ import './globals.css';
 // 🚩 IMPORTANTE: Caminho corrigido para 'context' (singular)
 import { DashboardProvider } from '@/context/DashboardContext'; 
 import { CallProvider } from '@/context/CallContext';
+import { ThemeProvider } from '@/components/theme-provider';
 
 export const metadata: Metadata = {
   title: 'Análise de chamadas | Inteligência SDR',
@@ -15,14 +16,21 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR">
-      <body className="font-body antialiased bg-background text-foreground min-h-screen">
-        {/* 🚩 Ordem de Precedência: Dashboard (Auth) envolve Call (Dados) */}
-        <DashboardProvider>
-          <CallProvider>
-            {children}
-          </CallProvider>
-        </DashboardProvider>
+    <html lang="pt-BR" className="dark" suppressHydrationWarning style={{ colorScheme: 'dark' }}>
+      <body className="bg-surface text-on-surface font-body antialiased h-screen overflow-hidden">
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {/* 🚩 Ordem de Precedência: Dashboard (Auth) envolve Call (Dados) */}
+          <DashboardProvider>
+            <CallProvider>
+              {children}
+            </CallProvider>
+          </DashboardProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
