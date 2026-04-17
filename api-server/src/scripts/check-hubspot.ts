@@ -18,7 +18,7 @@ async function checkCall() {
   console.log(`📡 Consultando HubSpot para a chamada: ${callId}...`);
 
   try {
-    const url = `https://api.hubapi.com/crm/v3/objects/calls/${callId}?properties=hs_call_transcript,hs_call_recording_url,hs_call_duration,hs_call_title`;
+    const url = `https://api.hubapi.com/crm/v3/objects/calls/${108028575601}?properties=hs_call_transcript,hs_call_recording_url,hs_call_duration,hs_call_title`;
     
     const response = await axios.get(url, {
       headers: { Authorization: `Bearer ${token}` }

@@ -91,9 +91,10 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
   }
 
   let localFilePath = '';
-  let uploadedFile: { name?: string; uri?: string; mimeType?: string } | null = null;
+  let uploadedFile: any = null;
 
   try {
+    // 1. Download do áudio (Mantido)
     const audioResponse = await axios.get(call.recordingUrl, {
       responseType: 'arraybuffer',
       timeout: 120000,
@@ -103,14 +104,34 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
     const buffer = Buffer.from(audioResponse.data as ArrayBuffer);
     const contentType = String(audioResponse.headers['content-type'] || 'audio/mpeg');
     localFilePath = path.join(os.tmpdir(), `call-${randomUUID()}.${detectAudioExtension(contentType)}`);
-
     await writeFile(localFilePath, buffer);
 
+    // 2. Upload para o Google
+    console.log(`📤 [IA] Uploading file to Gemini: ${call.id} (${buffer.byteLength} bytes)`);
     uploadedFile = await getGeminiModel().files.upload({
       file: localFilePath,
       config: { mimeType: contentType }
     });
 
+    // 🚩 3. ESPERA ATIVA (POLLING): O Segredo da Estabilidade
+    // Vamos verificar o status do arquivo até que ele esteja 'ACTIVE'
+    let fileStatus = await getGeminiModel().files.get({ name: uploadedFile.name });
+    let attempts = 0;
+    
+    while (fileStatus.state === 'PROCESSING' && attempts < 15) {
+      console.log(`⏳ [IA] Arquivo em processamento... aguardando 2s (Tentativa ${attempts + 1})`);
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Espera 2 segundos
+      fileStatus = await getGeminiModel().files.get({ name: uploadedFile.name });
+      attempts++;
+    }
+
+    if (fileStatus.state !== 'ACTIVE') {
+      throw new Error(`O arquivo não ficou pronto a tempo. Estado atual: ${fileStatus.state}`);
+    }
+
+    console.log(`✅ [IA] Arquivo pronto! Iniciando transcrição...`);
+
+    // 4. Transcrição Real
     const response = await getGeminiModel().models.generateContent({
       model: CONFIG.GEMINI_TRANSCRIPTION_MODEL,
       contents: createUserContent([
@@ -125,14 +146,27 @@ export async function transcribeRecordingFromHubSpot(call: CallData): Promise<st
     });
 
     const parsed = safeJsonParse(cleanGeminiResponse(response?.text || ''));
-    return sanitizeText(parsed?.transcript || '');
+    const transcript = sanitizeText(parsed?.transcript || '');
 
+    if (!transcript) {
+      throw new Error("A IA retornou uma transcrição vazia após o processamento.");
+    }
+
+    return transcript;
+
+  } catch (error: any) {
+    console.error(`❌ [IA ERROR] Falha na transcrição da Call ${call.id}:`, error.message);
+    throw error;
   } finally {
-    if (uploadedFile?.name) getGeminiModel().files.delete({ name: uploadedFile.name }).catch(() => { });
-    if (localFilePath) unlink(localFilePath).catch(() => { });
+    // Limpeza (Mantida)
+    if (uploadedFile?.name) {
+      getGeminiModel().files.delete({ name: uploadedFile.name }).catch(() => { });
+    }
+    if (localFilePath) {
+      unlink(localFilePath).catch(() => { });
+    }
   }
 }
-
 export async function analyzeCallWithGemini(call: CallData, ownerDetails: OwnerDetails): Promise<AnalysisWithDebug> {
   // 1. Validação de Cache e Integridade
   if (call.lastAnalysisVersion === CURRENT_ANALYSIS_VERSION && call.analysisResult) {
