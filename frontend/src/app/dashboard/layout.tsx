@@ -4,8 +4,20 @@ import { DashboardProvider, useDashboard } from '@/context/DashboardContext';
 import { Sidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header'; // Caminho correto para o Header
 
+import { useRouter, usePathname } from 'next/navigation';
+import { useEffect } from 'react';
+
 function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
-  const { isSidebarCollapsed } = useDashboard();
+  const { isSidebarCollapsed, isAdmin, user } = useDashboard();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    // Redirecionamento Estrito de Segurança
+    if (user && !isAdmin && pathname === '/dashboard') {
+      router.replace('/dashboard/me');
+    }
+  }, [user, isAdmin, pathname, router]);
 
   return (
     <div className="flex min-h-screen bg-bg">

@@ -22,7 +22,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); // Estado da sidebar
 
   const ADMIN_EMAIL = 'lucas.porto@nibo.com.br'; // Email do admin
-  const isAdmin = user?.email === ADMIN_EMAIL;
+  const isAdmin = React.useMemo(() => user?.email === ADMIN_EMAIL, [user?.email]);
 
   // Lógica de autenticação real temporariamente simplificada para MVP
   useEffect(() => {
