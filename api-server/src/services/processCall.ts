@@ -14,6 +14,9 @@ import {
   updateDailyStats,
   updateSdrGlobalStats,
 } from "./analysis.service.js";
+import { MetricsService } from './metrics.service.js';
+
+const ALLOWED_OWNER_IDS = ['81501413', '83701507', '83701512', '83701527', '87174611', '88958088'];
 
 const ALLOWED_TEAMS = ["Time William", "Equipe Alex", "Time Lucas", "Time Amanda"];
 const BLOCKED_KEYWORDS = ["CX", "Suporte", "Atendimento", "Customer Success", "Financeiro", "GF"];
@@ -54,6 +57,12 @@ export async function processCall(callId: string): Promise<any> {
     const call = await fetchCall(callId);
     const owner: OwnerDetails = await fetchOwnerDetails(call.ownerId || null);
     const teamName = (owner.teamName || "Sem equipe").trim();
+
+    // 🚩 GATEKEEPER: Trava de Elite
+    if (!ALLOWED_OWNER_IDS.includes(String(call.ownerId))) {
+      console.log(`[GATEKEEPER] 🛡️ Call ${callId} ignorada. Owner ${call.ownerId} não autorizado.`);
+      return { success: true, reason: "OWNER_NOT_AUTHORIZED" };
+    }
 
     const isAllowed = ALLOWED_TEAMS.some((t) =>
       teamName.toLowerCase().includes(t.toLowerCase())
@@ -214,6 +223,10 @@ export async function processCall(callId: string): Promise<any> {
         processingStatus: "DONE",
         analyzedAt: FieldValue.serverTimestamp(),
         status_final: analysis.status_final,
+        rota: analysis.rota,
+        produto_principal: analysis.produto_principal,
+        objecoes: analysis.objecoes,
+        insights_estrategicos: analysis.insights_estrategicos,
         nota_spin: analysis.nota_spin !== null ? Number(analysis.nota_spin) : null,
         resumo: analysis.resumo,
         alertas: analysis.alertas,
@@ -223,6 +236,8 @@ export async function processCall(callId: string): Promise<any> {
         analise_escuta: analysis.analise_escuta,
         perguntas_sugeridas: analysis.perguntas_sugeridas,
         playbook_detalhado: analysis.playbook_detalhado,
+        teamName: teamName,
+        processedAt: new Date().toISOString(),
         rawPrompt,
         rawResponse,
         failureReason: FieldValue.delete(),
@@ -240,6 +255,13 @@ export async function processCall(callId: string): Promise<any> {
     );
 
     console.log(`[SUCCESS] 🎉 Call ${callId} finalizada e salva no banco.`);
+
+    try {
+      await MetricsService.updateSDRMetrics(owner.ownerEmail || "");
+    } catch (mError) {
+      console.error("⚠️ Erro ao atualizar métricas do SDR:", mError);
+    }
+
     return { success: true, status: "DONE" };
   } catch (error: any) {
     const message = error?.message || "Unexpected processing error";

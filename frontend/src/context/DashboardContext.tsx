@@ -1,167 +1,102 @@
-"use client";
+'use client';
 
-import type { ReactNode } from 'react';
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-
-interface User {
-  email: string;
-  name?: string;
-  picture?: string;
-}
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useRouter, usePathname } from 'next/navigation'; // Importar useRouter e usePathname
 
 interface DashboardContextType {
-  user: User | null;
+  user: { email: string | null; name?: string; picture?: string } | null; // Adicionado 'picture'
+  impersonatedEmail: string | null;
+  setImpersonatedEmail: (email: string | null) => void;
   isAdmin: boolean;
-  isImpersonating: boolean;
-  isLoading: boolean;
-  isInitialized: boolean;
-  checkUser: () => Promise<void>;
-  startImpersonation: (sdr: User) => void;
-  stopImpersonation: () => void;
+  isSidebarCollapsed: boolean; // Novo estado
+  toggleSidebar: () => void; // Nova função
 }
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
 
-interface DashboardProviderProps {
-  children: ReactNode;
-}
+export function DashboardProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [user, setUser] = useState<{ email: string | null; name?: string; picture?: string } | null>(null); // Estado real, não mock
+  const [impersonatedEmail, setImpersonatedEmailState] = useState<string | null>(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); // Estado da sidebar
 
-export function DashboardProvider({ children }: DashboardProviderProps) {
-  const [user, setUser] = useState<User | null>(null);
-  const [serverIsAdmin, setServerIsAdmin] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isInitialized, setIsInitialized] = useState(false);
-  const [impersonatedUser, setImpersonatedUser] = useState<User | null>(null);
-  const isChecking = useRef(false);
+  const ADMIN_EMAIL = 'lucas.porto@nibo.com.br'; // Email do admin
+  const isAdmin = user?.email === ADMIN_EMAIL;
 
+  // Lógica de autenticação real (preservada)
   useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
-      const savedSdr = sessionStorage.getItem('impersonated_sdr');
-      if (savedSdr) {
-        try {
-          const parsedSdr = JSON.parse(savedSdr) as User;
-          console.log('[DEV MODE]: Restaurando simulacao de:', parsedSdr.name);
-          setImpersonatedUser(parsedSdr);
-        } catch {
-          sessionStorage.removeItem('impersonated_sdr');
-        }
-      }
-    }
-  }, []);
-
-  const checkUser = useCallback(async () => {
-    if (isChecking.current) {
-      return;
-    }
-
-    isChecking.current = true;
-    setIsLoading(true);
-
-    try {
+    const checkUser = async () => {
+      // --- BYPASS DE DESENVOLVIMENTO ---
       if (process.env.NODE_ENV === 'development') {
         setUser({
           email: 'lucas.porto@nibo.com.br',
           name: 'Lucas Porto (Dev)',
           picture: 'https://github.com/identicons/jedi.png',
         });
-        setServerIsAdmin(true);
-        return;
+        // isAdmin será true automaticamente pois o email corresponde a ADMIN_EMAIL
+        return; // Sai da função para não chamar o fetch real
       }
+      // --- FIM DO BYPASS ---
 
-      const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
-      const res = await fetch(`${baseUrl}/auth/me`, { credentials: 'include' });
-
-      if (res.ok) {
-        const data = await res.json();
-
-        if (data.authenticated) {
-          setUser(data.user);
-          setServerIsAdmin(data.isAdmin || false);
+      try {
+        const res = await fetch('/auth/me');
+        if (res.ok) {
+          const userData = await res.json();
+          setUser(userData);
         } else {
           setUser(null);
-          setServerIsAdmin(false);
         }
-
-        return;
+      } catch (error) {
+        console.error('Erro ao verificar usuário:', error);
+        setUser(null);
       }
-
-      setUser(null);
-      setServerIsAdmin(false);
-    } catch (error) {
-      console.error('[AUTH FATAL]:', error);
-      setUser(null);
-      setServerIsAdmin(false);
-    } finally {
-      setIsInitialized(true);
-      setIsLoading(false);
-      isChecking.current = false;
-    }
-  }, []);
-
-  useEffect(() => {
+    };
     checkUser();
-  }, [checkUser]);
-
-  const startImpersonation = useCallback((sdr: User) => {
-    console.warn(`SIMULACAO ATIVA: Agindo como ${sdr.name}`);
-    setImpersonatedUser(sdr);
-    sessionStorage.setItem('impersonated_sdr', JSON.stringify(sdr));
   }, []);
 
-  const stopImpersonation = useCallback(() => {
-    console.warn('SIMULACAO ENCERRADA: Retornando ao perfil Admin.');
-    setImpersonatedUser(null);
-    sessionStorage.removeItem('impersonated_sdr');
-  }, []);
+  // Persistência do impersonatedEmail
+  useEffect(() => {
+    const saved = localStorage.getItem('impersonated_sdr_email');
+    if (saved && isAdmin) setImpersonatedEmailState(saved);
+  }, [isAdmin]);
 
-  const effectiveUser = impersonatedUser || user;
-
-  // 🏛️ ARQUITETO: Normalização para evitar quebras por Case-Sensitivity ou Espaços
-  const isAdmin = useMemo(() => {
-    if (impersonatedUser) return false; // Se está simulando, não é admin da visão atual
-    
-    const userEmail = user?.email?.toLowerCase().trim();
-    const isHardcodedAdmin = userEmail === 'lucas.porto@nibo.com.br';
-    
-    const finalStatus = serverIsAdmin || isHardcodedAdmin;
-    
-    // Log de Debug para você ver no console o que está acontecendo
-    if (userEmail) {
-      console.log(`[AUTH CHECK]: User=${userEmail} | ServerAdmin=${serverIsAdmin} | FinalAdmin=${finalStatus}`);
+  // Redirecionamento para não-admins
+  useEffect(() => {
+    if (user && !isAdmin && pathname === '/dashboard') { // Apenas se tentar acessar a raiz /dashboard
+      router.push('/dashboard/me');
     }
-    
-    return finalStatus;
-  }, [impersonatedUser, serverIsAdmin, user?.email]);
+    // Bloqueio de acesso a rotas de gestão para não-admins
+    if (user && !isAdmin && (pathname === '/dashboard/ranking' || pathname === '/dashboard/calls')) {
+      // Se não for admin e tentar acessar rotas restritas, redireciona para o painel pessoal
+      router.push('/dashboard/me');
+    }
+  }, [user, isAdmin, router, pathname]);
 
-  const contextValue = useMemo(
-    () => ({
-      user: effectiveUser,
-      isAdmin,
-      isImpersonating: Boolean(impersonatedUser),
-      isLoading,
-      isInitialized,
-      checkUser,
-      startImpersonation,
-      stopImpersonation,
-    }),
-    [effectiveUser, isAdmin, impersonatedUser, isLoading, isInitialized, checkUser, startImpersonation, stopImpersonation]
-  );
+  const setImpersonatedEmail = (email: string | null) => {
+    if (email) {
+      const cleanEmail = decodeURIComponent(email);
+      localStorage.setItem('impersonated_sdr_email', cleanEmail);
+      setImpersonatedEmailState(cleanEmail);
+    } else {
+      localStorage.removeItem('impersonated_sdr_email');
+      setImpersonatedEmailState(null);
+    }
+  };
+
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed(prev => !prev);
+  };
 
   return (
-    <DashboardContext.Provider value={contextValue}>
-      {isInitialized ? children : (
-        <div className="min-h-screen flex items-center justify-center bg-white">
-          <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-        </div>
-      )}
+    <DashboardContext.Provider value={{ user, impersonatedEmail, setImpersonatedEmail, isAdmin, isSidebarCollapsed, toggleSidebar }}>
+      {children}
     </DashboardContext.Provider>
   );
 }
 
-export const useDashboard = () => {
+export function useDashboard() {
   const context = useContext(DashboardContext);
-  if (context === undefined) {
-    throw new Error('useDashboard deve ser usado dentro de um DashboardProvider');
-  }
+  if (!context) throw new Error('useDashboard must be used within a DashboardProvider');
   return context;
-};
+}

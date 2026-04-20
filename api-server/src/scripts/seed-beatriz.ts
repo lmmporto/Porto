@@ -1,86 +1,195 @@
-import { initializeApp, cert } from 'firebase-admin/app';
-import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
-import dotenv from 'dotenv';
+import 'dotenv/config';
+import { db } from '../firebase.js';
+import admin from 'firebase-admin';
 
-dotenv.config();
+const { FieldValue } = admin.firestore;
 
-const BEATRIZ = {
-  name: "Beatriz Rodrigues",
-  email: "beatriz.rodrigues@nibo.com.br"
+/**
+ * ============================================================
+ * AJUSTES SIMPLES
+ * ============================================================
+ */
+
+/* Quantidade de SDRs fictícios */
+const TOTAL_SDRS = 18;
+
+/* Data usada no dashboard diário */
+const DASHBOARD_DATE = '2026-04-17';
+
+/**
+ * ============================================================
+ * GERADOR DE SDRs DE TESTE
+ * ============================================================
+ */
+
+function random(min: number, max: number) {
+  return Number((Math.random() * (max - min) + min).toFixed(2));
+}
+
+function randomInt(min: number, max: number) {
+  return Math.floor(Math.random() * (max - min) + min);
+}
+
+function generateTestSdr(index: number) {
+  return {
+    id: `sdr_teste_${index}`,
+    nome: `SDR Teste ${index}`,
+    email: `sdr${index}@teste.com`,
+    media_dominio: random(3, 10),
+    media_dor: random(3, 10),
+    ranking_score: random(6, 10),
+    total_calls: randomInt(8, 40),
+    duracao_media: `${randomInt(5, 12)}:${randomInt(10, 59)}`
+  };
+}
+
+/**
+ * ============================================================
+ * DASHBOARD DATA
+ * ============================================================
+ */
+
+const GLOBAL_SUMMARY = {
+  total_calls: 240,
+  total_revenue_opportunity: 920000,
+  average_score: 8.21,
+
+  recurrent_gaps: {
+    "Pitch Prematuro": 14,
+    "Falta de Investigação": 11,
+    "Perguntas Superficiais": 9,
+    "Pouca Exploração de Impacto": 6
+  },
+
+  top_strengths: {
+    "Empatia": 20,
+    "Boa Condução": 15,
+    "Escuta Ativa": 12,
+    "Abertura Forte": 9
+  },
+
+  duracao_media: "08:42",
+
+  updatedAt: FieldValue.serverTimestamp()
 };
 
-async function seedBeatriz() {
-  try {
-    const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '{}');
-    initializeApp({ credential: cert(serviceAccount) });
-    const db = getFirestore();
+const DAILY_SUMMARY = {
+  date: DASHBOARD_DATE,
 
-    console.log(`🌱 Semeando dados para ${BEATRIZ.name}...`);
+  total_calls: 37,
+  total_revenue_opportunity: 180000,
+  average_score: 8.44,
 
-    const calls = [
-      {
-        id: "fake_call_001",
-        title: "Venda Fechada - Condomínio Solar",
-        nota_spin: 9.5,
-        status_final: "APROVADO",
-        resumo: "Beatriz demonstrou domínio total do framework SPIN. Identificou a dor latente de gestão de inadimplência e conectou com a solução de automação de cobrança de forma magistral.",
-        analise_escuta: "Aos 01:15, Beatriz ouviu o síndico reclamar do tempo gasto em planilhas e não interrompeu. Esperou o silêncio para perguntar: 'E quanto esse tempo custa para a sua saúde financeira?'. Aula de escuta ativa.",
-        alertas: ["Aos 04:20, poderia ter reforçado o prazo de implementação."],
-        ponto_atencao: "Manter o ritmo de fechamento, apenas garantir que o próximo passo de onboarding esteja claro.",
-        pontos_fortes: ["Escuta ativa impecável", "Uso de perguntas de implicação", "Rapport imediato"],
-        maior_dificuldade: "Nenhuma dificuldade crítica identificada.",
-        durationMs: 480000, // 8 min
-      },
-      {
-        id: "fake_call_002",
-        title: "Prospecção - Indústria Metalúrgica",
-        nota_spin: 4.2,
-        status_final: "ATENCAO",
-        resumo: "Abordagem inicial correta, mas Beatriz recuou diante da primeira objeção de preço. Faltou ancoragem de valor antes de falar de mensalidade.",
-        analise_escuta: "Aos 00:45, o cliente disse que o software atual era 'grátis'. Beatriz aceitou a informação passivamente em vez de explorar as limitações do 'grátis'.",
-        alertas: ["00:50 - SDR passiva na objeção de custo", "02:10 - Não qualificou o decisor final"],
-        ponto_atencao: "Treinar contorno de objeção de preço usando ROI.",
-        pontos_fortes: ["Cordialidade", "Clareza na fala"],
-        maior_dificuldade: "Dificuldade em sustentar o valor do produto perante concorrentes gratuitos.",
-        durationMs: 320000, // 5.3 min
-      }
-    ];
+  recurrent_gaps: {
+    "Pitch Prematuro": 6,
+    "Falta de Investigação": 4,
+    "Perguntas Superficiais": 3
+  },
 
-    const batch = db.batch();
+  top_strengths: {
+    "Empatia": 8,
+    "Boa Condução": 6,
+    "Escuta Ativa": 4
+  },
 
-    // 1. Inserir as chamadas
-    calls.forEach(call => {
-      const ref = db.collection('calls_analysis').doc(call.id);
-      batch.set(ref, {
-        ...call,
-        ownerName: BEATRIZ.name,
-        ownerEmail: BEATRIZ.email,
-        processingStatus: "DONE",
-        callTimestamp: Timestamp.now(), // Data de hoje
-        createdAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-        portalId: "1554114"
-      });
+  duracao_media: "08:42",
+
+  updatedAt: FieldValue.serverTimestamp()
+};
+
+/**
+ * ============================================================
+ * LIMPEZA
+ * ============================================================
+ */
+
+async function clearCollection(collectionName: string) {
+  const snapshot = await db.collection(collectionName).get();
+
+  if (snapshot.empty) return;
+
+  const batch = db.batch();
+
+  snapshot.docs.forEach((doc) => {
+    batch.delete(doc.ref);
+  });
+
+  await batch.commit();
+}
+
+/**
+ * ============================================================
+ * SEED SDRs
+ * ============================================================
+ */
+
+async function seedSdrs() {
+  console.log("🚀 Gerando SDRs fictícios...");
+
+  for (let i = 1; i <= TOTAL_SDRS; i++) {
+    const sdr = generateTestSdr(i);
+
+    await db.collection("sdrs").doc(sdr.id).set({
+      nome: sdr.nome,
+      name: sdr.nome,
+
+      email: sdr.email,
+      ownerEmail: sdr.email,
+
+      media_dominio: sdr.media_dominio,
+      media_dor: sdr.media_dor,
+
+      ranking_score: sdr.ranking_score,
+
+      total_calls: sdr.total_calls,
+      duracao_media: sdr.duracao_media,
+
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
     });
 
-    // 2. Atualizar o ranking (sdr_stats)
-    const statsRef = db.collection('sdr_stats').doc(BEATRIZ.name);
-    batch.set(statsRef, {
-      ownerName: BEATRIZ.name,
-      ownerEmail: BEATRIZ.email,
-      totalCalls: calls.length,
-      totalScore: calls.reduce((acc, c) => acc + c.nota_spin, 0),
-      averageScore: calls.reduce((acc, c) => acc + c.nota_spin, 0) / calls.length,
-      lastUpdated: FieldValue.serverTimestamp()
-    }, { merge: true });
-
-    await batch.commit();
-    console.log("✅ Beatriz agora tem dados reais para teste!");
-    process.exit(0);
-  } catch (error) {
-    console.error("🛑 Erro no seeding:", error);
-    process.exit(1);
+    console.log(
+      `SDR criado → ${sdr.nome} | domínio ${sdr.media_dominio} | dor ${sdr.media_dor}`
+    );
   }
 }
 
-seedBeatriz();
+/**
+ * ============================================================
+ * SEED DASHBOARD
+ * ============================================================
+ */
+
+async function seedDashboard() {
+  console.log("📊 Criando dashboard global...");
+
+  await db.collection("dashboard_stats")
+    .doc("global_summary")
+    .set(GLOBAL_SUMMARY);
+
+  console.log("📅 Criando dashboard diário...");
+
+  await db.collection("dashboard_stats")
+    .doc(DASHBOARD_DATE)
+    .set(DAILY_SUMMARY);
+}
+
+/**
+ * ============================================================
+ * EXECUÇÃO
+ * ============================================================
+ */
+
+async function runSeed() {
+
+  console.log("🧹 Limpando SDRs antigos...");
+  await clearCollection("sdrs");
+
+  await seedSdrs();
+
+  await seedDashboard();
+
+  console.log("✅ Banco populado com dados de teste.");
+}
+
+runSeed();

@@ -26,5 +26,17 @@ const initializeFirebase = () => {
 
 const app = initializeFirebase();
 
-// 🚩 PROTEÇÃO: Só chama getFirestore se o app existir
-export const db = app ? getFirestore() : null as any;
+const firestore = app ? getFirestore() : null as any;
+
+if (firestore) {
+  // Trava de segurança para operações de deleção
+  const originalDelete = firestore.recursiveDelete.bind(firestore);
+  firestore.recursiveDelete = (ref: any, ...args: any[]) => {
+    if (process.env.ALLOW_DELETE !== 'true') {
+      throw new Error('[SECURITY] Mass delete denied. Set ALLOW_DELETE=true to proceed.');
+    }
+    return originalDelete(ref, ...args);
+  };
+}
+
+export const db = firestore;

@@ -1,5 +1,5 @@
 
-import type {Config} from 'tailwindcss';
+import type { Config } from 'tailwindcss';
 
 export default {
   darkMode: ['class'],
@@ -7,15 +7,28 @@ export default {
     './src/pages/**/*.{js,ts,jsx,tsx,mdx}',
     './src/components/**/*.{js,ts,jsx,tsx,mdx}',
     './src/app/**/*.{js,ts,jsx,tsx,mdx}',
+    './src/features/**/*.{js,ts,jsx,tsx,mdx}',
   ],
   theme: {
     extend: {
       fontFamily: {
-        body: ['Inter', 'sans-serif'],
-        headline: ['Space Grotesk', 'sans-serif'],
+        body: ['var(--font-inter)', 'Inter', 'sans-serif'],
+        headline: ['var(--font-manrope)', 'Space Grotesk', 'sans-serif'],
         code: ['monospace'],
       },
       colors: {
+        // ─── Obsidian Lens — tokens visuais ─────────────────────────────────
+        surface: {
+          DEFAULT: '#0c1324',
+          dim: '#0c1324',
+          container: '#191f31',
+          'container-low': '#151b2d',
+          'container-high': '#23293c',
+          'container-highest': '#2e3447',
+        },
+        'on-surface': '#dce1fb',
+        tertiary: '#ffb95f',
+        // ─── Shadcn UI — aliases CSS var ─────────────────────────────────────
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
         card: {
@@ -27,11 +40,12 @@ export default {
           foreground: 'hsl(var(--popover-foreground))',
         },
         primary: {
-          DEFAULT: 'hsl(var(--primary))',
+          DEFAULT: '#c0c1ff',
+          container: '#8083ff',
           foreground: 'hsl(var(--primary-foreground))',
         },
         secondary: {
-          DEFAULT: 'hsl(var(--secondary))',
+          DEFAULT: '#4edea3',
           foreground: 'hsl(var(--secondary-foreground))',
         },
         muted: {
@@ -44,6 +58,10 @@ export default {
         },
         destructive: {
           DEFAULT: 'hsl(var(--destructive))',
+          foreground: 'hsl(var(--destructive-foreground))',
+        },
+        error: {
+          DEFAULT: '#ffb4ab',
           foreground: 'hsl(var(--destructive-foreground))',
         },
         border: 'hsl(var(--border))',
@@ -59,11 +77,54 @@ export default {
           border: 'hsl(var(--sidebar-border))',
           ring: 'hsl(var(--sidebar-ring))',
         },
+        // ─── SPIN Selling — cores semânticas ────────────────────────────────
+        spin: {
+          situation: {
+            DEFAULT: 'hsl(var(--spin-situation))',
+            foreground: 'hsl(var(--spin-situation-foreground))',
+          },
+          problem: {
+            DEFAULT: 'hsl(var(--spin-problem))',
+            foreground: 'hsl(var(--spin-problem-foreground))',
+          },
+          implication: {
+            DEFAULT: 'hsl(var(--spin-implication))',
+            foreground: 'hsl(var(--spin-implication-foreground))',
+          },
+          need: {
+            DEFAULT: 'hsl(var(--spin-need))',
+            foreground: 'hsl(var(--spin-need-foreground))',
+          },
+        },
+        // ─── Status de chamada ───────────────────────────────────────────────
+        status: {
+          success: {
+            DEFAULT: 'hsl(var(--status-success))',
+            foreground: 'hsl(var(--status-success-foreground))',
+          },
+          warning: {
+            DEFAULT: 'hsl(var(--status-warning))',
+            foreground: 'hsl(var(--status-warning-foreground))',
+          },
+          error: {
+            DEFAULT: 'hsl(var(--status-error))',
+            foreground: 'hsl(var(--status-error-foreground))',
+          },
+          info: {
+            DEFAULT: 'hsl(var(--status-info))',
+            foreground: 'hsl(var(--status-info-foreground))',
+          },
+        },
       },
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
+      },
+      // ─── Z-index scale para App Shell ─────────────────────────────────────
+      zIndex: {
+        header: '50',
+        sidebar: '40',
       },
       keyframes: {
         'accordion-down': {
