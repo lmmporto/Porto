@@ -79,6 +79,11 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   }, [user, isAdmin, router, pathname]);
 
   const setImpersonatedEmail = (email: string | null) => {
+    if (user?.email !== ADMIN_EMAIL) {
+      console.error("🚫 Tentativa de impersonate bloqueada.");
+      return;
+    }
+
     if (email) {
       const cleanEmail = decodeURIComponent(email);
       localStorage.setItem('impersonated_sdr_email', cleanEmail);
