@@ -1,10 +1,11 @@
 // backend/src/routes/sdr-registry.ts
 import { Router } from 'express';
 import { db } from '../firebase.js';
+import { requireAdmin } from '../middleware/requireAdmin.js';
 
 const router = Router();
 
-router.get('/', async (req, res) => {
+router.get('/', requireAdmin, async (req, res) => {
   try {
     const snapshot = await db.collection('sdr_registry').get();
     const sdrs = snapshot.docs.map(doc => ({

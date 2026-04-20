@@ -30,14 +30,30 @@ router.get("/", async (req: Request, res: Response) => {
 
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
 
-    if (isAdmin || mode === 'ranking') {
-      if (filterEmail) {
-        query = query.where("ownerEmail", "==", filterEmail);
-      } else if (!isAdmin) {
+    let targetEmail = userEmail;
+    
+    if (isAdmin && filterEmail) {
+      targetEmail = filterEmail;
+      if (targetEmail !== userEmail) {
+        console.info("IMPERSONATION", {
+          admin: userEmail,
+          target: targetEmail,
+          route: 'list_calls',
+          timestamp: new Date().toISOString()
+        });
+      }
+    }
+
+    if (mode === 'ranking') {
+      // No modo ranking, buscamos as melhores notas de todos (se admin) ou só as próprias (se comum)
+      // No entanto, o ranking costuma ser global. Vamos manter a lógica:
+      if (isAdmin) {
+        if (filterEmail) query = query.where("ownerEmail", "==", filterEmail);
+      } else {
         query = query.where("ownerEmail", "==", userEmail);
       }
     } else {
-      query = query.where("ownerEmail", "==", userEmail);
+      query = query.where("ownerEmail", "==", targetEmail);
     }
 
     query = query.where("processingStatus", "==", "DONE");

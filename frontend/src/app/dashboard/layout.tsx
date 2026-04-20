@@ -13,9 +13,14 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    // Redirecionamento Estrito de Segurança
-    if (user && !isAdmin && pathname === '/dashboard') {
-      router.replace('/dashboard/me');
+    if (user && !isAdmin) {
+      const allowedSdrRoutes = ['/dashboard/me', '/dashboard/calls', '/dashboard/ranking'];
+      const isAllowed = allowedSdrRoutes.some(route => pathname?.startsWith(route));
+      
+      // Se não estiver em uma rota permitida ou estiver na raiz admin, redireciona para a vitrine pessoal
+      if (!isAllowed || pathname === '/dashboard') {
+        router.replace('/dashboard/me');
+      }
     }
   }, [user, isAdmin, pathname, router]);
 

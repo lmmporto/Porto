@@ -132,12 +132,22 @@ app.get(
 );
 
 app.get('/auth/me', async (req: Request, res: Response) => {
-  // Chamada limpa sem opcional, confiando na tipagem do Passport
-  if (req.isAuthenticated() && req.user) {
-    const isAdmin = await checkIfAdmin(req.user.email);
-    return res.json({ authenticated: true, user: req.user, isAdmin });
+  if (!req.isAuthenticated() || !req.user) {
+    return res.status(401).json({ error: 'Unauthenticated' });
   }
-  return res.status(401).json({ authenticated: false });
+
+  const user = req.user;
+  const isAdmin = await checkIfAdmin(user.email);
+
+  res.set('Cache-Control', 'no-store');
+
+  return res.json({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    picture: user.picture,
+    isAdmin
+  });
 });
 
 app.post('/auth/logout', (req: Request, res: Response, next: NextFunction) => {

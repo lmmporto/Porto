@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation'; // Importar useRouter e usePathname
 
 interface DashboardContextType {
-  user: { email: string | null; name?: string; picture?: string } | null; // Adicionado 'picture'
+  user: { id?: string; email: string | null; name?: string; picture?: string; isAdmin?: boolean } | null;
   viewingEmail: string | null;
   setViewingEmail: (email: string | null) => void;
   isAdmin: boolean;
@@ -17,39 +17,35 @@ const DashboardContext = createContext<DashboardContextType | undefined>(undefin
 export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const [user, setUser] = useState<{ email: string | null; name?: string; picture?: string } | null>(null); // Estado real, não mock
+  const [user, setUser] = useState<{ id?: string; email: string | null; name?: string; picture?: string; isAdmin?: boolean } | null>(null);
   const [viewingEmail, setViewingEmailState] = useState<string | null>(null);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); // Estado da sidebar
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [loadingAuth, setLoadingAuth] = useState(true); // Bloqueio visual The Matrix
 
-  const ADMIN_EMAIL = 'lucas.porto@nibo.com.br'; // Email do admin
-  const isAdmin = React.useMemo(() => user?.email === ADMIN_EMAIL, [user?.email]);
+  const isAdmin = !!user?.isAdmin;
 
   // Lógica de autenticação real temporariamente simplificada para MVP
   useEffect(() => {
     const checkUser = async () => {
-      // --- BYPASS DE AUTENTICAÇÃO ATIVO (MVP) ---
-      setUser({
-        email: 'lucas.porto@nibo.com.br',
-        name: 'Lucas Porto (Admin MVP)',
-        picture: 'https://github.com/identicons/jedi.png',
-      });
-      return; 
-      // --- FIM DO BYPASS ---
-
-      /* Lógica de produção (Render Auth) 
+      setLoadingAuth(true);
       try {
-        const res = await fetch('/auth/me');
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/me`, {
+          credentials: 'include'
+        });
+
         if (res.ok) {
           const userData = await res.json();
           setUser(userData);
         } else {
           setUser(null);
         }
+
       } catch (error) {
         console.error('Erro ao verificar usuário:', error);
         setUser(null);
+      } finally {
+        setLoadingAuth(false);
       }
-      */
     };
     checkUser();
   }, []);
@@ -81,7 +77,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   }, [user, isAdmin, router, pathname]);
 
   const setViewingEmail = (email: string | null) => {
-    if (user?.email !== ADMIN_EMAIL) {
+    if (!user?.isAdmin) {
       console.error("🚫 Tentativa de impersonate bloqueada.");
       return;
     }
@@ -99,6 +95,14 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const toggleSidebar = () => {
     setIsSidebarCollapsed(prev => !prev);
   };
+
+  if (loadingAuth) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-[#020817]">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-purple border-t-transparent"></div>
+      </div>
+    );
+  }
 
   return (
     <DashboardContext.Provider value={{ user, viewingEmail, setViewingEmail, isAdmin, isSidebarCollapsed, toggleSidebar }}>

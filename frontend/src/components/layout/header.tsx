@@ -36,7 +36,7 @@ export function Header() {
     <header className="flex items-center justify-between p-4 bg-panel border-b border-white/5">
       <h1 className="text-xl font-bold text-white">Dashboard</h1>
       <div className="flex items-center gap-4">
-        {user?.email === 'lucas.porto@nibo.com.br' && ( // Renderiza o seletor estritamente e apenas para o Admin Supremo
+        {isAdmin && ( // Renderiza o seletor usando a autorização provida pelo backend
           <div className="flex items-center gap-4 bg-panel/50 p-2 rounded-xl border border-white/5">
             <span className="text-[10px] font-bold uppercase tracking-widest text-purple">Simular SDR:</span>
             <select 

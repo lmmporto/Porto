@@ -4,6 +4,7 @@ import admin from 'firebase-admin';
 import { CONFIG } from '../config.js';
 import { updateDailyStats } from '../services/analysis.service.js';
 import { checkIfAdmin } from '../utils/auth.js';
+import { requireAdmin } from '../middleware/requireAdmin.js';
 import NodeCache from 'node-cache';
 
 // 🏛️ ARQUITETO: Service Layer para lógica de negócio
@@ -99,8 +100,21 @@ router.get("/performance", async (req: Request, res: Response) => {
     const isAdmin = await checkIfAdmin(userEmail);
 
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
-    if (!isAdmin) query = query.where("ownerEmail", "==", userEmail);
-    else if (ownerEmail) query = query.where("ownerEmail", "==", (ownerEmail as string).toLowerCase().trim());
+
+    if (!isAdmin) {
+      query = query.where("ownerEmail", "==", userEmail);
+    } else if (ownerEmail) {
+      const targetEmail = (ownerEmail as string).toLowerCase().trim();
+      if (targetEmail !== userEmail) {
+        console.info("IMPERSONATION", {
+          admin: userEmail,
+          target: targetEmail,
+          route: 'performance',
+          timestamp: new Date().toISOString()
+        });
+      }
+      query = query.where("ownerEmail", "==", targetEmail);
+    }
 
     if (rota && rota !== 'ALL') query = query.where("rota", "==", rota);
 
@@ -132,14 +146,35 @@ router.get("/performance", async (req: Request, res: Response) => {
  */
 router.get('/personal-summary', async (req: Request, res: Response) => {
   try {
-    if (!req.isAuthenticated()) return res.status(401).json({ error: "Não autorizado" });
-    const userEmail = (req.user as any).email;
-    const rawEmail = (req.query.ownerEmail as string) || userEmail || "";
-    const targetEmail = rawEmail.toLowerCase().trim();
+    if (!req.isAuthenticated() || !req.user) return res.status(401).json({ error: "Não autorizado" });
+    const userEmail = (req.user as any).email.toLowerCase().trim();
+    const isAdmin = await checkIfAdmin(userEmail);
+    const requestedEmail = (req.query.ownerEmail as string)?.toLowerCase().trim();
+    
+    let targetEmail = userEmail;
+    let targetName = (req.query.ownerEmail as string) || "";
+
+    if (isAdmin && requestedEmail) {
+      targetEmail = requestedEmail;
+      if (targetEmail !== userEmail) {
+        console.info("IMPERSONATION", {
+          admin: userEmail,
+          target: targetEmail,
+          route: 'personal-summary',
+          timestamp: new Date().toISOString()
+        });
+      }
+    } else if (!isAdmin) {
+      targetEmail = userEmail;
+      targetName = ""; // Protege contra name spoofing
+    }
 
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
-    if (targetEmail.includes('@')) query = query.where("ownerEmail", "==", targetEmail);
-    else query = query.where("ownerName", "==", rawEmail);
+    if (targetEmail.includes('@') && targetEmail !== "") {
+      query = query.where("ownerEmail", "==", targetEmail);
+    } else {
+      query = query.where("ownerName", "==", targetName);
+    }
 
     const snapshot = await query.orderBy("callTimestamp", "desc").limit(15).get();
     if (snapshot.empty) return res.json({ gaps: [], insights: [], totalAnalisadas: 0 });
@@ -204,11 +239,8 @@ router.get('/leaderboard-vitrine', async (req: Request, res: Response) => {
 /**
  * GET /audit
  */
-router.get("/audit", async (req: Request, res: Response) => {
+router.get("/audit", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const userEmail = (req.user as any).email;
-    if (!(await checkIfAdmin(userEmail))) return res.status(403).json({ error: "Acesso negado" });
-
     const { date, ownerEmail } = req.query;
     const parsedDate = date ? new Date(date as string) : new Date();
     const safeDate = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
@@ -254,11 +286,8 @@ router.get("/audit", async (req: Request, res: Response) => {
 /**
  * POST /rebuild-today-stats
  */
-router.post("/rebuild-today-stats", async (req: Request, res: Response) => {
+router.post("/rebuild-today-stats", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const userEmail = (req.user as any).email;
-    if (!(await checkIfAdmin(userEmail))) return res.status(403).json({ error: "Proibido" });
-
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
