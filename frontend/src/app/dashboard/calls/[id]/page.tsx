@@ -14,29 +14,23 @@ export default function CallDetailPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!id || !db) {
-      console.error("❌ Firestore 'db' não inicializado ou ID da chamada ausente.");
-      setLoading(false);
-      return;
+    if (id) {
+      setLoading(true);
+      const callRef = doc(db, "calls_analysis", id as string);
+      
+      const unsubscribe = onSnapshot(callRef, (docSnap) => {
+        if (docSnap.exists()) {
+          setCall({ id: docSnap.id, ...docSnap.data() });
+        } else {
+          console.log("Documento não encontrado no Firestore.");
+          setCall(null);
+        }
+        setLoading(false);
+      });
+
+      // Cleanup da subscrição ao desmontar o componente
+      return () => unsubscribe();
     }
-
-    const decodedId = decodeURIComponent(id as string);
-    console.log("🔌 Conectando ao Firestore para buscar análise da chamada ID:", decodedId);
-
-    const unsubscribe = onSnapshot(doc(db, "calls_analysis", decodedId), (docSnap) => {
-      if (docSnap.exists()) {
-        setCall({ id: docSnap.id, ...docSnap.data() });
-      } else {
-        setCall(null);
-      }
-      setLoading(false);
-    }, (error) => {
-      console.error("❌ Erro no onSnapshot da análise da chamada:", error);
-      setLoading(false);
-      setCall(null);
-    });
-
-    return () => unsubscribe();
   }, [id]);
 
   if (loading) return <div className="p-8 text-slate-500 font-headline">Carregando análise estratégica...</div>;
