@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { formatEmailToSdrId } from '@/lib/utils';
 import { useDashboard } from '@/context/DashboardContext';
 import { FilterBar } from '@/features/dashboard/components/FilterBar';
+import { useRouter } from 'next/navigation';
 
 interface SdrProfilePanelProps {
   sdrId: string; // Recebe o email puro
@@ -97,12 +98,18 @@ const getPriorityContent = (gaps: Record<string, number> | undefined, insights: 
 
 export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
   const { user } = useDashboard();
+  const router = useRouter();
   const [sdrData, setSdrData] = useState<any>(null);
   const [priorityCalls, setPriorityCalls] = useState<any[]>([]);
   const [allCalls, setAllCalls] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ period: 'Tudo', route: 'all' });
   const [isHistoryOverlayOpen, setIsHistoryOverlayOpen] = useState(false); // Estado para o overlay de histórico
+
+  if (sdrId === 'lucas_porto@nibo_com_br' || sdrId === 'lucas.porto@nibo.com.br') {
+    router.push('/dashboard');
+    return null;
+  }
 
   // Sincronização de Impersonate: Reseta filtros ao trocar de SDR
   useEffect(() => {
@@ -118,18 +125,25 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
     setLoading(true);
 
     const cleanId = formatEmailToSdrId(sdrId);
-    const sdrRef = doc(db, 'sdrs', cleanId);
+    let unsubPerf = () => {};
 
-    const unsubSdr = onSnapshot(sdrRef, (docSnap) => {
-      if (docSnap.exists()) {
-        setSdrData(docSnap.data());
-      } else {
-        console.warn(`SDR não encontrado usando o ID mestre: ${cleanId}`);
-        setSdrData(null);
-      }
+    const unsubRegistry = onSnapshot(doc(db, 'sdr_registry', cleanId), (regSnap) => {
+      const basicData = regSnap.exists() ? regSnap.data() : { name: sdrId, email: sdrId, cleanId };
+      
+      unsubPerf = onSnapshot(doc(db, 'sdrs', cleanId), (perfSnap) => {
+        if (perfSnap.exists()) {
+          setSdrData({ ...basicData, ...perfSnap.data(), hasPerformance: true });
+        } else {
+          console.warn(`SDR sem dados de performance em 'sdrs' para o ID: ${cleanId}`);
+          setSdrData({ ...basicData, hasPerformance: false });
+        }
+      });
     });
 
-    return () => unsubSdr();
+    return () => {
+      unsubRegistry();
+      unsubPerf();
+    };
   }, [sdrId]);
 
   useEffect(() => {
@@ -204,6 +218,7 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
 
   if (loading) return <div className="flex h-screen items-center justify-center text-soft">Carregando Flight Deck...</div>;
   if (!sdrData) return <div className="flex h-screen items-center justify-center text-red">SDR não localizado: {sdrId}</div>;
+  if (!sdrData.hasPerformance) return <div className="flex h-screen items-center justify-center text-[rgba(255,122,26,0.8)] font-semibold text-lg">SDR sem dados de performance processados.</div>;
 
   const priorityContent = getPriorityContent(sdrData.recurrent_gaps, sdrData.insights_estrategicos);
 

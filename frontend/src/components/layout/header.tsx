@@ -10,11 +10,12 @@ export function Header() {
 
   useEffect(() => {
     if (!isAdmin) return; // Só busca SDRs se for admin
-    const unsub = onSnapshot(collection(db, 'sdrs'), (snap) => {
+    const unsub = onSnapshot(collection(db, 'sdr_registry'), (snap) => {
+      console.log("👥 SDRs carregados no Header:", snap.docs.length);
       const list = snap.docs.map(doc => ({ 
-        name: doc.data().name, 
-        email: doc.data().email 
-      })).filter(s => s.email);
+        name: doc.data().name || doc.id, 
+        email: doc.data().email || doc.id 
+      }));
       setSdrs(list);
     });
     return () => unsub();
