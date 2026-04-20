@@ -54,10 +54,16 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     checkUser();
   }, []);
 
-  // Persistência do impersonatedEmail
+  // Persistência do impersonatedEmail e Limpeza de Segurança
   useEffect(() => {
-    const saved = localStorage.getItem('impersonated_sdr_email');
-    if (saved && isAdmin) setImpersonatedEmailState(saved);
+    if (isAdmin) {
+      const saved = localStorage.getItem('impersonated_sdr_email');
+      if (saved) setImpersonatedEmailState(saved);
+    } else {
+      // Regra Ouro: Se tentar logar como comum, desinfeta os vestígios de admin.
+      localStorage.removeItem('impersonated_sdr_email');
+      setImpersonatedEmailState(null);
+    }
   }, [isAdmin]);
 
   // Redirecionamento para não-admins
