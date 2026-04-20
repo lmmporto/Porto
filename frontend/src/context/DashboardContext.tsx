@@ -24,21 +24,19 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const ADMIN_EMAIL = 'lucas.porto@nibo.com.br'; // Email do admin
   const isAdmin = user?.email === ADMIN_EMAIL;
 
-  // Lógica de autenticação real (preservada)
+  // Lógica de autenticação real temporariamente simplificada para MVP
   useEffect(() => {
     const checkUser = async () => {
-      // --- BYPASS DE DESENVOLVIMENTO ---
-      if (process.env.NODE_ENV === 'development') {
-        setUser({
-          email: 'lucas.porto@nibo.com.br',
-          name: 'Lucas Porto (Dev)',
-          picture: 'https://github.com/identicons/jedi.png',
-        });
-        // isAdmin será true automaticamente pois o email corresponde a ADMIN_EMAIL
-        return; // Sai da função para não chamar o fetch real
-      }
+      // --- BYPASS DE AUTENTICAÇÃO ATIVO (MVP) ---
+      setUser({
+        email: 'lucas.porto@nibo.com.br',
+        name: 'Lucas Porto (Admin MVP)',
+        picture: 'https://github.com/identicons/jedi.png',
+      });
+      return; 
       // --- FIM DO BYPASS ---
 
+      /* Lógica de produção (Render Auth) 
       try {
         const res = await fetch('/auth/me');
         if (res.ok) {
@@ -51,6 +49,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
         console.error('Erro ao verificar usuário:', error);
         setUser(null);
       }
+      */
     };
     checkUser();
   }, []);
