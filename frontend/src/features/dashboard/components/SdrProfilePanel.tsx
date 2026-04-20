@@ -124,14 +124,8 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
       if (docSnap.exists()) {
         setSdrData(docSnap.data());
       } else {
-        const qFallback = query(collection(db, 'sdrs'), where('email', '==', sdrId), limit(1));
-        getDocs(qFallback).then(snap => {
-          if (!snap.empty) {
-            setSdrData(snap.docs[0].data());
-          } else {
-            setSdrData(null);
-          }
-        });
+        console.warn(`SDR não encontrado usando o ID mestre: ${cleanId}`);
+        setSdrData(null);
       }
     });
 

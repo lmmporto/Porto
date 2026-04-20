@@ -5,8 +5,8 @@ import { useRouter, usePathname } from 'next/navigation'; // Importar useRouter 
 
 interface DashboardContextType {
   user: { email: string | null; name?: string; picture?: string } | null; // Adicionado 'picture'
-  impersonatedEmail: string | null;
-  setImpersonatedEmail: (email: string | null) => void;
+  viewingEmail: string | null;
+  setViewingEmail: (email: string | null) => void;
   isAdmin: boolean;
   isSidebarCollapsed: boolean; // Novo estado
   toggleSidebar: () => void; // Nova função
@@ -18,7 +18,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [user, setUser] = useState<{ email: string | null; name?: string; picture?: string } | null>(null); // Estado real, não mock
-  const [impersonatedEmail, setImpersonatedEmailState] = useState<string | null>(null);
+  const [viewingEmail, setViewingEmailState] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false); // Estado da sidebar
 
   const ADMIN_EMAIL = 'lucas.porto@nibo.com.br'; // Email do admin
@@ -54,15 +54,15 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     checkUser();
   }, []);
 
-  // Persistência do impersonatedEmail e Limpeza de Segurança
+  // Persistência do viewingEmail e Limpeza de Segurança
   useEffect(() => {
     if (isAdmin) {
-      const saved = localStorage.getItem('impersonated_sdr_email');
-      if (saved) setImpersonatedEmailState(saved);
+      const saved = localStorage.getItem('viewing_sdr_email');
+      if (saved) setViewingEmailState(saved);
     } else {
       // Regra Ouro: Se tentar logar como comum, desinfeta os vestígios de admin.
-      localStorage.removeItem('impersonated_sdr_email');
-      setImpersonatedEmailState(null);
+      localStorage.removeItem('viewing_sdr_email');
+      setViewingEmailState(null);
     }
   }, [isAdmin]);
 
@@ -78,7 +78,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     }
   }, [user, isAdmin, router, pathname]);
 
-  const setImpersonatedEmail = (email: string | null) => {
+  const setViewingEmail = (email: string | null) => {
     if (user?.email !== ADMIN_EMAIL) {
       console.error("🚫 Tentativa de impersonate bloqueada.");
       return;
@@ -86,11 +86,11 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
 
     if (email) {
       const cleanEmail = decodeURIComponent(email);
-      localStorage.setItem('impersonated_sdr_email', cleanEmail);
-      setImpersonatedEmailState(cleanEmail);
+      localStorage.setItem('viewing_sdr_email', cleanEmail);
+      setViewingEmailState(cleanEmail);
     } else {
-      localStorage.removeItem('impersonated_sdr_email');
-      setImpersonatedEmailState(null);
+      localStorage.removeItem('viewing_sdr_email');
+      setViewingEmailState(null);
     }
   };
 
@@ -99,7 +99,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <DashboardContext.Provider value={{ user, impersonatedEmail, setImpersonatedEmail, isAdmin, isSidebarCollapsed, toggleSidebar }}>
+    <DashboardContext.Provider value={{ user, viewingEmail, setViewingEmail, isAdmin, isSidebarCollapsed, toggleSidebar }}>
       {children}
     </DashboardContext.Provider>
   );

@@ -5,10 +5,10 @@ import { SdrProfilePanel } from '@/features/dashboard/components/SdrProfilePanel
 import { formatEmailToSdrId } from '@/lib/utils';
 
 export default function MyDashboardPage() {
-  const { user, impersonatedEmail } = useDashboard();
+  const { user, viewingEmail } = useDashboard();
 
   // Filtro de Consciência: Prioriza a simulação se houver
-  const activeEmail = impersonatedEmail || user?.email;
+  const activeEmail = viewingEmail || user?.email;
 
   if (!activeEmail) {
     return (

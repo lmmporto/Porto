@@ -5,7 +5,7 @@ import { collection, onSnapshot } from 'firebase/firestore';
 import { useDashboard } from '@/context/DashboardContext';
 
 export function Header() {
-  const { isAdmin, impersonatedEmail, setImpersonatedEmail, user } = useDashboard();
+  const { isAdmin, viewingEmail, setViewingEmail, user } = useDashboard();
   const [sdrs, setSdrs] = useState<{name: string, email: string}[]>([]);
 
   useEffect(() => {
@@ -28,10 +28,10 @@ export function Header() {
           <div className="flex items-center gap-4 bg-panel/50 p-2 rounded-xl border border-white/5">
             <span className="text-[10px] font-bold uppercase tracking-widest text-purple">Simular SDR:</span>
             <select 
-              value={impersonatedEmail || ''} 
+              value={viewingEmail || ''} 
               onChange={(e) => {
                 const val = e.target.value;
-                setImpersonatedEmail(val || null);
+                setViewingEmail(val || null);
               }}
               className="bg-bg border-none text-xs font-semibold text-white focus:ring-0 rounded-lg cursor-pointer"
             >
@@ -40,9 +40,9 @@ export function Header() {
                 <option key={sdr.email} value={sdr.email}>{sdr.name}</option>
               ))}
             </select>
-            {impersonatedEmail && (
+            {viewingEmail && (
               <button 
-                onClick={() => setImpersonatedEmail(null)}
+                onClick={() => setViewingEmail(null)}
                 className="text-red hover:text-white text-xs font-bold px-2"
               >
                 ✕
