@@ -28,9 +28,32 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const checkUser = async () => {
       setLoadingAuth(true);
+
+      // 🔍 DIAGNÓSTICO DE AMBIENTE (Logs Temporários)
+      const envUrl = process.env.NEXT_PUBLIC_API_URL;
+      const envBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+      
+      const rawApiUrl = envUrl || envBaseUrl || '';
+      const apiUrl = rawApiUrl.trim().replace(/\/$/, '');
+
+      console.log("🛠️ Auth Debug:", {
+        envUrl: envUrl || 'Nulo/Indefinido',
+        envBaseUrl: envBaseUrl || 'Nulo/Indefinido',
+        resovledUrl: apiUrl || 'Vazio'
+      });
+
+      // 🛑 GUARDA DE SEGURANÇA
+      if (!apiUrl || apiUrl === 'undefined' || apiUrl === 'null') {
+        console.error("❌ ERRO CRÍTICO: Nenhuma URL de API configurada (NEXT_PUBLIC_API_URL ou NEXT_PUBLIC_API_BASE_URL).");
+        setLoadingAuth(false);
+        setUser(null);
+        return;
+      }
+
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/me`, {
-          credentials: 'include'
+        const res = await fetch(`${apiUrl}/auth/me`, {
+          credentials: 'include',
+          cache: 'no-store'
         });
 
         if (res.ok) {

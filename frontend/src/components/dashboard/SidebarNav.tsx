@@ -32,7 +32,8 @@ export function SidebarNav() {
 
   const handleLogout = async () => {
     try {
-      const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
+      const rawUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || '';
+      const baseUrl = rawUrl.replace(/\/$/, '');
       await fetch(`${baseUrl}/auth/logout`, { method: 'POST', credentials: 'include' });
       await checkUser(); // Reseta o estado do contexto
       router.push('/login');

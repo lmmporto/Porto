@@ -20,7 +20,8 @@ export function useSDRDashboardSync() {
     
     console.log("🚀 [SAFE LOAD] Disparando carga única para:", email);
 
-    const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
+    const rawUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || '';
+    const baseUrl = rawUrl.replace(/\/$/, '');
     
     // Executa a aplicação do filtro no contexto e a busca de insights pessoais
     const syncData = async () => {

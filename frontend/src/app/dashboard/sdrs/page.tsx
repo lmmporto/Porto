@@ -92,7 +92,8 @@ function SDRRankingContent() {
       if (dateFilter === 'custom' && (!customStartDate || !customEndDate)) return;
       
       try {
-        const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
+        const rawUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || '';
+        const baseUrl = rawUrl.replace(/\/$/, '');
         
         let summaryUrl = `${baseUrl}/api/stats/summary?t=${Date.now()}`;
         if (dateFilter !== 'all' && startIso && endIso) {

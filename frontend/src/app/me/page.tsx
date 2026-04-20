@@ -66,7 +66,8 @@ export default function SDRPersonalDashboard() {
   useEffect(() => {
     const fetchGlobalData = async () => {
       try {
-        const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
+        const rawUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || '';
+        const baseUrl = rawUrl.replace(/\/$/, '');
         
         // 1. Busca o Ranking (Bayesiano)
         const resSum = await fetch(`${baseUrl}/api/stats/summary`, { credentials: 'include' });

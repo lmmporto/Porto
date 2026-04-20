@@ -6,11 +6,12 @@ import { NiboLogo } from '@/components/ui/nibo-logo';
 
 export default function LoginPage() {
   const handleGoogleLogin = () => {
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    const rawUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || '';
+    const apiBaseUrl = rawUrl.replace(/\/$/, '');
     const loginUrl = `${apiBaseUrl}/auth/google`;
 
     if (!apiBaseUrl) {
-      console.error('[ERROR] NEXT_PUBLIC_API_BASE_URL não definida.');
+      console.error('[ERROR] Nenhuma URL de API definida (NEXT_PUBLIC_API_URL/BASE_URL).');
       alert('Erro de configuração: URL da API não encontrada.');
       return;
     }

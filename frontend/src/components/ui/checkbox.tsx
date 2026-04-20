@@ -38,7 +38,8 @@ export default function DashboardPage() {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const API = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const rawUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || '';
+  const API = rawUrl.replace(/\/$/, '');
 
   const fetchCalls = async () => {
     // 🚩 TRAVA DE SEGURANÇA: Previne loops e requisições duplicadas

@@ -38,7 +38,8 @@ export function useCalls(limit = 10) {
     setIsLoading(true);
 
     try {
-      const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
+      const rawUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || '';
+      const baseUrl = rawUrl.replace(/\/$/, '');
       const params = new URLSearchParams();
       params.append('limit', String(limit));
 
