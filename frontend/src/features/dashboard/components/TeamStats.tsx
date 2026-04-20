@@ -1,3 +1,5 @@
+"use client";
+
 import React from "react";
 import { TrendingUp, Activity, CheckCircle, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -16,15 +18,15 @@ export const TeamStats = ({ stats }: TeamStatsProps) => {
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
       <StatCard
         label="Total de Chamadas"
-        value={stats?.totalCalls || 0}
+        value={stats?.totalCalls || 0} // TAREFA 3: Lendo stats.totalCalls
         icon={<Activity className="text-primary" size={20} />}
-        trend="+12%"
+        trend="+12%" // Placeholder, idealmente viria do stats
       />
       <StatCard
         label="Média SPIN"
         value={stats?.teamAverage?.toFixed(1) || "0.0"}
         icon={<TrendingUp className="text-secondary" size={20} />}
-        trend="+0.4"
+        trend="+0.4" // Placeholder
         isPositive
       />
       <StatCard

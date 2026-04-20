@@ -1,11 +1,21 @@
 import { db } from "@/lib/firebase";
-import { collection, query, orderBy, onSnapshot, limit } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, limit, where } from "firebase/firestore";
+
+const ELITE_SDRS = [
+  'amaranta.vieira@nibo.com.br',
+  'andriel.mateus@nibo.com.br',
+  'bruno.rezende@nibo.com.br',
+  'elder.fernando@nibo.com.br',
+  'italo.xavier@nibo.com.br',
+  'mateus.braga@nibo.com.br'
+];
 
 export const subscribeToCalls = (callback: (calls: any[]) => void) => {
   if (!db) return () => {};
 
   const q = query(
-    collection(db, "calls_analysis"), 
+    collection(db, "calls_analysis"),
+    where('ownerEmail', 'in', ELITE_SDRS),
     orderBy("callTimestamp", "desc"),
     limit(15)
   );

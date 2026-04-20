@@ -95,7 +95,7 @@ export async function fetchOwnerDetails(ownerId: string | null): Promise<OwnerDe
         : `Owner ${ownerId}`,
       ownerEmail: data?.email || null,
       teamId: data?.teams?.[0]?.id || null,
-      teamName: data?.teams?.[0]?.name || "Sem equipe",
+      teamName: data?.teams?.[0]?.name || 'Sem Equipe',
       userId: data?.userId || data?.userIdIncludingInactive || null,
     };
 
@@ -180,4 +180,20 @@ export async function searchCallsInHubSpot({ limit = 100 }: { limit?: number }) 
 
   const { data } = await hubspot.post("/crm/v3/objects/calls/search", body);
   return (data?.results || []) as Array<{ id: string }>;
+}
+
+export async function getOwnerIdByEmail(email: string): Promise<string | null> {
+  try {
+    const response = await hubspot.get('/crm/v3/owners/', {
+      params: { limit: 100, archived: false }
+    });
+    
+    const owners = response.data.results;
+    const owner = owners.find((o: any) => o.email.toLowerCase() === email.toLowerCase());
+    
+    return owner ? owner.id : null;
+  } catch (error) {
+    console.error(`[HUBSPOT] Erro ao buscar owner para ${email}:`, error);
+    return null;
+  }
 }

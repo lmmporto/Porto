@@ -1,24 +1,43 @@
 import { db } from "@/lib/firebase";
 import { collection, query, orderBy, onSnapshot, doc, limit, where, documentId } from "firebase/firestore";
 
+const ELITE_SDRS = [
+  'amaranta.vieira@nibo.com.br',
+  'andriel.mateus@nibo.com.br',
+  'bruno.rezende@nibo.com.br',
+  'elder.fernando@nibo.com.br',
+  'italo.xavier@nibo.com.br',
+  'mateus.braga@nibo.com.br'
+];
+
 export const subscribeToGlobalStats = (period: string, callback: (stats: any) => void) => {
-  if (!db) return () => {};
+  if (!db) {
+    console.error("❌ Abortando subscrição: Firestore 'db' não inicializado.");
+    return () => {}; 
+  }
 
   console.log(`📊 [Leitura Eficiente] Buscando KPIs para o período: ${period}`);
 
   if (period === 'Tudo') {
     return onSnapshot(doc(db, "dashboard_stats", "global_summary"), (docSnap) => {
+      console.log("📊 Dados recebidos do Global Summary:", docSnap.data()); // Debug de Dados
+
       if (docSnap.exists()) {
         const data = docSnap.data();
         callback({
           totalCalls: data.total_calls || 0,
           teamAverage: data.media_geral || 0,
           approvalRate: data.taxa_aprovacao || 0,
-          avgDuration: data.duracao_media || "00:00"
+          avgDuration: data.duracao_media || "00:00",
+          recurrent_gaps: data.recurrent_gaps || {}, // TAREFA 1: Adicionado
+          top_strengths: data.top_strengths || {} // TAREFA 1: Adicionado
         });
       } else {
-        callback({ totalCalls: 0, teamAverage: 0, approvalRate: 0, avgDuration: "00:00" });
+        console.warn("⚠️ Documento dashboard_stats/global_summary não encontrado.");
+        callback({ totalCalls: 0, teamAverage: 0, approvalRate: 0, avgDuration: "00:00", recurrent_gaps: {}, top_strengths: {} });
       }
+    }, (error) => {
+      console.error("❌ Erro no onSnapshot de GlobalStats (Tudo):", error);
     });
   }
 
@@ -35,32 +54,38 @@ export const subscribeToGlobalStats = (period: string, callback: (stats: any) =>
       const documentDate = snapshot.docs[0].id;
       console.log(`✅ Fallback ativado: Lendo estatísticas do dia ${documentDate}`);
       
-      const rankingMap = data.sdr_ranking || {};
-      let totalCalls = 0;
-      let totalSumNotes = 0;
-
-      Object.values(rankingMap).forEach((sdr: any) => {
-        totalCalls += (sdr.total || 0);
-        totalSumNotes += (sdr.sum_notes || 0);
-      });
-
       callback({
-        totalCalls,
-        teamAverage: totalCalls > 0 ? totalSumNotes / totalCalls : 0,
-        approvalRate: data.taxa_aprovacao_geral || 0,
-        avgDuration: data.duracao_media || "00:00"
+        totalCalls: data.total_calls || 0,
+        teamAverage: data.media_geral || 0,
+        approvalRate: data.taxa_aprovacao || 0,
+        avgDuration: data.duracao_media || "00:00",
+        recurrent_gaps: data.recurrent_gaps || {}, // TAREFA 1: Adicionado
+        top_strengths: data.top_strengths || {} // TAREFA 1: Adicionado
       });
     } else {
-      console.warn("⚠️ Nenhum dado diário encontrado no dashboard_stats.");
-      callback({ totalCalls: 0, teamAverage: 0, approvalRate: 0, avgDuration: "00:00" });
+      console.warn("⚠️ Nenhum dado diário encontrado no dashboard_stats para o período.");
+      callback({ totalCalls: 0, teamAverage: 0, approvalRate: 0, avgDuration: "00:00", recurrent_gaps: {}, top_strengths: {} });
     }
+  }, (error) => {
+    console.error("❌ Erro no onSnapshot de GlobalStats (Período):", error);
   });
 };
 
-export const subscribeToRanking = (callback: (sdrs: any[]) => void) => {
+export const subscribeToRanking = (period: string, callback: (sdrs: any[]) => void) => {
   if (!db) return () => {};
-  const q = query(collection(db, "sdrs"), orderBy("ranking_score", "desc"), limit(10));
+
+  console.log(`🏆 [Leitura Eficiente] Buscando Ranking para o período: ${period}`);
+
+  let q = query(
+    collection(db, "sdrs"), 
+    where("email", "in", ELITE_SDRS),
+    orderBy("ranking_score", "desc"), 
+    limit(50)
+  ); 
+  
   return onSnapshot(q, (snapshot) => {
     callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+  }, (error) => {
+    console.error("❌ Erro no onSnapshot de Ranking:", error);
   });
 };

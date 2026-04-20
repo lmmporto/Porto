@@ -13,7 +13,7 @@ async function syncAllCalls() {
     // 1. Carrega o dicionário de SDRs (Nome -> Email)
     const registrySnapshot = await db.collection('sdr_registry').get();
     const sdrMap = new Map<string, string>();
-    
+
     registrySnapshot.docs.forEach(d => {
       const data = d.data();
       if (data.name && data.email) {
@@ -28,7 +28,7 @@ async function syncAllCalls() {
     console.log(`🔎 [INFO] Analisando ${callsSnapshot.size} chamadas...`);
 
     let updatedCount = 0;
-    
+
     for (const doc of callsSnapshot.docs) {
       const data = doc.data();
       const emailCorreto = sdrMap.get(data.ownerName);
@@ -40,7 +40,7 @@ async function syncAllCalls() {
         updatedCount++;
       }
     }
-    
+
     console.log(`✨ [FIM] Sincronização concluída. Total de documentos corrigidos: ${updatedCount}`);
   } catch (error: any) {
     console.error(`❌ [ERRO FATAL] Falha na sincronização:`, error.message);

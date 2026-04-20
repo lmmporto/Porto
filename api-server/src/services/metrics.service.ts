@@ -1,34 +1,65 @@
-
-import { db } from "../firebase.js";
-
+import { db } from '../firebase.js';
+import admin from 'firebase-admin';
+import { updateTeamStrategy } from './analysis.service.js';
 
 export class MetricsService {
-  static async updateSDRMetrics(sdrId: string) {
-    try {
-      const callsSnapshot = await db.collection('calls')
-        .where('sdrId', '==', sdrId)
-        .get();
+  private static M_THRESHOLD = 5;
+  private static GLOBAL_AVERAGE_BASELINE = 5.0;
 
-      if (callsSnapshot.empty) return;
+  static async updateSDRMetrics(sdrId: string): Promise<void> {
+    const callsSnapshot = await db.collection('calls_analysis')
+      .where('sdrId', '==', sdrId)
+      .select('score', 'score_dominio', 'score_dor')
+      .get();
 
-      const scores = callsSnapshot.docs.map(doc => doc.data().analysis?.spinScore?.overall || 0);
-      const v = scores.length;
-      const R = scores.reduce((a, b) => a + b, 0) / v;
+    const callsData = callsSnapshot.docs.map(doc => doc.data());
+    const scores = callsData.map(d => d.score || 0);
+    const domainScores = callsData.map(d => d.score_dominio || 0);
+    const painScores = callsData.map(d => d.score_dor || 0);
 
-      const m = 5;
-      const C = 7.0;
-      const rankingScore = (v * R + m * C) / (v + m);
+    const totalCalls = scores.length;
 
-      await db.collection('sdrs').doc(sdrId).update({
-        real_average: Number(R.toFixed(2)),
-        ranking_score: Number(rankingScore.toFixed(2)),
-        lastUpdate: new Date()
-      });
+    if (totalCalls === 0) return;
 
-      console.log(`[Metrics] SDR ${sdrId} atualizado: Real ${R.toFixed(2)} | Turbo ${rankingScore.toFixed(2)}`);
-    } catch (error) {
-      console.error(`[Metrics Error] Falha ao atualizar SDR ${sdrId}:`, error);
-      throw error;
+    const sumScores = scores.reduce((acc, val) => acc + val, 0);
+    const realAverage = sumScores / totalCalls;
+
+    const v = totalCalls;
+    const R = realAverage;
+    const m = MetricsService.M_THRESHOLD;
+    const C = MetricsService.GLOBAL_AVERAGE_BASELINE;
+
+    const rankingScore = (v * R + m * C) / (v + m);
+
+    const mediaDominio = domainScores.reduce((acc, val) => acc + val, 0) / totalCalls;
+    const mediaDor = painScores.reduce((acc, val) => acc + val, 0) / totalCalls;
+
+    await db.collection('sdrs').doc(sdrId).set({
+      real_average: parseFloat(realAverage.toFixed(2)),
+      ranking_score: parseFloat(rankingScore.toFixed(2)),
+      total_calls: totalCalls,
+      media_dominio: parseFloat(mediaDominio.toFixed(2)),
+      media_dor: parseFloat(mediaDor.toFixed(2)),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    }, { merge: true });
+
+    // Atualizar media_geral no global_summary
+    const summaryRef = db.collection('dashboard_stats').doc('global_summary');
+    const summaryDoc = await summaryRef.get();
+    const summaryData = summaryDoc.exists ? summaryDoc.data() : {};
+    const prevTotal = summaryData?.total_calls || 0;
+    const prevSum = (summaryData?.media_geral || 0) * prevTotal;
+    const newTotalCalls = prevTotal + 1;
+    const newAverageScore = (prevSum + realAverage) / newTotalCalls;
+
+    await summaryRef.update({
+      total_calls: newTotalCalls,
+      media_geral: parseFloat(newAverageScore.toFixed(2)) // Correção do nome e tipo
+    });
+
+    // Gatilho para a Leitura Consolidada a cada 5 chamadas
+    if (newTotalCalls > 0 && newTotalCalls % 5 === 0) {
+      await updateTeamStrategy();
     }
   }
 }

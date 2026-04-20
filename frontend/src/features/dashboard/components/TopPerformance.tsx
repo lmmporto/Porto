@@ -1,6 +1,25 @@
-import Link from "next/link";
+"use client";
 
-export const TopPerformance = ({ sdrs }: { sdrs: any[] }) => {
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { subscribeToRanking } from "@/features/dashboard/api/dashboard.service";
+import { cn } from "@/lib/utils";
+
+interface TopPerformanceProps {
+  filters?: { period: string; route?: string; }; // Tarefa Única: filters agora é opcional
+}
+
+export const TopPerformance = ({ filters }: TopPerformanceProps) => {
+  const [sdrs, setSdrs] = useState<any[]>([]);
+  // Tarefa Única: Extrai o período com um valor padrão seguro
+  const currentPeriod = filters?.period || 'Tudo'; 
+
+  useEffect(() => {
+    // Tarefa Única: Chame o serviço usando a variável segura
+    const unsubscribe = subscribeToRanking(currentPeriod, setSdrs);
+    return () => unsubscribe();
+  }, [currentPeriod]); // Tarefa Única: Atualize para depender da variável segura
+
   return (
     <div className="glass-card p-8 rounded-xl obsidian-glow">
       <h3 className="label-elite mb-6">Top Performance</h3>
@@ -18,7 +37,7 @@ export const TopPerformance = ({ sdrs }: { sdrs: any[] }) => {
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-lg font-black text-secondary">{sdr.ranking_score?.toFixed(1) || "0.0"}</p>
+                <p className="text-lg font-black text-secondary">{sdr.ranking_score?.toFixed(1)}</p>
               </div>
             </div>
           </Link>
