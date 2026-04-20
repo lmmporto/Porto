@@ -13,8 +13,20 @@ interface SdrProfilePanelProps {
   sdrId: string; // Recebe o email puro
 }
 
-// Helper para obter o gap principal e gerar conteúdo dinâmico
-const getPriorityContent = (gaps: Record<string, number> | undefined, insights: any[] | undefined) => {
+const getPriorityContent = (gaps: Record<string, number> | undefined, insights: any[] | undefined, hasPerformance: boolean) => {
+  if (!hasPerformance) {
+    return {
+      mainGoal: 'N/A: Sem Histórico',
+      targetBehavior: 'Inicie suas chamadas',
+      playbook: [
+        { title: 'Nenhuma análise de IA disponível para este período.', description: 'O radar será ativado logo após o processamento da sua primeira chamada validada.' }
+      ],
+      cognitiveInsight: 'O motor aguarda primeira chamada.',
+      behavioralSignal: 'Aguardando ligações',
+      executiveSummary: 'Você ainda não possui métricas ativas ou seu volume de chamadas não gerou massa de dados para o Flight Deck.'
+    };
+  }
+
   if (!gaps || Object.keys(gaps).length === 0) {
     return {
       mainGoal: 'Manter Consistência',
@@ -217,10 +229,7 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
 
 
   if (loading) return <div className="flex h-screen items-center justify-center text-soft">Carregando Flight Deck...</div>;
-  if (!sdrData) return <div className="flex h-screen items-center justify-center text-red">SDR não localizado: {sdrId}</div>;
-  if (!sdrData.hasPerformance) return <div className="flex h-screen items-center justify-center text-[rgba(255,122,26,0.8)] font-semibold text-lg">SDR sem dados de performance processados.</div>;
-
-  const priorityContent = getPriorityContent(sdrData.recurrent_gaps, sdrData.insights_estrategicos);
+  const priorityContent = getPriorityContent(sdrData?.recurrent_gaps, sdrData?.insights_estrategicos, !!sdrData?.hasPerformance);
 
   return (
     <>
@@ -576,7 +585,9 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
                     </div>
                   </article>
                 )) : (
-                  <div className="text-center py-10 text-white/30">Nenhuma chamada prioritária encontrada. Bom trabalho!</div>
+                  <div className="text-center py-10 text-white/30">
+                    {!sdrData?.hasPerformance ? 'Aguardando processamento da primeira chamada...' : 'Nenhuma chamada prioritária encontrada. Bom trabalho!'}
+                  </div>
                 )}
               </div>
             </article>

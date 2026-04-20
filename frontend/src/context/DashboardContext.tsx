@@ -56,6 +56,8 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
 
   // Persistência do viewingEmail e Limpeza de Segurança
   useEffect(() => {
+    if (user === null) return; // Aguardando autenticação assíncrona não deve apagar cache local!
+    
     if (isAdmin) {
       const saved = localStorage.getItem('viewing_sdr_email');
       if (saved) setViewingEmailState(saved);
@@ -64,7 +66,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
       localStorage.removeItem('viewing_sdr_email');
       setViewingEmailState(null);
     }
-  }, [isAdmin]);
+  }, [isAdmin, user]);
 
   // Redirecionamento para não-admins
   useEffect(() => {

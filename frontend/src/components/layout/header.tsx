@@ -21,6 +21,17 @@ export function Header() {
     return () => unsub();
   }, [isAdmin]);
 
+  if (!isAdmin) {
+    return (
+      <header className="flex items-center justify-between p-4 bg-panel border-b border-white/5">
+        <h1 className="text-xl font-bold text-white">Dashboard</h1>
+        <div className="flex items-center gap-4">
+          <div className="text-white/70">Olá, {user?.name || 'Usuário'}</div>
+        </div>
+      </header>
+    );
+  }
+
   return (
     <header className="flex items-center justify-between p-4 bg-panel border-b border-white/5">
       <h1 className="text-xl font-bold text-white">Dashboard</h1>
