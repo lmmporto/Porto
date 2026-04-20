@@ -17,7 +17,7 @@ export const subscribeToCalls = (callback: (calls: any[]) => void) => {
     collection(db, "calls_analysis"),
     where('ownerEmail', 'in', ELITE_SDRS),
     orderBy("callTimestamp", "desc"),
-    limit(15)
+    limit(20)
   );
   
   return onSnapshot(q, (snapshot) => {

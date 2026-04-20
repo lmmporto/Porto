@@ -156,3 +156,9 @@
   background: rgba(192, 193, 255, 0.1);
   border-radius: 10px;
 }
+
+/* Correção global para os selects no modo escuro */
+select option {
+  background-color: #0A1630;
+  color: white;
+}

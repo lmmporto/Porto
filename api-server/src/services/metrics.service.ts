@@ -6,14 +6,14 @@ export class MetricsService {
   private static M_THRESHOLD = 5;
   private static GLOBAL_AVERAGE_BASELINE = 5.0;
 
-  static async updateSDRMetrics(sdrId: string): Promise<void> {
+  static async updateSDRMetrics(email: string): Promise<void> {
     const callsSnapshot = await db.collection('calls_analysis')
-      .where('sdrId', '==', sdrId)
-      .select('score', 'score_dominio', 'score_dor')
+      .where('ownerEmail', '==', email)
+      .select('nota_spin', 'score_dominio', 'score_dor')
       .get();
 
     const callsData = callsSnapshot.docs.map(doc => doc.data());
-    const scores = callsData.map(d => d.score || 0);
+    const scores = callsData.map(d => d.nota_spin || 0);
     const domainScores = callsData.map(d => d.score_dominio || 0);
     const painScores = callsData.map(d => d.score_dor || 0);
 
@@ -30,11 +30,12 @@ export class MetricsService {
     const C = MetricsService.GLOBAL_AVERAGE_BASELINE;
 
     const rankingScore = (v * R + m * C) / (v + m);
+    const cleanId = email.replace(/\./g, '_');
 
     const mediaDominio = domainScores.reduce((acc, val) => acc + val, 0) / totalCalls;
     const mediaDor = painScores.reduce((acc, val) => acc + val, 0) / totalCalls;
 
-    await db.collection('sdrs').doc(sdrId).set({
+    await db.collection('sdrs').doc(cleanId).set({
       real_average: parseFloat(realAverage.toFixed(2)),
       ranking_score: parseFloat(rankingScore.toFixed(2)),
       total_calls: totalCalls,

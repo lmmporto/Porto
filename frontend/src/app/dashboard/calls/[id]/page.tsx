@@ -4,9 +4,15 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { db } from "@/lib/firebase";
 import { doc, onSnapshot } from "firebase/firestore";
-import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Lightbulb } from 'lucide-react'; // Importar ícone de lâmpada
 import { cn } from "@/lib/utils";
-import { Lightbulb, TrendingDown, TrendingUp, CheckCircle, AlertTriangle, MessageSquareText } from "lucide-react";
+import { TrendingDown, TrendingUp, CheckCircle, AlertTriangle, MessageSquareText } from "lucide-react";
 
 export default function CallDetailPage() {
   const { id } = useParams();
@@ -43,25 +49,23 @@ export default function CallDetailPage() {
     ? call.maior_dificuldade
     : (call.maior_dificuldade ? [call.maior_dificuldade] : []);
 
-  // Função para formatar itens do playbook (lida com strings e objetos)
-  const formatPlaybookItem = (item: string | any) => {
-    if (typeof item === 'string') {
-      const timestampMatch = item.match(/^\[(\d{2}:\d{2})\]/);
-      const timestamp = timestampMatch ? timestampMatch[1] : "00:00";
-      const content = item.replace(/^\[\d{2}:\d{2}\]\s*/, '');
-      const mentorSplit = content.split('| Mentor: ');
-      const fala_lead = mentorSplit[0].replace("Lead disse: ", "").trim();
-      const mentorFeedback = mentorSplit[1] ? mentorSplit[1].trim() : "N/A";
+  const playbookData = call.playbook_detalhado || call.analysisResult?.playbook_detalhado; // Fallback de dados
 
-      const diagnosisMatch = mentorFeedback.match(/^\[(.*?)\]:\s*(.*)/);
-      const diagnostico = diagnosisMatch ? diagnosisMatch[1] : "N/A";
-      const recomendacao = diagnosisMatch ? diagnosisMatch[2] : mentorFeedback;
-
-      return { timestamp, fala_lead, diagnostico, recomendacao };
+  const formatPlaybookItem = (itemRaw: any) => {
+    if (typeof itemRaw === 'string') {
+      // Caso seja uma string antiga, tentar extrair informações básicas
+      return {
+        timestamp: 'N/A',
+        diagnostico: itemRaw.length > 50 ? itemRaw.substring(0, 50) + '...' : itemRaw,
+        fala_lead: 'Contexto não disponível (formato antigo)',
+        recomendacao: itemRaw, // Usar a string como recomendação
+      };
     }
-    // Se já for um objeto, retorna como está
-    return item;
+    return itemRaw; // Já é um objeto no formato esperado
   };
+
+  // Certifique-se que playbookData é um array para o map
+  const playbookArray = Array.isArray(playbookData) ? playbookData : (playbookData ? [playbookData] : []);
 
   return (
     <div className="max-w-6xl mx-auto space-y-8 pb-12">
@@ -77,7 +81,21 @@ export default function CallDetailPage() {
             </span>
           </div>
           <div>
-            <h2 className="text-2xl font-bold font-headline text-white">{call.nome_do_lead || call.clientName || "Lead Nibo"}</h2>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 w-full">
+            <h1 className="text-[34px] font-semibold tracking-[-0.04em] text-white md:text-[44px]">
+              Análise da Call: {call.nome_do_lead || call.call_title || call.title || 'Carregando...'}
+            </h1>
+            {call.recordingUrl && (
+              <button
+                onClick={() => window.open(call.recordingUrl, '_blank')}
+                className="bg-orange px-4 py-2 rounded-xl text-xs font-bold hover:opacity-90 transition-all flex items-center gap-2"
+                style={{ backgroundColor: '#FF7A1A' }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-play"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Ouvir Gravação no HubSpot
+              </button>
+            )}
+          </div>
             <div className="flex gap-2 mt-2">
                 {call.produto_principal && <span className="bg-primary/10 text-primary text-[10px] font-bold px-3 py-1 rounded-full uppercase">{call.produto_principal}</span>}
                 {call.rota && <span className="bg-secondary/10 text-secondary text-[10px] font-bold px-3 py-1 rounded-full uppercase">Rota {call.rota}</span>}
@@ -130,23 +148,46 @@ export default function CallDetailPage() {
       </section>
 
       {/* Playbook Detalhado (Accordion) */}
-      {playbookDetalhado.length > 0 && (
+      {playbookArray.length > 0 && (
         <section className="space-y-4">
           <h3 className="label-elite">Playbook de Coaching</h3>
-          <div className="space-y-6">
-            {Array.isArray(call.playbook_detalhado) && call.playbook_detalhado.map((item: any, index: number) => (
-              <div key={index} className="rounded-lg bg-white/5 p-4">
-                <div className="text-xs font-semibold uppercase tracking-wider text-blue-400">
-                  {item.timestamp || 'N/A'}
-                </div>
-                <div className="mt-2 font-semibold text-white">
-                  {item.diagnostico || 'Diagnóstico não disponível'}
-                </div>
-                <p className="mt-1 text-sm text-gray-400">
-                  {item.recomendacao || 'Recomendação não disponível'}
-                </p>
-              </div>
-            ))}
+          <div className="mt-8">
+            <Accordion type="single" collapsible className="space-y-4">
+              {playbookArray.map((itemRaw: any, index: number) => {
+                const item = formatPlaybookItem(itemRaw);
+                return (
+                  <AccordionItem key={index} value={`item-${index}`} className="rounded-xl border border-white/5 border-l-4 border-l-[#FF7A1A] shadow-[0_0_15px_rgba(255,122,26,0.15)] bg-[#FF7A1A]/5 px-5">
+                    <AccordionTrigger className="hover:no-underline py-5">
+                      <div className="flex items-center gap-4 text-left">
+                        <span className="text-[11px] font-bold uppercase tracking-widest text-blue-400 whitespace-nowrap">
+                          🕒 {item.timestamp || '00:00'}
+                        </span>
+                        <h4 className="text-[16px] font-semibold text-white">
+                          {!item.diagnostico || item.diagnostico === 'N/A' || item.diagnostico.includes('Contexto não disponível') ? 'Ponto de Atenção' : item.diagnostico}
+                        </h4>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionContent className="pb-6">
+                      {item.fala_lead && item.fala_lead !== "N/A" && !item.fala_lead.includes('Contexto não disponível') && (
+                        <div className="mb-4 rounded-lg bg-black/20 p-3 text-sm italic text-white/60 border-l-2 border-white/10">
+                          " {item.fala_lead} "
+                        </div>
+                      )}
+
+                      <div className="flex gap-3 rounded-xl bg-[#FF7A1A]/10 p-4 border border-[#FF7A1A]/30">
+                        <Lightbulb className="text-[#FF7A1A] flex-shrink-0" size={16} />
+                        <div className="flex-1">
+                          <strong className="block mb-1 text-[#FF7A1A] uppercase text-[10px] tracking-wider">Recomendação da IA:</strong>
+                          <p className="text-[14px] leading-relaxed text-white">
+                            {item.recomendacao}
+                          </p>
+                        </div>
+                      </div>
+                    </AccordionContent>
+                  </AccordionItem>
+                );
+              })}
+            </Accordion>
           </div>
         </section>
       )}

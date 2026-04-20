@@ -1,61 +1,32 @@
-"use client";
+'use client';
 
-import type { ReactNode } from 'react';
-import { useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
-import { useDashboard } from '@/context/DashboardContext';
-import { Sidebar } from "@/components/layout/sidebar";
-import { Header } from "@/components/layout/header";
+import { DashboardProvider, useDashboard } from '@/context/DashboardContext';
+import { Sidebar } from '@/components/layout/sidebar';
+import { Header } from '@/components/layout/header'; // Caminho correto para o Header
 
-interface DashboardLayoutProps {
-  children: ReactNode;
-}
-
-function LoadingScreen() {
-  return (
-    <div className="flex h-screen items-center justify-center bg-surface">
-      <div
-        className="h-6 w-6 animate-spin rounded-full border-2 border-muted border-t-primary"
-        aria-label="Carregando dashboard"
-      />
-    </div>
-  );
-}
-
-export default function DashboardLayout({ children }: DashboardLayoutProps) {
-  const router = useRouter();
-  const { user, isInitialized, isLoading } = useDashboard();
-
-  const shouldRedirect = useMemo(
-    () => isInitialized && !isLoading && !user,
-    [isInitialized, isLoading, user]
-  );
-
-  useEffect(() => {
-    if (shouldRedirect) {
-      router.replace('/');
-    }
-  }, [shouldRedirect, router]);
-
-  if (!isInitialized || isLoading) {
-    return <LoadingScreen />;
-  }
-
-  if (!user) {
-    return null;
-  }
+function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
+  const { isSidebarCollapsed } = useDashboard();
 
   return (
-    <div className="flex h-screen bg-surface overflow-hidden">
+    <div className="flex min-h-screen bg-bg">
       <Sidebar />
-      <div className="flex flex-1 flex-col lg:ml-64 h-full overflow-hidden">
-        <Header />
-        <main className="flex-1 overflow-y-auto p-8">
-          <div className="max-w-7xl mx-auto">
-            {children}
-          </div>
-        </main>
-      </div>
+      <main
+        className={`flex-1 transition-all duration-300 ease-in-out overflow-y-auto h-screen bg-shell
+          ${isSidebarCollapsed ? 'ml-20' : 'ml-64'}`}
+      >
+        <Header /> {/* Renderiza o Header dentro do main content */}
+        <div className="p-4 sm:p-6 lg:p-8">
+          {children}
+        </div>
+      </main>
     </div>
+  );
+}
+
+export default function RootDashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <DashboardProvider>
+      <DashboardLayoutContent>{children}</DashboardLayoutContent>
+    </DashboardProvider>
   );
 }
