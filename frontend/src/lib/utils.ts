@@ -16,4 +16,8 @@ export function getInitials(name: string) {
  * Transforma um e-mail no formato de ID do Firestore (underscores)
  * Ex: amaranta.vieira@nibo.com.br -> amaranta_vieira@nibo_com_br
  */
-export const formatEmailToSdrId = (email: string) => email.toLowerCase().trim().replace(/\./g, '_');
+export const formatEmailToSdrId = (email: string) => {
+  if (!email) return '';
+  const decoded = decodeURIComponent(email);
+  return decoded.toLowerCase().trim().replace(/\./g, '_');
+};

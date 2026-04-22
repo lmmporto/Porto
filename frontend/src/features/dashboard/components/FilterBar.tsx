@@ -6,10 +6,12 @@ interface FilterBarProps {
   filters: {
     period: string;
     route: string;
+    team: string;
   };
   setFilters: React.Dispatch<React.SetStateAction<{
     period: string;
     route: string;
+    team: string;
   }>>;
 }
 
@@ -41,6 +43,30 @@ export function FilterBar({ filters, setFilters }: FilterBarProps) {
               <option value="Hoje">Hoje</option>
               <option value="7D">Últimos 7 dias</option>
               <option value="30D">Últimos 30 dias</option>
+            </select>
+            <svg className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/45" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6"/>
+            </svg>
+          </div>
+        </div>
+
+        {/* Equipe */}
+        <div>
+          <label htmlFor="teamSelect" className="mb-3 block text-[12px] font-semibold uppercase tracking-[0.18em] text-white/42">
+            Equipe
+          </label>
+          <div className="relative">
+            <select
+              id="teamSelect"
+              value={filters.team}
+              onChange={(e) => setFilters(prev => ({ ...prev, team: e.target.value }))}
+              className="w-full appearance-none rounded-2xl border border-white/10 bg-[#0A1630] px-4 py-3.5 pr-12 text-[14px] font-medium text-white outline-none transition hover:bg-[#0A1630]/90 focus:ring-2 focus:ring-primary"
+            >
+              <option value="all">Todos os squads</option>
+              <option value="Time Lucas">Time Lucas</option>
+              <option value="Time William">Time William</option>
+              <option value="Equipe Alex">Equipe Alex</option>
+              <option value="Time Amanda">Time Amanda</option>
             </select>
             <svg className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/45" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6"/>

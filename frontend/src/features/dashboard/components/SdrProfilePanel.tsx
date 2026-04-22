@@ -66,7 +66,7 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
   const [priorityCalls, setPriorityCalls] = useState<any[]>([]);
   const [allCalls, setAllCalls] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({ period: 'Tudo', route: 'all' });
+  const [filters, setFilters] = useState({ period: 'Tudo', route: 'all', team: 'all' });
   const [isHistoryOverlayOpen, setIsHistoryOverlayOpen] = useState(false); // Estado para o overlay de histórico
   const [historyPeriod, setHistoryPeriod] = useState('Tudo'); // Estado para o filtro do histórico
   const [currentPage, setCurrentPage] = useState(1);

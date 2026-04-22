@@ -58,10 +58,13 @@ export async function processCall(callId: string): Promise<any> {
     const owner: OwnerDetails = await fetchOwnerDetails(call.ownerId || null);
     const teamName = (owner.teamName || "Sem equipe").trim();
 
-    // 🚩 GATEKEEPER: Trava de Elite
-    if (!ALLOWED_OWNER_IDS.includes(String(call.ownerId))) {
-      console.log(`[GATEKEEPER] 🛡️ Call ${callId} ignorada. Owner ${call.ownerId} não autorizado.`);
-      return { success: true, reason: "OWNER_NOT_AUTHORIZED" };
+    // 🚩 GATEKEEPER: Trava de Elite ou Time Lucas
+    const isElite = ALLOWED_OWNER_IDS.includes(String(call.ownerId));
+    const isTimeLucas = teamName.toLowerCase().includes('time lucas');
+
+    if (!isElite && !isTimeLucas) {
+      console.log(`[GATEKEEPER] 🛡️ Call ${callId} ignorada. Owner ${call.ownerId} não autorizado e não pertence ao Time Lucas.`);
+      return { success: true, reason: "UNAUTHORIZED_TEAM_OR_OWNER" };
     }
 
     const isAllowed = ALLOWED_TEAMS.some((t) =>

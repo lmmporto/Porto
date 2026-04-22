@@ -4,36 +4,35 @@ import { db } from '@/lib/firebase';
 import { collection, onSnapshot, doc } from 'firebase/firestore';
 import { HealthRadar } from '@/features/dashboard/components/HealthRadar';
 import { ConsolidatedReading } from '@/features/dashboard/components/ConsolidatedReading';
-import { subscribeToGlobalStats } from '@/features/dashboard/api/dashboard.service';
+import Link from 'next/link';
+import { subscribeToGlobalStats, subscribeToRanking } from '@/features/dashboard/api/dashboard.service';
+import { getInitials } from '@/lib/utils';
 
 const PERIODS = ['Hoje', '7D', '30D', 'Tudo'] as const;
 const ROUTES = ['A', 'B', 'C'] as const;
 
 export default function DashboardPage() {
   const [activePeriod, setActivePeriod] = useState<string>('Hoje');
-  const [activeRoute, setActiveRoute] = useState<string>('A');
-  const [sdrData, setSdrData] = useState<any[]>([]);
+  const [activeRoute, setActiveRoute] = useState<string>('all');
+  const [activeTeam, setActiveTeam] = useState<string>('all');
+  const [ranking, setRanking] = useState<any[]>([]);
   const [globalStats, setGlobalStats] = useState<any>(null);
   const [summaryData, setSummaryData] = useState<any>(null);
 
-  // Subscribe to SDRs for the scatter chart
+  // Subscribe to SDRs for the scatter chart and ranking
   useEffect(() => {
-    if (!db) return;
-    const unsubSdrs = onSnapshot(collection(db, 'sdrs'), (snapshot) => {
-      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      setSdrData(data);
-    });
+    const unsubSdrs = subscribeToRanking(activePeriod, activeTeam, setRanking);
     return () => unsubSdrs();
-  }, []);
+  }, [activePeriod, activeTeam]);
 
   // Subscribe to global dashboard stats
   useEffect(() => {
-    const unsub = subscribeToGlobalStats(activePeriod, (stats) => {
+    const unsub = subscribeToGlobalStats(activePeriod, activeTeam, (stats) => {
       setGlobalStats(stats);
       setSummaryData(stats?.leitura_consolidada || null);
     });
     return () => unsub?.();
-  }, [activePeriod]);
+  }, [activePeriod, activeTeam]);
 
   const sortedGaps = globalStats?.recurrent_gaps
     ? Object.entries(globalStats.recurrent_gaps)
@@ -126,7 +125,34 @@ export default function DashboardPage() {
             padding: '20px 24px',
           }}
         >
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.25fr_0.9fr]">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+            <div>
+              <label style={{ display: 'block', marginBottom: 12, fontSize: 12, fontWeight: 600, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.42)' }}>
+                Equipe
+              </label>
+              <select
+                value={activeTeam}
+                onChange={(e) => setActiveTeam(e.target.value)}
+                style={{
+                  width: '100%',
+                  background: '#0A1630',
+                  color: 'white',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: 12,
+                  padding: '10px 16px',
+                  fontSize: 14,
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="all">Todos os squads</option>
+                <option value="Time Lucas">Time Lucas</option>
+                <option value="Time William">Time William</option>
+                <option value="Equipe Alex">Equipe Alex</option>
+                <option value="Time Amanda">Time Amanda</option>
+              </select>
+            </div>
+
             <div>
               <label style={{ display: 'block', marginBottom: 12, fontSize: 12, fontWeight: 600, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.42)' }}>
                 Período
@@ -155,12 +181,13 @@ export default function DashboardPage() {
                 ))}
               </div>
             </div>
+
             <div>
               <label style={{ display: 'block', marginBottom: 12, fontSize: 12, fontWeight: 600, letterSpacing: '0.18em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.42)' }}>
                 Rota
               </label>
               <div className="flex flex-wrap gap-2">
-                {ROUTES.map(r => (
+                {['all', ...ROUTES].map(r => (
                   <button
                     key={r}
                     onClick={() => setActiveRoute(r)}
@@ -178,7 +205,7 @@ export default function DashboardPage() {
                       color: activeRoute === r ? 'white' : 'rgba(255,255,255,0.55)',
                     }}
                   >
-                    {r}
+                    {r === 'all' ? 'Todas' : `Rota ${r}`}
                   </button>
                 ))}
               </div>
@@ -276,41 +303,49 @@ export default function DashboardPage() {
         </section>
 
         {/* ── MAIN CONTENT: Radar + Gaps/Insights ── */}
-        <section className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-[1.55fr_0.95fr]">
-
-          {/* Scatter Radar */}
-          <article
-            style={{
-              background: 'linear-gradient(180deg, rgba(21,33,60,0.96), rgba(15,25,47,0.92))',
-              border: '1px solid rgba(255,255,255,0.07)',
-              boxShadow: '0 12px 40px rgba(0,0,0,0.28)',
-              borderRadius: 24,
-              padding: '28px',
-            }}
-          >
-            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 600, letterSpacing: '0.16em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.42)' }}>
-                  Performance Overview
-                </div>
-                <h2 style={{ marginTop: 8, fontSize: 32, fontWeight: 600, letterSpacing: '-0.03em', color: 'white' }}>
-                  Radar de Saúde da Equipe
-                </h2>
-                <p style={{ marginTop: 12, maxWidth: 640, fontSize: 15, lineHeight: 1.75, color: 'rgba(255,255,255,0.56)' }}>
-                  Cada ponto representa um SDR. O eixo X mede domínio da condução e o eixo Y mede profundidade na exploração de dor.
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-4" style={{ fontSize: 13, fontWeight: 600, color: 'rgba(255,255,255,0.68)' }}>
-                {[['#58A6FF', 'Rota A'], ['#9B7BFF', 'Rota B'], ['#4BE1B7', 'Rota C']].map(([color, label]) => (
-                  <div key={label} className="flex items-center gap-2">
-                    <span style={{ width: 10, height: 10, borderRadius: 9999, background: color, display: 'inline-block' }} />
-                    {label}
-                  </div>
-                ))}
-              </div>
+        <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
+          {/* Grid de Performance de SDRs Premium */}
+          <div className="col-span-2 glass-card p-6 rounded-[24px] border border-white/5">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-xl font-bold text-white tracking-tight">Grid de Performance</h2>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-purple/60">SDR Leaderboard</span>
             </div>
-            <HealthRadar data={sdrData} />
-          </article>
+            
+            <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+              {ranking.map((sdr: any) => (
+                <Link 
+                  href={`/dashboard/sdrs/${sdr.id}`} 
+                  key={sdr.id} 
+                  className="block group hover:scale-[1.01] transition-all duration-300"
+                >
+                  <div className="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 group-hover:bg-white/10 group-hover:border-white/10 transition-colors">
+                    <div className="flex items-center gap-4">
+                      {/* Avatar com Gradiente */}
+                      <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#7C72FF] to-[#2DD4BF] flex items-center justify-center shadow-lg">
+                        {sdr.picture ? (
+                          <img src={sdr.picture} alt={sdr.name} className="h-full w-full rounded-full object-cover" />
+                        ) : (
+                          <span className="text-sm font-black text-white">{getInitials(sdr.name)}</span>
+                        )}
+                      </div>
+                      
+                      <div>
+                        <div className="text-[15px] font-bold text-white leading-tight">{sdr.name}</div>
+                        <div className="text-[11px] text-white/40 font-medium mt-0.5">{sdr.teamName || 'Equipe não definida'}</div>
+                      </div>
+                    </div>
+
+                    <div className="text-right">
+                      <div className={`text-xl font-black tabular-nums ${(sdr.real_average || 0) >= 7 ? 'text-[#10B981]' : (sdr.real_average || 0) <= 5 ? 'text-[#FF4B5C]' : 'text-white/80'}`}>
+                        {(sdr.real_average || 0).toFixed(1)}
+                      </div>
+                      <div className="text-[9px] uppercase tracking-tighter text-white/20 font-bold">Média SPIN</div>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
 
           {/* Right column: Gaps + Insights */}
           <div className="grid gap-5">
@@ -339,7 +374,7 @@ export default function DashboardPage() {
                 </span>
               </div>
               <div style={{ marginTop: 28, display: 'flex', flexDirection: 'column', gap: 24 }}>
-                {sortedGaps.length > 0 ? sortedGaps.map(([gap, count]: any, idx) => {
+                {sortedGaps.length > 0 ? sortedGaps.map(([gap, count]: any, idx: number) => {
                   const maxCount = (sortedGaps[0][1] as number) || 1;
                   const pct = Math.round(((count as number) / maxCount) * 100);
                   return (
@@ -385,7 +420,7 @@ export default function DashboardPage() {
                 </span>
               </div>
               <div style={{ marginTop: 28, display: 'flex', flexDirection: 'column', gap: 24 }}>
-                {sortedStrengths.length > 0 ? sortedStrengths.map(([strength, count]: any, idx) => {
+                {sortedStrengths.length > 0 ? sortedStrengths.map(([strength, count]: any, idx: number) => {
                   const maxCount = (sortedStrengths[0][1] as number) || 1;
                   const pct = Math.round(((count as number) / maxCount) * 100);
                   return (
@@ -407,7 +442,7 @@ export default function DashboardPage() {
               </div>
             </article>
           </div>
-        </section>
+        </div>
 
         {/* ── CONSOLIDATED READING ── */}
         <ConsolidatedReading data={summaryData} />
