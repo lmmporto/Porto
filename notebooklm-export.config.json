@@ -1,0 +1,33 @@
+{
+    "maxFileSizeBytes": 300000,
+    "includeLowPriorityCode": false,
+    "includeFullCodeByDefault": true,
+    "maxCodePreviewLinesForLowPriority": 0,
+    "excludedDirs": [
+        "node_modules",
+        ".git",
+        ".next",
+        "dist",
+        "build",
+        "coverage",
+        "out",
+        ".turbo",
+        ".cache",
+        ".vercel",
+        ".idea",
+        ".vscode",
+        "tmp",
+        "temp",
+        "NOTEBOOKLM_EXPORT"
+    ],
+    "allowedExtensions": [
+        ".ts",
+        ".tsx",
+        ".js",
+        ".jsx",
+        ".json",
+        ".md",
+        ".mjs",
+        ".cjs"
+    ]
+}

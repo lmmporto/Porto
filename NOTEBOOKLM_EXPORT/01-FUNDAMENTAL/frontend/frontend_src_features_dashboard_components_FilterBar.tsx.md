@@ -1,0 +1,139 @@
+# FilterBar.tsx
+
+## Visão geral
+- Caminho original: `frontend/src/features/dashboard/components/FilterBar.tsx`
+- Domínio: **frontend**
+- Prioridade: **01-FUNDAMENTAL**
+- Tipo: **feature-component**
+- Criticidade: **important**
+- Score de importância: **108**
+- Entry point: **não**
+- Arquivo central de fluxo: **sim**
+- Linhas: **87**
+- Imports detectados: **1**
+- Exports detectados: **1**
+- Funções/classes detectadas: **3**
+
+## Resumo factual
+Este arquivo foi classificado como feature-component no domínio frontend. Criticidade: important. Prioridade: 01-FUNDAMENTAL. Exports detectados: FilterBar. Funções/classes detectadas: FilterBar, handlePeriodChange, handleRouteChange. Dependências externas detectadas: react. Indícios de framework/arquitetura: react/tsx, client-component.
+
+## Dependências locais
+_Nenhuma dependência local detectada_
+
+## Dependências externas
+- `react`
+
+## Todos os imports detectados
+- `react`
+
+## Exports detectados
+- `FilterBar`
+
+## Funções e classes detectadas
+- `FilterBar`
+- `handlePeriodChange`
+- `handleRouteChange`
+
+## Endpoints detectados
+_Nenhum padrão de endpoint detectado_
+
+## Variáveis de ambiente detectadas
+_Nenhuma variável de ambiente detectada_
+
+## Temas relevantes
+_Nenhuma palavra-chave relevante detectada_
+
+## Indícios de framework/arquitetura
+- `react/tsx`
+- `client-component`
+
+## Código
+```tsx
+'use client';
+
+import React from 'react';
+
+interface FilterBarProps {
+  filters: {
+    period: string;
+    route: string;
+  };
+  setFilters: React.Dispatch<React.SetStateAction<{
+    period: string;
+    route: string;
+  }>>;
+}
+
+export function FilterBar({ filters, setFilters }: FilterBarProps) {
+  const handlePeriodChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setFilters(prev => ({ ...prev, period: e.target.value }));
+  };
+
+  const handleRouteChange = (route: string) => {
+    setFilters(prev => ({ ...prev, route }));
+  };
+
+  return (
+    <section className="glass-soft mt-5 rounded-[22px] p-5 md:p-6">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {/* Período */}
+        <div>
+          <label htmlFor="periodSelect" className="mb-3 block text-[12px] font-semibold uppercase tracking-[0.18em] text-white/42">
+            Período
+          </label>
+          <div className="relative">
+            <select
+              id="periodSelect"
+              value={filters.period}
+              onChange={handlePeriodChange}
+              className="w-full appearance-none rounded-2xl border border-white/10 bg-[#0A1630] px-4 py-3.5 pr-12 text-[14px] font-medium text-white outline-none transition hover:bg-[#0A1630]/90 focus:ring-2 focus:ring-primary"
+            >
+              <option value="Tudo">Todo o período</option>
+              <option value="Hoje">Hoje</option>
+              <option value="7D">Últimos 7 dias</option>
+              <option value="30D">Últimos 30 dias</option>
+            </select>
+            <svg className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/45" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="m6 9 6 6 6-6"/>
+            </svg>
+          </div>
+        </div>
+
+        {/* Rota */}
+        <div>
+          <label className="mb-3 block text-[12px] font-semibold uppercase tracking-[0.18em] text-white/42">
+            Rota
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className={`${filters.route === 'all' ? 'filter-pill-active' : 'filter-pill'} rounded-xl px-4 py-2.5 text-[14px] font-semibold`}
+              onClick={() => handleRouteChange('all')}
+            >
+              Todas
+            </button>
+            <button
+              className={`${filters.route === 'A' ? 'filter-pill-active' : 'filter-pill'} rounded-xl px-4 py-2.5 text-[14px] font-semibold`}
+              onClick={() => handleRouteChange('A')}
+            >
+              Rota A
+            </button>
+            <button
+              className={`${filters.route === 'B' ? 'filter-pill-active' : 'filter-pill'} rounded-xl px-4 py-2.5 text-[14px] font-semibold`}
+              onClick={() => handleRouteChange('B')}
+            >
+              Rota B
+            </button>
+            <button
+              className={`${filters.route === 'C' ? 'filter-pill-active' : 'filter-pill'} rounded-xl px-4 py-2.5 text-[14px] font-semibold`}
+              onClick={() => handleRouteChange('C')}
+            >
+              Rota C
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+```

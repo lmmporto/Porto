@@ -7,7 +7,8 @@ export class MetricsService {
   private static GLOBAL_AVERAGE_BASELINE = 5.0;
 
   static async updateSDRMetrics(email: string): Promise<void> {
-    const callsSnapshot = await db.collection('calls_analysis')
+    const callsSnapshot = await db
+      .collection('calls_analysis')
       .where('ownerEmail', '==', email)
       .select('nota_spin', 'score_dominio', 'score_dor')
       .get();
@@ -32,35 +33,50 @@ export class MetricsService {
     const rankingScore = (v * R + m * C) / (v + m);
     const cleanId = email.replace(/\./g, '_');
 
-    const mediaDominio = domainScores.reduce((acc, val) => acc + val, 0) / totalCalls;
-    const mediaDor = painScores.reduce((acc, val) => acc + val, 0) / totalCalls;
+    const mediaDominio =
+      domainScores.reduce((acc, val) => acc + val, 0) / totalCalls;
 
-    await db.collection('sdrs').doc(cleanId).set({
-      real_average: parseFloat(realAverage.toFixed(2)),
-      ranking_score: parseFloat(rankingScore.toFixed(2)),
-      total_calls: totalCalls,
-      media_dominio: parseFloat(mediaDominio.toFixed(2)),
-      media_dor: parseFloat(mediaDor.toFixed(2)),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
-    }, { merge: true });
+    const mediaDor =
+      painScores.reduce((acc, val) => acc + val, 0) / totalCalls;
 
-    // Atualizar media_geral no global_summary
-    const summaryRef = db.collection('dashboard_stats').doc('global_summary');
-    const summaryDoc = await summaryRef.get();
-    const summaryData = summaryDoc.exists ? summaryDoc.data() : {};
-    const prevTotal = summaryData?.total_calls || 0;
-    const prevSum = (summaryData?.media_geral || 0) * prevTotal;
-    const newTotalCalls = prevTotal + 1;
-    const newAverageScore = (prevSum + realAverage) / newTotalCalls;
+    await db.collection('sdrs').doc(cleanId).set(
+      {
+        real_average: parseFloat(realAverage.toFixed(2)),
+        ranking_score: parseFloat(rankingScore.toFixed(2)),
+        total_calls: totalCalls,
+        media_dominio: parseFloat(mediaDominio.toFixed(2)),
+        media_dor: parseFloat(mediaDor.toFixed(2)),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  }
 
-    await summaryRef.update({
-      total_calls: newTotalCalls,
-      media_geral: parseFloat(newAverageScore.toFixed(2)) // Correção do nome e tipo
-    });
+  static async updateGlobalSummary(): Promise<void> {
+    const sdrsSnapshot = await db.collection('sdrs').get();
+    const allSdrs = sdrsSnapshot.docs.map(doc => doc.data());
 
-    // Gatilho para a Leitura Consolidada a cada 5 chamadas
-    if (newTotalCalls > 0 && newTotalCalls % 5 === 0) {
-      await updateTeamStrategy();
-    }
+    const totalCalls = allSdrs.reduce(
+      (acc, sdr) => acc + (sdr.total_calls || 0),
+      0
+    );
+
+    const totalScoreSum = allSdrs.reduce(
+      (acc, sdr) => acc + (sdr.real_average || 0) * (sdr.total_calls || 0),
+      0
+    );
+
+    const globalAverage = totalCalls > 0 ? totalScoreSum / totalCalls : 0;
+
+    await db.collection('dashboard_stats').doc('global_summary').set(
+      {
+        total_calls: totalCalls,
+        media_geral: parseFloat(globalAverage.toFixed(2)),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    await updateTeamStrategy();
   }
 }

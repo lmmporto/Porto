@@ -1,3 +1,78 @@
+# SdrProfilePanel.tsx
+
+## Visão geral
+- Caminho original: `frontend/src/features/dashboard/components/SdrProfilePanel.tsx`
+- Domínio: **frontend**
+- Prioridade: **01-FUNDAMENTAL**
+- Tipo: **feature-component**
+- Criticidade: **important**
+- Score de importância: **108**
+- Entry point: **não**
+- Arquivo central de fluxo: **sim**
+- Linhas: **861**
+- Imports detectados: **8**
+- Exports detectados: **1**
+- Funções/classes detectadas: **2**
+
+## Resumo factual
+Este arquivo foi classificado como feature-component no domínio frontend. Criticidade: important. Prioridade: 01-FUNDAMENTAL. Exports detectados: SdrProfilePanel. Funções/classes detectadas: SdrProfilePanel, getPriorityContent. Dependências locais detectadas: @/context/DashboardContext, @/features/dashboard/components/FilterBar, @/lib/firebase, @/lib/utils. Dependências externas detectadas: firebase/firestore, next/link, next/navigation, react. Temas relevantes detectados: analysis, calls, dashboard, email, firebase, insights, ranking, sdr, summary, team. Indícios de framework/arquitetura: react/tsx, client-component, express, next-runtime, firebase.
+
+## Dependências locais
+- `@/context/DashboardContext`
+- `@/features/dashboard/components/FilterBar`
+- `@/lib/firebase`
+- `@/lib/utils`
+
+## Dependências externas
+- `firebase/firestore`
+- `next/link`
+- `next/navigation`
+- `react`
+
+## Todos os imports detectados
+- `@/context/DashboardContext`
+- `@/features/dashboard/components/FilterBar`
+- `@/lib/firebase`
+- `@/lib/utils`
+- `firebase/firestore`
+- `next/link`
+- `next/navigation`
+- `react`
+
+## Exports detectados
+- `SdrProfilePanel`
+
+## Funções e classes detectadas
+- `SdrProfilePanel`
+- `getPriorityContent`
+
+## Endpoints detectados
+_Nenhum padrão de endpoint detectado_
+
+## Variáveis de ambiente detectadas
+_Nenhuma variável de ambiente detectada_
+
+## Temas relevantes
+- `analysis`
+- `calls`
+- `dashboard`
+- `email`
+- `firebase`
+- `insights`
+- `ranking`
+- `sdr`
+- `summary`
+- `team`
+
+## Indícios de framework/arquitetura
+- `react/tsx`
+- `client-component`
+- `express`
+- `next-runtime`
+- `firebase`
+
+## Código
+```tsx
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -68,8 +143,6 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ period: 'Tudo', route: 'all' });
   const [isHistoryOverlayOpen, setIsHistoryOverlayOpen] = useState(false); // Estado para o overlay de histórico
-  const [historyPeriod, setHistoryPeriod] = useState('Tudo'); // Estado para o filtro do histórico
-  const [currentPage, setCurrentPage] = useState(1);
 
   if (sdrId === 'lucas_porto@nibo_com_br' || sdrId === 'lucas.porto@nibo.com.br') {
     router.push('/dashboard');
@@ -113,50 +186,9 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
     };
   }, [sdrId]);
 
-  // Efeito para Histórico (Snapshot de 50 itens + Paginação Frontend)
   useEffect(() => {
     if (!sdrData || !sdrData.email) {
       setAllCalls([]);
-      return;
-    }
-
-    const sdrEmail = sdrData.email;
-    const callsRef = collection(db, 'calls_analysis');
-    
-    let historyConstraints = [
-      where('ownerEmail', '==', sdrEmail)
-    ];
-
-    if (historyPeriod !== 'Tudo') {
-      const now = new Date();
-      let startDate = new Date();
-      if (historyPeriod === 'Hoje') startDate.setHours(0,0,0,0);
-      if (historyPeriod === '7D') startDate.setDate(now.getDate() - 7);
-      if (historyPeriod === '30D') startDate.setDate(now.getDate() - 30);
-      historyConstraints.push(where('createdAt', '>=', startDate));
-    }
-
-    const qAll = query(
-      callsRef,
-      ...historyConstraints,
-      orderBy('createdAt', 'desc'),
-      limit(50)
-    );
-
-    const unsubAllCalls = onSnapshot(qAll, (querySnapshot) => {
-      const calls = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setAllCalls(calls);
-      setCurrentPage(1); // Reseta para pág 1 ao mudar filtro
-    });
-
-    return () => unsubAllCalls();
-  }, [sdrData, historyPeriod]);
-
-  // Paginação no Frontend
-  const paginatedCalls = allCalls.slice((currentPage - 1) * 10, currentPage * 10);
-
-  useEffect(() => {
-    if (!sdrData || !sdrData.email) {
       setPriorityCalls([]);
       return;
     }
@@ -205,8 +237,21 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
       }
     );
 
+    const qAll = query(
+      callsRef,
+      where('ownerEmail', '==', sdrData.email),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
+
+    const unsubAllCalls = onSnapshot(qAll, (querySnapshot) => {
+      const calls = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setAllCalls(calls);
+    });
+
     return () => {
       unsubPriorityCalls();
+      unsubAllCalls();
     };
   }, [sdrData, filters]);
 
@@ -549,13 +594,11 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
 
               <div className="mt-6 space-y-3 max-h-[450px] overflow-y-auto pr-2 custom-scrollbar">
                 {priorityCalls.length > 0 ? priorityCalls.map(call => (
-                  <article key={call.id} className="call-item rounded-[18px] p-4 border border-[#7C72FF]/30 shadow-[0_0_15px_rgba(255,110,122,0.15)]">
+                  <article key={call.id} className="call-item rounded-[18px] p-4">
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="text-[16px] font-semibold text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]">
-                            {call.nome_do_lead || call.title || call.call_title || 'Chamada Analisada'}
-                          </h3>
+                          <h3 className="text-[16px] font-semibold text-white">{call.call_title || 'Chamada Analisada'}</h3>
                           <span className="badge-danger rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase">{call.status_final}</span>
                         </div>
                         <div className="mt-1 flex gap-3 text-[12px] text-white/40">
@@ -622,7 +665,7 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
                 </div>
               </div>
 
-              <div className="mt-6 space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="mt-6 space-y-4">
                 {!allCalls || allCalls.length === 0 ? (
                   <div className="text-white/30 text-sm py-4">Aguardando dados da última chamada...</div>
                 ) : (
@@ -633,11 +676,11 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
                       const description = typeof step === 'object' ? step.recomendacao : step;
                       
                       return (
-                        <div key={index} className="rounded-[18px] border border-[#7C72FF]/40 bg-[#7C72FF]/5 p-4 shadow-[0_0_15px_rgba(124,114,255,0.15)]">
-                          <div className="text-[16px] font-semibold text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]">
+                        <div key={index} className="rounded-[18px] border border-white/8 bg-white/[0.03] p-4">
+                          <div className="text-[16px] font-semibold text-white">
                             {title || 'Sem recomendação disponível'}
                           </div>
-                          <p className="mt-2 text-[14px] leading-7 text-white/80">
+                          <p className="mt-2 text-[14px] leading-7 text-white/62">
                             {description || 'Sem recomendação disponível'}
                           </p>
                         </div>
@@ -645,9 +688,9 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
                     })
                   ) : (
                     priorityContent.playbook.map((step, index) => (
-                      <div key={index} className="rounded-[18px] border border-[#7C72FF]/40 bg-[#7C72FF]/5 p-4 shadow-[0_0_15px_rgba(124,114,255,0.15)]">
-                        <div className="text-[16px] font-semibold text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]">{step.title}</div>
-                        <p className="mt-2 text-[14px] leading-7 text-white/80">
+                      <div key={index} className="rounded-[18px] border border-white/8 bg-white/[0.03] p-4">
+                        <div className="text-[16px] font-semibold text-white">{step.title}</div>
+                        <p className="mt-2 text-[14px] leading-7 text-white/62">
                           {step.description}
                         </p>
                       </div>
@@ -845,26 +888,12 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
                   </h2>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <select 
-                    value={historyPeriod} 
-                    onChange={(e) => setHistoryPeriod(e.target.value)}
-                    className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 text-[13px] text-white/70 outline-none focus:border-[#7C72FF]/40 transition appearance-none cursor-pointer hover:bg-white/10"
-                    style={{ minWidth: '100px' }}
-                  >
-                    <option value="Hoje" className="bg-[#0A1630]">Hoje</option>
-                    <option value="7D" className="bg-[#0A1630]">7D</option>
-                    <option value="30D" className="bg-[#0A1630]">30D</option>
-                    <option value="Tudo" className="bg-[#0A1630]">Tudo</option>
-                  </select>
-
-                  <button
-                    onClick={() => setIsHistoryOverlayOpen(false)}
-                    className="secondary-btn rounded-2xl px-4 py-3 text-[13px] font-semibold transition"
-                  >
-                    Fechar
-                  </button>
-                </div>
+                <button
+                  onClick={() => setIsHistoryOverlayOpen(false)}
+                  className="secondary-btn rounded-2xl px-4 py-3 text-[13px] font-semibold transition"
+                >
+                  Fechar
+                </button>
               </div>
 
               <div className="mt-6 overflow-hidden rounded-[20px] border border-white/8">
@@ -879,7 +908,7 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
                 </div>
 
                 <div className="bg-white/[0.02] max-h-[400px] overflow-y-auto custom-scrollbar">
-                  {paginatedCalls.length > 0 ? paginatedCalls.map(call => (
+                  {allCalls.length > 0 ? allCalls.map(call => (
                     <div key={call.id} className="history-row grid grid-cols-[1fr_1.6fr_0.8fr_0.8fr_1fr_1.2fr_0.8fr] items-center px-5 py-4 text-[14px] text-white/76">
                       <div>{call.createdAt ? new Date(call.createdAt.seconds * 1000).toLocaleDateString() : 'N/A'}</div>
                       <div>{call.call_title || 'Sem título'}</div>
@@ -898,29 +927,6 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
                   )}
                 </div>
               </div>
-
-              {/* RODAPÉ DA TABELA: CONTROLE DE PAGINAÇÃO */}
-              <div className="mt-4 flex items-center justify-between border-t border-white/8 bg-white/[0.04] px-6 py-4 rounded-b-[20px]">
-                <div className="text-[12px] text-white/40">
-                  Página <span className="text-white/70 font-semibold">{currentPage}</span>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="secondary-btn rounded-xl px-4 py-2 text-[12px] font-semibold disabled:opacity-30 disabled:cursor-not-allowed transition"
-                  >
-                    &lt; Voltar
-                  </button>
-                  <button
-                    onClick={() => setCurrentPage(p => p + 1)}
-                    disabled={currentPage * 10 >= allCalls.length}
-                    className="secondary-btn rounded-xl px-4 py-2 text-[12px] font-semibold disabled:opacity-30 disabled:cursor-not-allowed transition"
-                  >
-                    Próximo &gt;
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
         )}
@@ -928,3 +934,4 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
     </>
   );
 }
+```
