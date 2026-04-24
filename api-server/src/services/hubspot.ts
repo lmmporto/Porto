@@ -1,18 +1,10 @@
 import { hubspot } from "../clients.js";
 import { CONFIG } from "../config.js";
 import { firstFilled } from "../utils.js";
-import type { AnalysisResult } from "./analysis.service.js"; // 🚩 IMPORT ADICIONADO
-
-// --- INTERFACES ---
-
-export interface OwnerDetails {
-  ownerId: string | null;
-  ownerName: string;
-  ownerEmail: string | null;
-  teamId: string | null;
-  teamName: string;
-  userId: string | null;
-}
+import {
+  type AnalysisResult,
+  type OwnerDetails,
+} from "../domain/analysis/analysis.types.js";
 
 export interface CallData {
   id: string;
@@ -31,6 +23,7 @@ export interface CallData {
   transcriptSourceType: string;
   transcriptLength: number;
   lastAnalysisVersion?: string;
+  lastTranscriptHash?: string;
   analysisResult?: AnalysisResult; // 🚩 AGORA RECONHECIDO CORRETAMENTE
 
   // Novos campos operacionais

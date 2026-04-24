@@ -1,131 +1,238 @@
 import axios from 'axios';
 import admin from 'firebase-admin';
 import { db } from '../firebase.js';
-import { CONFIG } from '../config.js';
 import { HUBSPOT_CALL_PROPERTIES } from '../constants/hubspot.js';
+import {
+  CallStatus,
+  FailureReason,
+  SkipReason,
+  MAX_AUDIO_RETRIES,
+  RETRY_INTERVAL_MINUTES,
+  MIN_CALL_DURATION_MS,
+} from '../constants/call-processing.js';
+import { CALLS_COLLECTION } from '../constants/collections.js';
 
-const MAX_AUDIO_FETCH_ATTEMPTS = 10;
-const MIN_DURATION_MS = 110000; // 1:50 min
+export interface RefreshPendingAudioCallResult {
+  success: boolean;
+  status?: CallStatus;
+  reason?: string;
+}
 
-/**
- * 🏛️ ARQUITETO: Refresh, Filtro Qualitativo e Guarda de Recência
- * Esta função reconsulta o HubSpot e decide se a chamada segue para análise ou é descartada.
- */
-export async function refreshPendingAudioCall(callId: string) {
-  const collectionName = CONFIG.CALLS_COLLECTION || 'calls_analysis';
-  const docRef = db.collection(collectionName).doc(callId);
+export async function refreshPendingAudioCall(
+  callId: string
+): Promise<RefreshPendingAudioCallResult> {
+  const docRef = db.collection(CALLS_COLLECTION).doc(callId);
 
   try {
-    // 1. 🏛️ ARQUITETO: Guarda de Sanidade - Ignora IDs não-numéricos
     if (!/^\d+$/.test(callId)) {
       console.warn(`⚠️ [SKIP] ID inválido detectado: "${callId}". Removendo ruído do banco.`);
       await docRef.delete();
-      return;
+
+      return {
+        success: true,
+        reason: 'INVALID_HUBSPOT_CALL_ID',
+      };
     }
 
     const token = process.env.HUBSPOT_TOKEN;
-    if (!token) throw new Error("HUBSPOT_TOKEN não configurado no .env");
+
+    if (!token) {
+      throw new Error('HUBSPOT_TOKEN não configurado no .env');
+    }
 
     const docSnap = await docRef.get();
-    if (!docSnap.exists) return;
 
-    // 2. Busca os dados no HubSpot com tratamento para erro 404
+    if (!docSnap.exists) {
+      return {
+        success: true,
+        reason: 'CALL_DOCUMENT_NOT_FOUND',
+      };
+    }
+
     let response;
+
     try {
       response = await axios.get(
         `https://api.hubapi.com/crm/v3/objects/calls/${callId}?properties=${HUBSPOT_CALL_PROPERTIES}`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
       );
-    } catch (e: any) {
-      if (e.response?.status === 404) {
+    } catch (error: any) {
+      if (error.response?.status === 404) {
         console.error(`🚫 [404] Chamada ${callId} não existe no HubSpot. Deletando...`);
         await docRef.delete();
-        return;
+
+        return {
+          success: true,
+          reason: 'HUBSPOT_CALL_NOT_FOUND',
+        };
       }
-      throw e;
+
+      throw error;
     }
 
-    const props = response.data.properties;
+    const props = response.data.properties || {};
 
-    // 3. 🏛️ ARQUITETO: GUARDA DE RECÊNCIA (Anti-Inundação de chamadas antigas)
     const hsTimestamp = props.hs_timestamp || props.hs_createdate;
     const callDate = hsTimestamp ? new Date(hsTimestamp) : new Date();
-    const safeDate = isNaN(callDate.getTime()) ? new Date() : callDate;
+    const safeDate = Number.isNaN(callDate.getTime()) ? new Date() : callDate;
+
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     if (safeDate < twentyFourHoursAgo) {
-      console.log(`⏭️ [OLD] Descarte por antiguidade: ${callId} (${safeDate.toLocaleDateString()}). Marcando como SKIPPED.`);
-      await docRef.update({
-        processingStatus: 'SKIPPED',
+      console.log(
+        `⏭️ [OLD] Descarte por antiguidade: ${callId} (${safeDate.toLocaleDateString()}).`
+      );
+
+      await docRef.set(
+        {
+          processingStatus: CallStatus.SKIPPED,
+          skipReason: SkipReason.CALL_TOO_SHORT,
+          skipDetails: 'OLD_CALL_PURGE',
+          callTimestamp: admin.firestore.Timestamp.fromDate(safeDate),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      return {
+        success: true,
+        status: CallStatus.SKIPPED,
         reason: 'OLD_CALL_PURGE',
-        callTimestamp: safeDate,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-      return; 
+      };
     }
 
-    // 4. 🚩 O FILTRO: Descarte por duração (Chamadas muito curtas)
     const durationMs = Number(props.hs_call_duration || 0);
-    if (durationMs < MIN_DURATION_MS) {
-      console.log(`⏭️ [SHORT] Chamada ${callId} curta demais (${Math.round(durationMs/1000)}s).`);
-      await docRef.update({
-        processingStatus: 'SKIPPED',
-        reason: 'TOO_SHORT',
-        durationMs: durationMs,
-        callTimestamp: safeDate,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-      return; 
+
+    if (durationMs < MIN_CALL_DURATION_MS) {
+      console.log(
+        `⏭️ [SHORT] Chamada ${callId} curta demais (${Math.round(durationMs / 1000)}s).`
+      );
+
+      await docRef.set(
+        {
+          processingStatus: CallStatus.SKIPPED,
+          skipReason: SkipReason.CALL_TOO_SHORT,
+          durationMs,
+          callTimestamp: admin.firestore.Timestamp.fromDate(safeDate),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      return {
+        success: true,
+        status: CallStatus.SKIPPED,
+        reason: SkipReason.CALL_TOO_SHORT,
+      };
     }
 
-    // 5. Extração de Mídia e Transcrição
     const hubspotTranscript = String(props.hs_call_transcript || '').trim();
     const recordingUrl = String(props.hs_call_recording_url || '').trim();
+
     const hasTranscript = hubspotTranscript.length >= 100;
     const hasAudio = Boolean(recordingUrl);
 
-    const currentAttempts = docSnap.data()?.audioFetchAttempts || 0;
+    const currentAttempts = Number(docSnap.data()?.audioRetryCount || 0);
     const newAttempts = currentAttempts + 1;
 
-    // 6. Lógica de Polling de Áudio (Retentativas)
-    if (!hasTranscript && !hasAudio && newAttempts >= MAX_AUDIO_FETCH_ATTEMPTS) {
-      await docRef.update({
-        processingStatus: 'FAILED_NO_AUDIO',
-        failureReason: 'NO_AUDIO_AFTER_RETRIES',
-        audioFetchAttempts: newAttempts,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-      console.log(`🚫 [TIMEOUT] Chamada ${callId} sem mídia após ${MAX_AUDIO_FETCH_ATTEMPTS} tentativas.`);
-      return;
+    if (!hasTranscript && !hasAudio && newAttempts >= MAX_AUDIO_RETRIES) {
+      await docRef.set(
+        {
+          processingStatus: CallStatus.FAILED_NO_AUDIO,
+          failureReason: FailureReason.NO_AUDIO_AFTER_RETRIES,
+          audioRetryCount: newAttempts,
+          lastAudioCheckAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      console.log(
+        `🚫 [TIMEOUT] Chamada ${callId} sem mídia após ${MAX_AUDIO_RETRIES} tentativas.`
+      );
+
+      return {
+        success: false,
+        status: CallStatus.FAILED_NO_AUDIO,
+        reason: FailureReason.NO_AUDIO_AFTER_RETRIES,
+      };
     }
 
-    // 7. Amadurecimento de Estado para a Fila de IA
-    let updateData: any = {
+    const updateData: Record<string, any> = {
       recordingUrl,
       hasAudio,
       hasTranscript,
       durationMs,
-      audioFetchAttempts: newAttempts,
-      callTimestamp: safeDate, 
+      audioRetryCount: newAttempts,
+      callTimestamp: admin.firestore.Timestamp.fromDate(safeDate),
       lastAudioCheckAt: admin.firestore.FieldValue.serverTimestamp(),
-      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      lastRefreshError: admin.firestore.FieldValue.delete(),
+      lastRefreshErrorAt: admin.firestore.FieldValue.delete(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
     if (hasTranscript) {
       updateData.transcript = hubspotTranscript;
       updateData.transcriptSource = 'HUBSPOT';
-      updateData.processingStatus = 'QUEUED';
+      updateData.processingStatus = CallStatus.QUEUED;
+      updateData.nextRetryAt = admin.firestore.FieldValue.delete();
     } else if (hasAudio) {
-      updateData.processingStatus = 'QUEUED';
+      updateData.processingStatus = CallStatus.QUEUED;
+      updateData.nextRetryAt = admin.firestore.FieldValue.delete();
     } else {
-      updateData.processingStatus = 'PENDING_AUDIO';
+      const nextRetryDate = new Date();
+      nextRetryDate.setMinutes(nextRetryDate.getMinutes() + RETRY_INTERVAL_MINUTES);
+
+      updateData.processingStatus = CallStatus.PENDING_AUDIO;
+      updateData.nextRetryAt = admin.firestore.Timestamp.fromDate(nextRetryDate);
     }
 
-    await docRef.update(updateData);
+    await docRef.set(updateData, { merge: true });
+
     console.log(`✅ [${updateData.processingStatus}] Chamada ${callId} sincronizada.`);
 
+    return {
+      success: true,
+      status: updateData.processingStatus,
+    };
   } catch (error: any) {
-    const errorMsg = error.response?.data?.message || error.message;
+    const errorMsg =
+      error.response?.data?.message ||
+      error.response?.statusText ||
+      error.message ||
+      String(error);
+
     console.error(`❌ [WORKER ERROR] Falha em ${callId}: ${errorMsg}`);
+
+    const nextRetryDate = new Date();
+    nextRetryDate.setMinutes(nextRetryDate.getMinutes() + RETRY_INTERVAL_MINUTES);
+
+    await docRef
+      .set(
+        {
+          processingStatus: CallStatus.PENDING_AUDIO,
+          lastRefreshError: errorMsg,
+          lastRefreshErrorAt: admin.firestore.FieldValue.serverTimestamp(),
+          nextRetryAt: admin.firestore.Timestamp.fromDate(nextRetryDate),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      )
+      .catch((saveError: any) => {
+        console.error(
+          `Falha ao salvar erro de refresh para ${callId}:`,
+          saveError?.message || saveError
+        );
+      });
+
+    return {
+      success: false,
+      status: CallStatus.PENDING_AUDIO,
+      reason: errorMsg,
+    };
   }
 }

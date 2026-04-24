@@ -1,202 +1,266 @@
-import admin from "firebase-admin";
-import { FieldValue } from "firebase-admin/firestore";
-import { db } from "../firebase.js";
-import { CONFIG } from "../config.js";
+import admin from 'firebase-admin';
+import { FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { db } from '../firebase.js';
 import {
   fetchCall,
   fetchOwnerDetails,
   type CallData,
-  type OwnerDetails,
-} from "./hubspot.js";
+} from './hubspot.js';
 import {
   transcribeRecordingFromHubSpot,
   analyzeCallWithGemini,
   updateDailyStats,
-  updateSdrGlobalStats,
-} from "./analysis.service.js";
+} from './analysis.service.js';
+import {
+  CURRENT_ANALYSIS_VERSION,
+  type OwnerDetails,
+} from '../domain/analysis/analysis.types.js';
 import { MetricsService } from './metrics.service.js';
+import {
+  CallStatus,
+  SkipReason,
+  FailureReason,
+  RETRY_INTERVAL_MINUTES,
+} from '../constants/call-processing.js';
+import {
+  CALLS_COLLECTION,
+  SDR_REGISTRY_COLLECTION,
+} from '../domain/analysis/analysis.constants.js';
+import {
+  AnalysisPolicy,
+  MIN_TRANSCRIPT_LENGTH,
+  MIN_CALL_DURATION_MS,
+  CALL_LEASE_MINUTES,
+} from '../domain/analysis/analysis.policy.js';
+import { withTimeout } from '../utils/timeout.js';
 
-const ALLOWED_OWNER_IDS = ['81501413', '83701507', '83701512', '83701527', '87174611', '88958088'];
 
-const ALLOWED_TEAMS = ["Time William", "Equipe Alex", "Time Lucas", "Time Amanda"];
-const BLOCKED_KEYWORDS = ["CX", "Suporte", "Atendimento", "Customer Success", "Financeiro", "GF"];
+export interface ProcessCallResult {
+  success: boolean;
+  status?: CallStatus;
+  reason?: string;
+}
 
-const MIN_TRANSCRIPT_LENGTH = 180;
-const DURATION_LIMIT = 60000;
-
-export async function processCall(callId: string): Promise<any> {
+export async function processCall(
+  callId: string,
+  workerId: string = 'unknown_worker'
+): Promise<ProcessCallResult> {
   if (!callId) {
-    throw new Error("callId não informado.");
+    throw new Error('callId não informado.');
   }
 
-  const callRef = db.collection(CONFIG.CALLS_COLLECTION).doc(callId);
+  const callRef = db.collection(CALLS_COLLECTION).doc(callId);
 
-  // Idempotência básica
-  const existingDoc = await callRef.get();
-  if (existingDoc.exists) {
-    const status = existingDoc.data()?.processingStatus;
-    if (status === "DONE" || status === "PROCESSING") {
-      console.log(`[IGNORE] 🛡️ Call ${callId} já processada ou em andamento (Status: ${status})`);
-      return { success: true, reason: "ALREADY_PROCESSED" };
+  const claimSuccess = await db.runTransaction(async (transaction) => {
+    const doc = await transaction.get(callRef);
+    const now = new Date();
+    const leaseUntil = new Date(now.getTime() + CALL_LEASE_MINUTES * 60 * 1000);
+
+    if (doc.exists) {
+      const data = doc.data() || {};
+      const status = data.processingStatus;
+      const currentLeaseOwner = data.leaseOwner;
+      const currentLeaseUntil = data.leaseUntil?.toDate?.();
+
+      if (status === CallStatus.DONE) {
+        return false;
+      }
+
+      if (
+        status === CallStatus.PROCESSING &&
+        currentLeaseOwner &&
+        currentLeaseOwner !== workerId &&
+        currentLeaseUntil &&
+        currentLeaseUntil > now
+      ) {
+        return false;
+      }
     }
-  }
 
-  // Marca como PROCESSING sem depender de o doc já existir
-  await callRef.set(
-    {
-      processingStatus: "PROCESSING",
-      updatedAt: FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
+    transaction.set(
+      callRef,
+      {
+        processingStatus: CallStatus.PROCESSING,
+        leaseOwner: workerId,
+        leaseUntil: Timestamp.fromDate(leaseUntil),
+        processingStartedAt: FieldValue.serverTimestamp(),
+        lastWorkerId: workerId,
+        lastStage: 'CLAIM_ACQUIRED',
+        lastStageAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    return true;
+  });
+
+  if (!claimSuccess) {
+    console.log(`[IGNORE] 🛡️ Call ${callId} já processada ou em andamento.`);
+    return {
+      success: true,
+      reason: 'ALREADY_PROCESSED_OR_CLAIMED',
+    };
+  }
 
   console.log(`\n[PROCESS] 🚀 Iniciando Call ${callId}...`);
 
   try {
-    // Busca dados atualizados do HubSpot
-    const call = await fetchCall(callId);
-    const owner: OwnerDetails = await fetchOwnerDetails(call.ownerId || null);
-    const teamName = (owner.teamName || "Sem equipe").trim();
+    const call = await withTimeout(fetchCall(callId), 15_000, 'fetchCall');
 
-    // 🚩 GATEKEEPER: Trava de Elite ou Time Lucas
-    const isElite = ALLOWED_OWNER_IDS.includes(String(call.ownerId));
-    const isTimeLucas = teamName.toLowerCase().includes('time lucas');
-
-    if (!isElite && !isTimeLucas) {
-      console.log(`[GATEKEEPER] 🛡️ Call ${callId} ignorada. Owner ${call.ownerId} não autorizado e não pertence ao Time Lucas.`);
-      return { success: true, reason: "UNAUTHORIZED_TEAM_OR_OWNER" };
-    }
-
-    const isAllowed = ALLOWED_TEAMS.some((t) =>
-      teamName.toLowerCase().includes(t.toLowerCase())
-    );
-    const isBlocked = BLOCKED_KEYWORDS.some((t) =>
-      teamName.toLowerCase().includes(t.toLowerCase())
+    const owner: OwnerDetails = await withTimeout(
+      fetchOwnerDetails(call.ownerId || null),
+      10_000,
+      'fetchOwnerDetails'
     );
 
-    console.log(`[DEBUG - TEAM_FILTER] Call ${callId} - Team: "${teamName}"`);
+    const teamName = (owner.teamName || 'Sem equipe').trim();
+
+    await callRef.update({
+      lastStage: 'HUBSPOT_SYNC_DONE',
+      lastStageAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
 
     const safeDate = call.timestamp ? new Date(call.timestamp) : new Date();
-    const normalizedDate = Number.isNaN(safeDate.getTime()) ? new Date() : safeDate;
+    const normalizedDate = Number.isNaN(safeDate.getTime())
+      ? new Date()
+      : safeDate;
 
     const basePayload = {
       callId: String(call.id),
       portalId: call.portalId ? String(call.portalId) : null,
-      title: call.title || "Ligação sem título",
+      title: call.title || 'Ligação sem título',
       ownerId: call.ownerId || null,
-      ownerName: owner.ownerName || "Não identificado",
+      ownerName: owner.ownerName || 'Não identificado',
       ownerEmail: owner.ownerEmail || null,
-      teamName,
       durationMs: Number(call.durationMs || 0),
       wasConnected: Boolean(call.wasConnected),
-      callTimestamp: admin.firestore.Timestamp.fromDate(normalizedDate),
+      callTimestamp: Timestamp.fromDate(normalizedDate),
       updatedAt: FieldValue.serverTimestamp(),
     };
 
-    // 🚩 AJUSTE SÊNIOR: updateDailyStats removido daqui. 
-    // Só atualizamos estatísticas no final (PASSO 6) para evitar inflar volume de chamadas não analisadas.
+    const releaseLeasePayload = {
+      leaseOwner: FieldValue.delete(),
+      leaseUntil: FieldValue.delete(),
+    };
 
-    // Filtro de time bloqueado
-    if (isBlocked) {
-      console.log(`[FAILED] ⚠️ Call ${callId} marcada como FAILED (Equipe bloqueada: ${teamName})`);
+    const cleanId = (owner.ownerEmail || '').replace(/\./g, '_');
+    const sdrRegistrySnap = await db
+      .collection(SDR_REGISTRY_COLLECTION)
+      .doc(cleanId)
+      .get();
+    const sdrRegistry = sdrRegistrySnap.exists ? sdrRegistrySnap.data() : null;
+
+    const policy = AnalysisPolicy.isCallAllowed(call, owner, sdrRegistry as any);
+
+    if (!policy.allowed) {
+      console.log(`[GATEKEEPER] 🛡️ Call ${callId} ignorada. Motivo: ${policy.reason}`);
       await callRef.set(
         {
           ...basePayload,
-          processingStatus: "FAILED",
-          failureReason: "TEAM_BLOCKED",
-          updatedAt: FieldValue.serverTimestamp(),
+          ...releaseLeasePayload,
+          processingStatus: CallStatus.SKIPPED,
+          skipReason: policy.reason,
+          processedAt: FieldValue.serverTimestamp(),
+          lastStage: `SKIPPED_${policy.reason}`,
+          lastStageAt: FieldValue.serverTimestamp(),
         },
         { merge: true }
       );
-      return { success: false, status: "FAILED", reason: "TEAM_BLOCKED" };
-    }
 
-    // Filtro de time não monitorado
-    if (!isAllowed) {
-      console.log(`[FAILED] ⚠️ Call ${callId} marcada como FAILED (Equipe não monitorada: ${teamName})`);
-      await callRef.set(
-        {
-          ...basePayload,
-          processingStatus: "FAILED",
-          failureReason: "TEAM_NOT_MONITORED",
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-      return { success: false, status: "FAILED", reason: "TEAM_NOT_MONITORED" };
-    }
-
-    // Filtro de duração mínima
-    const duration = Number(call.durationMs || 0);
-    if (duration < DURATION_LIMIT) {
-      console.log(`[FAILED] ⚠️ Call ${callId} marcada como FAILED (Muito curta: ${duration / 1000}s)`);
-      await callRef.set(
-        {
-          ...basePayload,
-          processingStatus: "FAILED",
-          failureReason: "CALL_TOO_SHORT",
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-      return { success: false, status: "FAILED", reason: "CALL_TOO_SHORT" };
-    }
-
-    // Usa o documento consolidado do Firestore como fonte de verdade para transcript/áudio
-    const docSnap = await callRef.get();
-    if (!docSnap.exists) {
-      throw new Error("CALL_DOCUMENT_NOT_FOUND");
-    }
-
-    const callData = docSnap.data() as CallData;
-
-    let finalTranscript = "";
-    let transcriptSource: string | null = null;
-
-    // Prioridade 1: transcript já consolidada
-    if (callData.hasTranscript && callData.transcript) {
-      finalTranscript = callData.transcript;
-      transcriptSource = callData.transcriptSource || "HUBSPOT";
-      console.log(`✅ Usando transcrição existente para ${callId} (${transcriptSource})`);
-    }
-    // Prioridade 2: áudio disponível para IA
-    else if (callData.hasAudio && callData.recordingUrl) {
-      console.log(`🎙️ Transcrevendo áudio via IA para ${callId}`);
-      call.recordingUrl = callData.recordingUrl;
-      finalTranscript = await transcribeRecordingFromHubSpot(call);
-      transcriptSource = "AI_GENERATED";
-    }
-    // Sem transcript e sem áudio
-    else {
-      console.log(`⚠️ [FAILED_NO_AUDIO] Sem transcrição ou áudio para ${callId}`);
-      await callRef.set(
-        {
-          ...basePayload,
-          processingStatus: "FAILED_NO_AUDIO",
-          failureReason: "NO_AUDIO_OR_TRANSCRIPT",
-          updatedAt: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
       return {
-        success: false,
-        status: "FAILED_NO_AUDIO",
-        reason: "NO_AUDIO_OR_TRANSCRIPT",
+        success: true,
+        status: CallStatus.SKIPPED,
+        reason: policy.reason,
       };
     }
 
-    // 🚩 APRIMORAMENTO DE RESILIÊNCIA: Falha de conteúdo marcada como ERROR para resgate
-    if (!finalTranscript || finalTranscript.trim().length < MIN_TRANSCRIPT_LENGTH) {
-      const reason = !finalTranscript ? "TRANSCRIPT_EMPTY" : "TRANSCRIPT_TOO_SHORT";
-      console.warn(`⚠️ [RETRY_REQUIRED] Chamada ${callId} falhou na IA (${reason}).`);
+    const docSnap = await callRef.get();
+
+    if (!docSnap.exists) {
+      throw new Error('CALL_DOCUMENT_NOT_FOUND');
+    }
+
+    const callData = docSnap.data() as CallData & {
+      analyzedAt?: unknown;
+      nota_spin?: number;
+      ownerEmail?: string;
+      hasTranscript?: boolean;
+      transcript?: string;
+      transcriptSource?: string;
+      hasAudio?: boolean;
+      recordingUrl?: string;
+    };
+
+    const isReprocess = Boolean(callData.analyzedAt);
+    const previousNota = Number(callData.nota_spin || 0);
+
+    const sdrEmail = callData.ownerEmail || owner.ownerEmail;
+
+
+    let finalTranscript = '';
+    let transcriptSource: string | null = null;
+
+    if (callData.hasTranscript && callData.transcript) {
+      finalTranscript = callData.transcript;
+      transcriptSource = callData.transcriptSource || 'HUBSPOT';
+    } else if (callData.hasAudio && callData.recordingUrl) {
+      await callRef.update({
+        lastStage: 'TRANSCRIBING',
+        lastStageAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      call.recordingUrl = callData.recordingUrl;
+
+      finalTranscript = await withTimeout(
+        transcribeRecordingFromHubSpot(call),
+        120_000,
+        'transcribeRecordingFromHubSpot'
+      );
+
+      transcriptSource = 'AI_GENERATED';
+    } else {
+      const nextRetryDate = new Date();
+      nextRetryDate.setMinutes(nextRetryDate.getMinutes() + RETRY_INTERVAL_MINUTES);
 
       await callRef.set(
         {
           ...basePayload,
-          transcript: finalTranscript || "",
+          ...releaseLeasePayload,
+          processingStatus: CallStatus.PENDING_AUDIO,
+          nextRetryAt: Timestamp.fromDate(nextRetryDate),
+          lastStage: 'PENDING_AUDIO',
+          lastStageAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      return {
+        success: true,
+        status: CallStatus.PENDING_AUDIO,
+        reason: 'WAITING_FOR_HUBSPOT_AUDIO',
+      };
+    }
+
+    if (!finalTranscript || finalTranscript.trim().length < MIN_TRANSCRIPT_LENGTH) {
+      const reason = !finalTranscript
+        ? FailureReason.TRANSCRIPT_EMPTY
+        : FailureReason.TRANSCRIPT_TOO_SHORT;
+
+      await callRef.set(
+        {
+          ...basePayload,
+          ...releaseLeasePayload,
+          transcript: finalTranscript || '',
           transcriptSource,
-          processingStatus: "ERROR",
+          processingStatus: CallStatus.FAILED,
           failureReason: reason,
+          processedAt: FieldValue.serverTimestamp(),
+          lastStage: 'FAILED_TRANSCRIPT_VALIDATION',
+          lastStageAt: FieldValue.serverTimestamp(),
           updatedAt: FieldValue.serverTimestamp(),
         },
         { merge: true }
@@ -204,27 +268,41 @@ export async function processCall(callId: string): Promise<any> {
 
       return {
         success: false,
-        status: "ERROR",
+        status: CallStatus.FAILED,
         reason,
       };
     }
 
-    // Injeta transcript final no objeto da call para análise
     call.transcript = finalTranscript;
 
-    const { analysis, rawPrompt, rawResponse } = await analyzeCallWithGemini(call, owner);
+    await callRef.update({
+      lastStage: 'ANALYZING_GEMINI',
+      lastStageAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
 
-    // 🚩 ATUALIZAÇÃO DE ESTATÍSTICAS: Apenas no sucesso final
-    await updateDailyStats(basePayload, analysis, true);
+    const { analysis, rawPrompt, rawResponse, transcriptHash } = await withTimeout(
+      analyzeCallWithGemini(call, owner),
+      90_000,
+      'analyzeCallWithGemini'
+    );
 
-    // Salva tudo de forma terminal
+    await updateDailyStats(basePayload, analysis, {
+      isUpdate: isReprocess,
+      previousNota,
+    });
+
     await callRef.set(
       {
         ...basePayload,
+        ...releaseLeasePayload,
+
         transcript: finalTranscript,
         transcriptSource,
-        processingStatus: "DONE",
+
+        processingStatus: CallStatus.DONE,
         analyzedAt: FieldValue.serverTimestamp(),
+
         status_final: analysis.status_final,
         rota: analysis.rota,
         produto_principal: analysis.produto_principal,
@@ -239,42 +317,58 @@ export async function processCall(callId: string): Promise<any> {
         analise_escuta: analysis.analise_escuta,
         perguntas_sugeridas: analysis.perguntas_sugeridas,
         playbook_detalhado: analysis.playbook_detalhado,
-        teamName: teamName,
-        processedAt: new Date().toISOString(),
+
+        analysisResult: analysis,
+        lastAnalysisVersion: CURRENT_ANALYSIS_VERSION,
+        lastTranscriptHash: transcriptHash,
+
+        processedAt: FieldValue.serverTimestamp(),
         rawPrompt,
         rawResponse,
+
         failureReason: FieldValue.delete(),
         errorMessage: FieldValue.delete(),
+        retryable: FieldValue.delete(),
+        nextRetryAt: FieldValue.delete(),
+
+        lastStage: 'DONE',
+        lastStageAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
 
-    // Atualiza placar consolidado
-    await updateSdrGlobalStats(
-      owner.ownerEmail || "",
-      basePayload.ownerName,
-      Number(analysis.nota_spin || 0)
-    );
-
-    console.log(`[SUCCESS] 🎉 Call ${callId} finalizada e salva no banco.`);
-
     try {
-      await MetricsService.updateSDRMetrics(owner.ownerEmail || "");
-    } catch (mError) {
-      console.error("⚠️ Erro ao atualizar métricas do SDR:", mError);
+      if (owner.ownerEmail) {
+        await MetricsService.updateSDRMetrics(owner.ownerEmail);
+        await MetricsService.updateGlobalSummary();
+      }
+    } catch (metricsError) {
+      console.error('⚠️ Erro ao atualizar métricas:', metricsError);
     }
 
-    return { success: true, status: "DONE" };
+    return {
+      success: true,
+      status: CallStatus.DONE,
+    };
   } catch (error: any) {
-    const message = error?.message || "Unexpected processing error";
-    console.error(`[ERROR] ❌ Erro operacional na Call ${callId}:`, message);
+    const message = error?.message || 'Unexpected processing error';
+
+    const nextRetryDate = new Date();
+    nextRetryDate.setMinutes(nextRetryDate.getMinutes() + RETRY_INTERVAL_MINUTES);
 
     await callRef.set(
       {
-        processingStatus: "ERROR",
-        failureReason: "PROCESSING_EXCEPTION",
+        processingStatus: CallStatus.ERROR,
+        failureReason: FailureReason.PROCESSING_EXCEPTION,
         errorMessage: message,
+        retryable: true,
+        retryStage: 'ANALYSIS',
+        nextRetryAt: Timestamp.fromDate(nextRetryDate),
+        leaseOwner: FieldValue.delete(),
+        leaseUntil: FieldValue.delete(),
+        lastStage: 'ERROR',
+        lastStageAt: FieldValue.serverTimestamp(),
         updatedAt: FieldValue.serverTimestamp(),
       },
       { merge: true }

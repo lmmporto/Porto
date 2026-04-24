@@ -12,6 +12,14 @@ export function getInitials(name: string) {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
+export const formatDuration = (ms: number) => {
+  if (!ms || isNaN(ms)) return "00:00";
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+};
+
 /**
  * Transforma um e-mail no formato de ID do Firestore (underscores)
  * Ex: amaranta.vieira@nibo.com.br -> amaranta_vieira@nibo_com_br

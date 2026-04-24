@@ -59,7 +59,11 @@ export function FilterBar({ filters, setFilters }: FilterBarProps) {
             <select
               id="teamSelect"
               value={filters.team}
-              onChange={(e) => setFilters(prev => ({ ...prev, team: e.target.value }))}
+              onChange={(e) => {
+                const teamSelected = e.target.value;
+                console.log("🔍 Filtrando por equipe:", teamSelected);
+                setFilters(prev => ({ ...prev, team: teamSelected }));
+              }}
               className="w-full appearance-none rounded-2xl border border-white/10 bg-[#0A1630] px-4 py-3.5 pr-12 text-[14px] font-medium text-white outline-none transition hover:bg-[#0A1630]/90 focus:ring-2 focus:ring-primary"
             >
               <option value="all">Todos os squads</option>

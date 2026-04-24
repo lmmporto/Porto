@@ -3,47 +3,20 @@ import { db } from '../firebase.js';
 import admin from 'firebase-admin';
 import { CONFIG } from '../config.js';
 import { updateDailyStats } from '../services/analysis.service.js';
+import {
+  type AnalysisStatus,
+  type UpdateDailyStatsOptions,
+} from '../domain/analysis/analysis.types.js';
+import {
+  CALLS_COLLECTION,
+  SDR_MONTHLY_STATS_COLLECTION,
+} from '../domain/analysis/analysis.constants.js';
 import { checkIfAdmin } from '../utils/auth.js';
 import { requireAdmin } from '../middleware/requireAdmin.js';
+import { MetricsService } from '../services/metrics.service.js';
+import { RankingLogic } from '../domain/analysis/ranking.logic.js';
 import NodeCache from 'node-cache';
 
-// 🏛️ ARQUITETO: Service Layer para lógica de negócio
-class StatsService {
-  static calculateBayesianRanking(docs: any[]) {
-    const sdr_ranking: Record<string, any> = {};
-    let total_global_calls = 0;
-    let total_global_notes = 0;
-
-    docs.forEach(data => {
-      const name = data.ownerName || "SDR";
-      sdr_ranking[name] = {
-        ownerName: name,
-        ownerEmail: data.ownerEmail,
-        calls: data.totalCalls || 0,
-        sum_notes: data.totalScore || 0,
-        nota_media: 0
-      };
-      total_global_calls += (data.totalCalls || 0);
-      total_global_notes += (data.totalScore || 0);
-    });
-
-    const sdrNames = Object.keys(sdr_ranking);
-    const totalSDRs = sdrNames.length;
-    const v_bar = total_global_calls / (totalSDRs || 1);
-    const m_bar = total_global_calls > 0 ? (total_global_notes / total_global_calls) : 0;
-
-    sdrNames.forEach(name => {
-      const s = sdr_ranking[name];
-      if (s.calls > 0) {
-        const qualidade = (s.calls * (s.sum_notes / s.calls) + v_bar * m_bar) / (s.calls + v_bar);
-        const tracao = Math.sqrt(s.calls / (v_bar || 1));
-        s.nota_media = Number((qualidade * tracao).toFixed(2));
-      }
-    });
-
-    return { ranking: sdr_ranking, total_calls: total_global_calls, media_geral: m_bar };
-  }
-}
 
 const router = Router();
 const cache = new NodeCache({ stdTTL: 600, checkperiod: 120 });
@@ -66,13 +39,13 @@ router.get('/summary', async (req: Request, res: Response) => {
     if (cached) return res.json(cached);
 
     const monthSuffix = getCurrentMonthSuffix();
-    const snapshot = await db.collection('sdr_stats').get();
+    const snapshot = await db.collection(SDR_MONTHLY_STATS_COLLECTION).get();
     
     const monthlyDocs = snapshot.docs
       .filter((doc: admin.firestore.QueryDocumentSnapshot) => doc.id.endsWith(monthSuffix))
       .map((doc: admin.firestore.QueryDocumentSnapshot) => doc.data());
 
-    const processed = StatsService.calculateBayesianRanking(monthlyDocs);
+    const processed = RankingLogic.calculateBayesianRanking(monthlyDocs);
 
     const response = {
       total_calls: processed.total_calls,
@@ -99,7 +72,7 @@ router.get("/performance", async (req: Request, res: Response) => {
     const userEmail = (req.user as any).email.toLowerCase().trim();
     const isAdmin = await checkIfAdmin(userEmail);
 
-    let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
+    let query: FirebaseFirestore.Query = db.collection(CALLS_COLLECTION);
 
     if (!isAdmin) {
       query = query.where("ownerEmail", "==", userEmail);
@@ -169,7 +142,7 @@ router.get('/personal-summary', async (req: Request, res: Response) => {
       targetName = ""; // Protege contra name spoofing
     }
 
-    let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
+    let query: FirebaseFirestore.Query = db.collection(CALLS_COLLECTION);
     if (targetEmail.includes('@') && targetEmail !== "") {
       query = query.where("ownerEmail", "==", targetEmail);
     } else {
@@ -216,9 +189,14 @@ router.get('/personal-summary', async (req: Request, res: Response) => {
  */
 router.get('/leaderboard-vitrine', async (req: Request, res: Response) => {
   try {
-    const sdrSnapshot = await db.collection('sdr_stats').orderBy('averageScore', 'desc').limit(6).get();
+    const sdrSnapshot = await db
+      .collection(SDR_MONTHLY_STATS_COLLECTION)
+      .orderBy('averageScore', 'desc')
+      .limit(6)
+      .get();
     
-    const topCallsSnapshot = await db.collection(CONFIG.CALLS_COLLECTION)
+    const topCallsSnapshot = await db
+      .collection(CALLS_COLLECTION)
       .orderBy("nota_spin", "desc")
       .limit(10) 
       .get();
@@ -248,7 +226,8 @@ router.get("/audit", requireAdmin, async (req: Request, res: Response) => {
     const start = new Date(safeDate); start.setHours(0, 0, 0, 0);
     const end = new Date(safeDate); end.setHours(23, 59, 59, 999);
 
-    let query = db.collection(CONFIG.CALLS_COLLECTION)
+    let query = db
+      .collection(CALLS_COLLECTION)
       .where("callTimestamp", ">=", admin.firestore.Timestamp.fromDate(start))
       .where("callTimestamp", "<=", admin.firestore.Timestamp.fromDate(end));
 
@@ -284,28 +263,79 @@ router.get("/audit", requireAdmin, async (req: Request, res: Response) => {
 });
 
 /**
- * POST /rebuild-today-stats
+ * GET /rebuild-today-stats
  */
 router.post("/rebuild-today-stats", requireAdmin, async (req: Request, res: Response) => {
   try {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
 
-    const snapshot = await db.collection(CONFIG.CALLS_COLLECTION)
+    const snapshot = await db
+      .collection(CALLS_COLLECTION)
       .where("updatedAt", ">=", admin.firestore.Timestamp.fromDate(startOfDay))
       .get();
 
     for (const doc of snapshot.docs) {
       const callData = doc.data();
-      await updateDailyStats(callData, { status_final: 'NAO_IDENTIFICADO', nota_spin: null }, false);
-      if (callData.processingStatus === "DONE") {
-        await updateDailyStats(callData, callData, true);
+      await updateDailyStats(
+        callData,
+        { status_final: 'NAO_SE_APLICA' as AnalysisStatus, nota_spin: null },
+        { isUpdate: false }
+      );
+      if (callData.processingStatus === 'DONE') {
+        await updateDailyStats(callData, callData as any, { isUpdate: true });
       }
     }
 
     res.json({ success: true, processed: snapshot.size });
   } catch (error: any) {
     res.status(500).json({ error: "Falha na reconstrução" });
+  }
+});
+
+/**
+ * GET /stats
+ * 🏛️ ARQUITETO: Conexão com MetricsService para Squads
+ */
+router.get('/stats', async (req: Request, res: Response) => {
+  try {
+    const { team, period } = req.query;
+    const teamStr = team as string;
+
+    if (teamStr === 'Todos os squads' || teamStr === 'all' || !teamStr) {
+      const statsDoc = await db.collection('dashboard_stats').doc('global_summary').get();
+      return res.json(statsDoc.data() || {});
+    }
+
+    // Busca chamadas do time via MetricsService (lógica de chunking/sdr_registry)
+    const calls = await MetricsService.getStatsByTeam(teamStr);
+    
+    if (calls.length === 0) {
+      return res.json({ total_calls: 0, media_geral: 0, taxa_aprovacao: 0, duracao_media: 0 });
+    }
+
+    // Agregação de KPIs
+    let totalSpin = 0;
+    let approvedCount = 0;
+    let totalDuration = 0;
+
+    calls.forEach((c: any) => {
+      totalSpin += c.nota_spin || 0;
+      if ((c.nota_spin || 0) >= 7) approvedCount++;
+      totalDuration += c.durationMs || 0;
+    });
+
+    const stats = {
+      total_calls: calls.length,
+      media_geral: Number((totalSpin / calls.length).toFixed(2)),
+      taxa_aprovacao: Math.round((approvedCount / calls.length) * 100),
+      duracao_media: Math.round(totalDuration / calls.length)
+    };
+
+    res.json(stats);
+  } catch (error: any) {
+    console.error("Erro em GET /stats:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 

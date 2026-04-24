@@ -1,5 +1,56 @@
 # Changelog
 
+## [1.8.3] - 2026-04-23
+- **Correção de Fluxo:** Padronizado o status de entrada manual para `QUEUED` para garantir compatibilidade com o Worker.
+- **Sincronização:** Ajustada a lógica de trigger para evitar que chamadas fiquem presas em `PROCESSING` sem um executor ativo.
+
+
+## [1.8.2] - 2026-04-23
+- **Frontend:** Implementado gatilho manual de análise de chamadas com requisição de API via Axios e feedback visual via Toasts.
+- **Backend Worker:** Adicionado tratamento de erros robusto no worker para capturar e logar falhas de query no Firestore, facilitando a depuração de índices compostos ausentes.
+- **Resiliência:** Reforçada a detecção de chamadas pendentes via máquina de estados no trabalhador de segundo plano.
+
+
+## [1.8.1] - 2026-04-23
+- **Arquitetura de Resiliência:** Implementada fila de retentativas automáticas (Retry Queue) para chamadas do HubSpot sem áudio imediato.
+- **Fluxo:** Chamadas sem `recordingUrl` agora recebem o status `PENDING_AUDIO` em vez de falharem imediatamente.
+- **Worker:** O sistema tenta buscar o áudio novamente a cada 10 minutos, com um limite máximo de 5 tentativas (~50 minutos), antes de marcar a chamada definitivamente como `FAILED_NO_AUDIO`.
+
+
+## [1.3.0] - 2026-04-23
+- **Refatoração Estrutural: Soberania do SDR Registry Implementada**
+- O campo `teamName` foi removido da coleção `calls_analysis`. O `sdr_registry` é agora a única fonte da verdade para times.
+- `processCall.ts` não grava mais informações de time, apenas valida a atividade do SDR.
+- `dashboard.service.ts` foi completamente refatorado para usar lookups dinâmicos de e-mail em todas as consultas em tempo real, garantindo que a UI sempre reflita a estrutura de times atual.
+
+## [1.2.7] - 2026-04-23
+- **Refatoração Majoritária**: `dashboard.service.ts` agora utiliza a "Soberania do SDR Registry" para listeners em tempo real.
+- As funções `subscribeToGlobalStats` e `subscribeToRanking` agora consultam dinamicamente os membros do time.
+- Implementado suporte a *chunking* para times com mais de 30 SDRs, contornando a limitação do Firestore.
+- Adicionada sanitização de e-mails para garantir consistência nas queries.
+
+## [1.2.6] - 2026-04-22
+- Corrigido roteamento da página de configurações (`/dashboard/settings`).
+- Validada estrutura de `layout.tsx` para suporte a sub-rotas no Dashboard.
+
+## [1.2.5] - 2026-04-22
+- Adicionado script de migração `migrate-sdr.js` para padronização de documentos no Firestore.
+- Garantida a integridade dos campos `isActive` e `assignedTeam` para todos os SDRs existentes.
+Instrução de uso:
+Para executar, certifique-se de que o ambiente está configurado e rode no terminal:
+`node api-server/scripts/migrate-sdr.js`
+
+## [1.2.4] - 2026-04-22
+- Criada página `/dashboard/settings` para gestão de times.
+- Refatorado `DashboardContext` para carregamento dinâmico de membros via API.
+- Integrada UI de gestão com o endpoint `PUT /update-sdr`.
+
+## [1.2.3] - 2026-04-22
+- Refatoração completa para sintaxe nativa do Firestore (SDK).
+- Implementado Gatekeeper em `processCall.ts` via `doc().get()`.
+- Refatorado `MetricsService` com suporte a `where('in', ...)` segmentado.
+- Protegida rota `/update-sdr` com `requireAdmin` e tratamento de erros.
+
 ## [1.7.2] - 2026-04-16
 - Otimização: Implantada arquitetura "Agregados no Dashboard, Detalhes no Clique".
 - Performance: Proibida leitura da coleção `calls_analysis` para KPIs no frontend.

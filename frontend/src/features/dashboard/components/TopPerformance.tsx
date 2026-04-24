@@ -21,43 +21,59 @@ export const TopPerformance = ({ filters }: TopPerformanceProps) => {
 
   return (
     <div className="glass-card p-6 rounded-[24px] border border-white/5">
-      <div className="flex items-center justify-between mb-6">
-        <h3 className="text-xl font-bold text-white tracking-tight">Grid de Performance</h3>
-        <span className="text-[10px] font-bold uppercase tracking-widest text-purple/60">SDR Leaderboard</span>
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h3 className="text-xl font-bold text-white tracking-tight">Mosaico de Performance</h3>
+          <p className="text-xs text-white/40 mt-1">Visão Geral do Time</p>
+        </div>
+        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-purple px-3 py-1 bg-purple/10 rounded-full border border-purple/20">Elite Squad</span>
       </div>
       
-      <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
-        {sdrs.map((sdr, index) => (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+        {sdrs.map((sdr) => (
           <Link 
             key={sdr.id} 
             href={`/dashboard/sdrs/${sdr.id}`}
-            className="block group hover:scale-[1.02] transition-all duration-300 ease-out"
+            className="block group hover:scale-[1.02] transition-all duration-300"
           >
-            <div className="flex items-center justify-between bg-white/5 p-4 rounded-2xl border border-white/5 group-hover:bg-white/10 group-hover:border-white/10 transition-colors">
-              <div className="flex items-center gap-4">
-                {/* Avatar com Gradiente */}
-                <div className="w-11 h-11 rounded-full bg-gradient-to-br from-[#7C72FF] to-[#2DD4BF] flex items-center justify-center shadow-lg">
+            <div className="relative overflow-hidden bg-white/5 p-5 rounded-2xl border border-white/5 group-hover:bg-white/10 group-hover:border-primary/30 transition-all">
+              {/* Badge de Score Neon */}
+              <div className={cn(
+                "absolute top-3 right-3 px-2 py-1 rounded-lg text-[13px] font-black tabular-nums shadow-[0_0_15px_rgba(0,0,0,0.3)]",
+                (sdr.real_average || 0) >= 7 ? "bg-[#10B981] text-white shadow-[#10B981]/20" : 
+                (sdr.real_average || 0) <= 5 ? "bg-[#FF4B5C] text-white shadow-[#FF4B5C]/20" : 
+                "bg-white/20 text-white"
+              )}>
+                {(sdr.real_average || 0).toFixed(1)}
+              </div>
+
+              <div className="flex flex-col items-center text-center">
+                {/* Avatar */}
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-purple flex items-center justify-center shadow-xl mb-4 border-2 border-white/5 group-hover:border-primary/50 transition-colors">
                   {sdr.picture ? (
                     <img src={sdr.picture} alt={sdr.name} className="h-full w-full rounded-full object-cover" />
                   ) : (
-                    <span className="text-sm font-black text-white">{getInitials(sdr.name)}</span>
+                    <span className="text-xl font-black text-white">{getInitials(sdr.name)}</span>
                   )}
                 </div>
                 
-                <div>
-                  <p className="text-[15px] font-bold text-white leading-tight">{sdr.name}</p>
-                  <p className="text-[11px] text-white/40 font-medium mt-0.5">{sdr.teamName || 'Equipe não definida'}</p>
+                <div className="space-y-1">
+                  <p className="text-[16px] font-bold text-white group-hover:text-primary transition-colors">{sdr.name}</p>
+                  <p className="text-[11px] text-white/40 font-medium uppercase tracking-wider">
+                    {sdr.teamName || 'Equipe não definida'}
+                  </p>
                 </div>
-              </div>
-              
-              <div className="text-right">
-                <div className={cn(
-                  "text-xl font-black tabular-nums drop-shadow-sm",
-                  (sdr.real_average || 0) >= 7 ? "text-[#10B981]" : (sdr.real_average || 0) <= 5 ? "text-[#FF4B5C]" : "text-white/80"
-                )}>
-                  {(sdr.real_average || 0).toFixed(1)}
+
+                <div className="mt-4 pt-4 border-t border-white/5 w-full flex justify-around">
+                  <div className="text-center">
+                    <p className="text-[10px] text-white/30 uppercase font-bold">Calls</p>
+                    <p className="text-sm font-bold text-white/80">{sdr.total_calls || 0}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-[10px] text-white/30 uppercase font-bold">Score</p>
+                    <p className="text-sm font-bold text-white/80">{sdr.ranking_score?.toFixed(1) || '0.0'}</p>
+                  </div>
                 </div>
-                <div className="text-[9px] uppercase tracking-tighter text-white/20 font-bold">Média SPIN</div>
               </div>
             </div>
           </Link>

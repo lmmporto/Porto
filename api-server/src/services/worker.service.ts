@@ -1,74 +1,275 @@
+import cron from 'node-cron';
+import admin from 'firebase-admin';
 import { db } from '../firebase.js';
-import { processCall } from './processCall.js';
+import { CallProcessingOrchestrator } from './call-processing.orchestrator.js';
 import { refreshPendingAudioCall } from './refreshPendingAudioCall.js';
-import { CONFIG } from '../config.js';
-import type { CallData } from './hubspot.js';
+import { CallStatus } from '../constants/call-processing.js';
+import { CALLS_COLLECTION, SYSTEM_COLLECTION } from '../constants/collections.js';
 
-export function startWorker() {
-  console.log('🚀 [WORKER] Trabalhador iniciado.');
-  
-  // Intervalo de 1 minuto
-  const intervaloDeDescanso = 1 * 60 * 1000; 
-  let isRunning = false; // 🚩 TRAVA DE CONCORRÊNCIA
+let isRunning = false;
+let heartbeatInterval: NodeJS.Timeout | null = null;
 
-  const processarFila = async () => {
-    // Se a rodada anterior ainda não terminou (porque a IA demorou), ele aborta esta rodada
-    if (isRunning) {
-      console.log('⏳ [WORKER] Ocupado. Pulando ciclo atual...');
+const WORKER_ID = `worker_${Math.random().toString(36).substring(2, 9)}`;
+const LOCK_TIMEOUT_MS = 6 * 60 * 1000;
+
+const acquireLock = async (): Promise<boolean> => {
+  const lockRef = db.collection(SYSTEM_COLLECTION).doc('worker_lock');
+
+  return await db.runTransaction(async (t) => {
+    const doc = await t.get(lockRef);
+    const now = new Date();
+
+    if (doc.exists) {
+      const data = doc.data();
+
+      if (data?.lockedBy && data.lockedBy !== WORKER_ID) {
+        const expiresAt = data.expiresAt?.toDate?.() || new Date(0);
+
+        if (expiresAt > now) {
+          return false;
+        }
+      }
+    }
+
+    t.set(
+      lockRef,
+      {
+        lockedBy: WORKER_ID,
+        workerId: WORKER_ID,
+        lockedAt: admin.firestore.FieldValue.serverTimestamp(),
+        expiresAt: admin.firestore.Timestamp.fromMillis(
+          now.getTime() + LOCK_TIMEOUT_MS
+        ),
+        lastHeartbeat: admin.firestore.FieldValue.serverTimestamp(),
+        lastStage: 'LOCK_ACQUIRED',
+        currentCallId: null,
+        status: 'RUNNING',
+      },
+      { merge: true }
+    );
+
+    return true;
+  });
+};
+
+const releaseLock = async (): Promise<void> => {
+  const lockRef = db.collection(SYSTEM_COLLECTION).doc('worker_lock');
+
+  await lockRef.set(
+    {
+      status: 'IDLE',
+      lockedBy: null,
+      workerId: WORKER_ID,
+      expiresAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastStage: 'IDLE',
+      currentCallId: null,
+      lastSuccessAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+};
+
+const updateHeartbeat = async (
+  lastStage: string,
+  currentCallId?: string
+): Promise<void> => {
+  const lockRef = db.collection(SYSTEM_COLLECTION).doc('worker_lock');
+
+  await lockRef.set(
+    {
+      workerId: WORKER_ID,
+      lockedBy: WORKER_ID,
+      lastHeartbeat: admin.firestore.FieldValue.serverTimestamp(),
+      lastStage,
+      currentCallId: currentCallId || null,
+    },
+    { merge: true }
+  );
+};
+
+/**
+ * ⚙️ [Worker] Ciclo de processamento.
+ *
+ * Processa:
+ * - chamadas novas em QUEUED
+ * - chamadas aguardando áudio em PENDING_AUDIO
+ * - retentativas em RETRY_ANALYSIS / ERROR
+ */
+const checkAndProcessCalls = async (): Promise<void> => {
+  if (isRunning) {
+    console.log('⏳ [Worker] Execução já em andamento nesta instância. Ignorando novo ciclo.');
+    return;
+  }
+
+  isRunning = true;
+
+  let lockAcquired = false;
+
+  try {
+    lockAcquired = await acquireLock();
+
+    if (!lockAcquired) {
+      console.log('⏳ [Worker] Instância paralela detectada. Lock retido por outro worker.');
       return;
     }
-    
-    isRunning = true;
 
+    console.log(`⚙️ [Worker] Iniciando verificação de filas... (ID: ${WORKER_ID})`);
+
+    heartbeatInterval = setInterval(() => {
+      updateHeartbeat('POLLING').catch((e) => {
+        console.error('❌ [Worker] Falha no heartbeat:', e?.message || e);
+      });
+    }, 60_000);
+
+    const callsRef = db.collection(CALLS_COLLECTION);
+    const now = admin.firestore.Timestamp.now();
+
+    // 1. Processa chamadas novas em fila (QUEUED)
     try {
-      const snapshot = await db.collection(CONFIG.CALLS_COLLECTION)
-        .where('processingStatus', 'in', ['QUEUED', 'PENDING_AUDIO'])
+      const queuedSnapshot = await callsRef
+        .where('processingStatus', '==', CallStatus.QUEUED)
         .orderBy('updatedAt', 'asc')
-        .limit(10) // Puxamos 10, mas processaremos uma por uma
+        .limit(10)
         .get();
 
-      if (!snapshot.empty) {
-        console.log(`[WORKER] 📥 Encontrados ${snapshot.size} itens na fila.`);
+      if (!queuedSnapshot.empty) {
+        console.log(`🚀 [Worker] Processando ${queuedSnapshot.size} novas chamadas.`);
 
-        for (const doc of snapshot.docs) {
-          const callData = doc.data() as CallData;
-          const callId = doc.id;
-
+        for (const doc of queuedSnapshot.docs) {
           try {
-            // 🚩 RE-CHEGACEM DE STATUS: 
-            // Como a execução agora é demorada, o status no banco pode ter mudado
-            // (ex: outro processo ou você manualmente alterou o status no meio do loop)
-            const freshDoc = await doc.ref.get();
-            const freshStatus = freshDoc.data()?.processingStatus;
-
-            if (freshStatus === 'PROCESSING' || freshStatus === 'DONE' || freshStatus === 'ERROR' || freshStatus === 'SKIPPED') {
-              console.log(`[IGNORE] 🛡️ Call ${callId} status mudou para ${freshStatus}. Pulando...`);
-              continue;
-            }
-
-            if (freshStatus === 'PENDING_AUDIO') {
-              console.log(`🔍 Verificando mídia para chamada: ${callId}`);
-              await refreshPendingAudioCall(callId); // 🚩 O 'AWAIT' AQUI É VITAL
-            } else if (freshStatus === 'QUEUED') {
-              console.log(`🚀 Processando chamada: ${callId}`);
-              await processCall(callId); // 🚩 O 'AWAIT' AQUI É VITAL
-            }
-          } catch (error) {
-            console.error(`❌ Erro ao processar chamada ${callId}:`, error);
+            await updateHeartbeat('PROCESSING_QUEUED', doc.id);
+            await CallProcessingOrchestrator.processCall(doc.id, WORKER_ID);
+          } catch (e: any) {
+            console.error(
+              `❌ [Worker] Falha isolada na call ${doc.id}:`,
+              e?.message || e
+            );
           }
         }
-        console.log(`[WORKER] ✅ Lote finalizado.`);
       }
     } catch (error) {
-      console.error('[WORKER] Erro no ciclo principal:', error);
-    } finally {
-      isRunning = false; // 🚩 LIBERA O WORKER PARA A PRÓXIMA RODADA
+      console.error('❌ [Worker] Erro ao buscar chamadas QUEUED:', error);
     }
-  };
 
-  // 1. Roda a primeira vez
-  processarFila();
+    // 2. Processa chamadas aguardando áudio (PENDING_AUDIO)
+    try {
+      const pendingSnapshot = await callsRef
+        .where('processingStatus', '==', CallStatus.PENDING_AUDIO)
+        .where('nextRetryAt', '<=', now)
+        .orderBy('nextRetryAt', 'asc')
+        .limit(10)
+        .get();
 
-  // 2. Agenda o loop
-  setInterval(processarFila, intervaloDeDescanso);
-}
+      if (!pendingSnapshot.empty) {
+        console.log(
+          `⚙️ [Worker] Encontradas ${pendingSnapshot.size} chamadas PENDING_AUDIO para reprocessar.`
+        );
+
+        for (const doc of pendingSnapshot.docs) {
+          try {
+            console.log(`⚙️ [Worker] Sincronizando áudio para: ${doc.id}`);
+            await updateHeartbeat('REFRESHING_AUDIO', doc.id);
+            await refreshPendingAudioCall(doc.id);
+          } catch (e: any) {
+            console.error(
+              `❌ [Worker] Falha no refresh da call ${doc.id}:`,
+              e?.message || e
+            );
+
+            await callsRef.doc(doc.id).set(
+              {
+                lastRefreshError: e?.message || String(e),
+                lastRefreshErrorAt: admin.firestore.FieldValue.serverTimestamp(),
+              },
+              { merge: true }
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.error('❌ [Worker] Erro ao buscar chamadas PENDING_AUDIO:', error);
+    }
+
+    // 3. Recupera chamadas em RETRY_ANALYSIS ou ERROR recuperáveis
+    try {
+      const retrySnapshot = await callsRef
+        .where('processingStatus', 'in', [
+          CallStatus.RETRY_ANALYSIS,
+          CallStatus.ERROR,
+        ])
+        .where('nextRetryAt', '<=', now)
+        .orderBy('nextRetryAt', 'asc')
+        .limit(5)
+        .get();
+
+      const itemsToRetry = retrySnapshot.docs.filter((doc) => {
+        const data = doc.data();
+
+        if (data.processingStatus === CallStatus.RETRY_ANALYSIS) {
+          return true;
+        }
+
+        return data.retryable === true;
+      });
+
+      if (itemsToRetry.length > 0) {
+        console.log(
+          `🔄 [Worker] Retentando ${itemsToRetry.length} análises (RETRY/ERROR).`
+        );
+
+        for (const doc of itemsToRetry) {
+          try {
+            await updateHeartbeat('RETRYING_ANALYSIS', doc.id);
+            await CallProcessingOrchestrator.processCall(doc.id, WORKER_ID);
+          } catch (e: any) {
+            console.error(
+              `❌ [Worker] Falha isolada na retentativa da call ${doc.id}:`,
+              e?.message || e
+            );
+          }
+        }
+      }
+    } catch (error) {
+      console.error('❌ [Worker] Erro ao buscar chamadas para retentativa:', error);
+    }
+
+    await updateHeartbeat('FINISHED');
+  } catch (error) {
+    console.error('❌ [Worker] Erro geral ao verificar chamadas:', error);
+
+    await db
+      .collection(SYSTEM_COLLECTION)
+      .doc('worker_lock')
+      .set(
+        {
+          lastErrorAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastError: error instanceof Error ? error.message : String(error),
+          lastStage: 'FAILED',
+        },
+        { merge: true }
+      );
+  } finally {
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+      heartbeatInterval = null;
+    }
+
+    isRunning = false;
+
+    if (lockAcquired) {
+      await releaseLock();
+    }
+  }
+};
+
+export const initializeWorkers = (): void => {
+  cron.schedule('*/5 * * * *', checkAndProcessCalls);
+
+  checkAndProcessCalls().catch((error) => {
+    console.error('❌ [Worker] Falha na execução inicial do worker:', error);
+  });
+
+  console.log('🚀 [Worker] Cron job para processamento e retentativas inicializado.');
+};
+
+export const startWorker = initializeWorkers;

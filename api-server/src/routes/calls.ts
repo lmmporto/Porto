@@ -5,6 +5,7 @@ import { CONFIG } from "../config.js";
 import { handleIncomingCall } from "../services/webhook.service.js";
 import { checkIfAdmin } from "../utils/auth.js";
 import { extractCallId } from '../utils/hubspot-parser.js';
+import { CallStatus } from "../constants/call-processing.js";
 
 const router = Router();
 
@@ -20,6 +21,7 @@ router.get("/", async (req: Request, res: Response) => {
 
     const mode = req.query.mode as string;
     const rota = req.query.rota as string;
+    const team = req.query.team as string; // Novo: Suporte a times
     const filterEmail = (req.query.ownerEmail as string || "").toLowerCase().trim();
     const minScore = req.query.minScore ? Number(req.query.minScore) : null;
 
@@ -30,33 +32,39 @@ router.get("/", async (req: Request, res: Response) => {
 
     let query: FirebaseFirestore.Query = db.collection(CONFIG.CALLS_COLLECTION);
 
-    let targetEmail = userEmail;
-    
-    if (isAdmin && filterEmail) {
-      targetEmail = filterEmail;
-      if (targetEmail !== userEmail) {
-        console.info("IMPERSONATION", {
-          admin: userEmail,
-          target: targetEmail,
-          route: 'list_calls',
-          timestamp: new Date().toISOString()
-        });
-      }
-    }
-
-    if (mode === 'ranking') {
-      // No modo ranking, buscamos as melhores notas de todos (se admin) ou só as próprias (se comum)
-      // No entanto, o ranking costuma ser global. Vamos manter a lógica:
-      if (isAdmin) {
-        if (filterEmail) query = query.where("ownerEmail", "==", filterEmail);
+    // 🛡️ LÓGICA DE SOBERANIA E ACESSO
+    if (isAdmin) {
+      if (filterEmail) {
+        // Impersonate SDR específico
+        query = query.where("ownerEmail", "==", filterEmail);
+        console.info("IMPERSONATION", { admin: userEmail, target: filterEmail, route: 'list_calls' });
+      } else if (team && team !== 'all' && team !== 'Todos os squads') {
+        // Filtro por Time (Soberania do sdr_registry)
+        const teamSnap = await db.collection('sdr_registry')
+          .where('assignedTeam', '==', team)
+          .where('isActive', '==', true)
+          .get();
+        
+        const teamEmails = teamSnap.docs.map(d => d.data().email).filter(Boolean);
+        
+        if (teamEmails.length > 0) {
+          // Firestore 'in' suporta até 30 itens. Se for maior, o ideal é não filtrar por email no banco e sim por timeName se existisse.
+          // Como removemos teamName, usamos os emails. Se > 30, limitamos aos primeiros 30 para evitar erro de query.
+          query = query.where("ownerEmail", "in", teamEmails.slice(0, 30));
+        } else {
+          // Time sem membros: retorna vazio
+          return res.json({ calls: [], isAdmin, lastVisible: null });
+        }
       } else {
-        query = query.where("ownerEmail", "==", userEmail);
+        // Global: Não aplica filtro de ownerEmail para Admin
+        console.log(`[ACCESS] Admin ${userEmail} acessando visão global.`);
       }
     } else {
-      query = query.where("ownerEmail", "==", targetEmail);
+      // Usuário comum: Vê apenas as próprias calls
+      query = query.where("ownerEmail", "==", userEmail);
     }
 
-    query = query.where("processingStatus", "==", "DONE");
+    query = query.where("processingStatus", "==", CallStatus.DONE);
 
     if (rota && rota !== 'ALL') {
       query = query.where("rota", "==", rota);
@@ -172,7 +180,7 @@ router.post("/manual-trigger", async (req: Request, res: Response) => {
     const doc = await callRef.get();
     const currentStatus = doc.data()?.processingStatus;
 
-    if (doc.exists && currentStatus === 'DONE') {
+    if (doc.exists && currentStatus === CallStatus.DONE) {
       return res.json({
         uiState: 'ALREADY_DONE',
         success: true,
@@ -181,7 +189,7 @@ router.post("/manual-trigger", async (req: Request, res: Response) => {
       });
     }
 
-    if (doc.exists && (currentStatus === 'PENDING_AUDIO' || currentStatus === 'PROCESSING' || currentStatus === 'QUEUED')) {
+    if (doc.exists && (currentStatus === CallStatus.PENDING_AUDIO || currentStatus === CallStatus.PROCESSING || currentStatus === CallStatus.QUEUED)) {
       return res.json({
         uiState: 'ALREADY_QUEUED',
         success: true,
@@ -195,7 +203,7 @@ router.post("/manual-trigger", async (req: Request, res: Response) => {
     await callRef.set({
       id: callId,
       callId: callId,
-      processingStatus: 'PENDING_AUDIO',
+      processingStatus: CallStatus.QUEUED,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       manualTriggerBy: userEmail,
       ...(doc.exists ? {} : { createdAt: admin.firestore.FieldValue.serverTimestamp() })

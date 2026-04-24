@@ -10,7 +10,8 @@ import { FilterBar } from '@/features/dashboard/components/FilterBar';
 import { useRouter } from 'next/navigation';
 
 interface SdrProfilePanelProps {
-  sdrId: string; // Recebe o email puro
+  sdrId?: string; // ID formatado (opcional se sdrData for passado)
+  sdrData?: any;  // Objeto completo do SDR (opcional)
 }
 
 const getPriorityContent = (gaps: any[] | undefined, insights: any[] | undefined, hasPerformance: boolean) => {
@@ -59,10 +60,10 @@ const getPriorityContent = (gaps: any[] | undefined, insights: any[] | undefined
 };
 
 
-export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
+export function SdrProfilePanel({ sdrId, sdrData: initialSdrData }: SdrProfilePanelProps) {
   const { user } = useDashboard();
   const router = useRouter();
-  const [sdrData, setSdrData] = useState<any>(null);
+  const [sdrData, setSdrData] = useState<any>(initialSdrData || null);
   const [priorityCalls, setPriorityCalls] = useState<any[]>([]);
   const [allCalls, setAllCalls] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,8 +72,13 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
   const [historyPeriod, setHistoryPeriod] = useState('Tudo'); // Estado para o filtro do histórico
   const [currentPage, setCurrentPage] = useState(1);
 
+  useEffect(() => {
+    if (sdrId === 'lucas_porto@nibo_com_br' || sdrId === 'lucas.porto@nibo.com.br') {
+      router.push('/dashboard');
+    }
+  }, [sdrId, router]);
+
   if (sdrId === 'lucas_porto@nibo_com_br' || sdrId === 'lucas.porto@nibo.com.br') {
-    router.push('/dashboard');
     return null;
   }
 
@@ -97,9 +103,15 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
       
       unsubPerf = onSnapshot(doc(db, 'sdrs', cleanId), (perfSnap) => {
         if (perfSnap.exists()) {
-          const data = perfSnap.data();
-          console.log("📊 DADOS DO SDR NO FIREBASE:", data);
-          setSdrData({ ...basicData, ...data, hasPerformance: true });
+          const perfData = perfSnap.data();
+          console.log("📊 [SdrProfilePanel] Dados de performance carregados:", perfData);
+          // PRIORIDADE: Garantir que o email venha do REGISTRO (Soberania)
+          setSdrData({ 
+            ...basicData, 
+            ...perfData, 
+            email: basicData.email, // Sobrescreve qualquer e-mail incorreto vindo da coleção 'sdrs'
+            hasPerformance: true 
+          });
         } else {
           console.warn(`SDR sem dados de performance em 'sdrs' para o ID: ${cleanId}`);
           setSdrData({ ...basicData, hasPerformance: false });
@@ -120,7 +132,9 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
       return;
     }
 
-    const sdrEmail = sdrData.email;
+    const sdrEmail = sdrData.email?.toLowerCase().trim();
+    if (!sdrEmail) return;
+
     const callsRef = collection(db, 'calls_analysis');
     
     let historyConstraints = [
@@ -139,14 +153,23 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
     const qAll = query(
       callsRef,
       ...historyConstraints,
-      orderBy('createdAt', 'desc'),
       limit(50)
     );
 
-    const unsubAllCalls = onSnapshot(qAll, (querySnapshot) => {
+    const unsubAllCalls = onSnapshot(qAll, async (querySnapshot) => {
+      console.log("🔍 [Histórico] Sincronizando para:", sdrEmail, `(${querySnapshot.size} chamadas)`);
+
       const calls = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setAllCalls(calls);
-      setCurrentPage(1); // Reseta para pág 1 ao mudar filtro
+      
+      // Ordenação robusta no frontend (protege contra falta de índices compostos)
+      const sortedCalls = calls.sort((a: any, b: any) => {
+        const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt);
+        const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt);
+        return dateB - dateA;
+      });
+
+      setAllCalls(sortedCalls);
+      setCurrentPage(1);
     });
 
     return () => unsubAllCalls();
@@ -161,7 +184,9 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
       return;
     }
 
-    const sdrEmail = sdrData.email;
+    const sdrEmail = sdrData.email?.toLowerCase().trim();
+    if (!sdrEmail) return;
+
     const callsRef = collection(db, 'calls_analysis');
     
     let constraints = [
@@ -553,8 +578,8 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="text-[16px] font-semibold text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]">
-                            {call.nome_do_lead || call.title || call.call_title || 'Chamada Analisada'}
+                          <h3 className="text-[16px] font-semibold text-white">
+                            {call.nome_do_lead || call.title || call.call_title || 'Lead não identificado'}
                           </h3>
                           <span className="badge-danger rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase">{call.status_final}</span>
                         </div>
@@ -882,7 +907,7 @@ export function SdrProfilePanel({ sdrId }: SdrProfilePanelProps) {
                   {paginatedCalls.length > 0 ? paginatedCalls.map(call => (
                     <div key={call.id} className="history-row grid grid-cols-[1fr_1.6fr_0.8fr_0.8fr_1fr_1.2fr_0.8fr] items-center px-5 py-4 text-[14px] text-white/76">
                       <div>{call.createdAt ? new Date(call.createdAt.seconds * 1000).toLocaleDateString() : 'N/A'}</div>
-                      <div>{call.call_title || 'Sem título'}</div>
+                      <div>{call.nome_do_lead || call.title || call.call_title || 'Lead não identificado'}</div>
                       <div>{call.duration ? `${Math.round(call.duration / 60000)}min` : 'N/A'}</div>
                       <div>{call.nota_spin?.toFixed(1) || 'N/A'}</div>
                       <div className={call.status_final === 'APROVADO' ? 'text-green2' : 'text-red2'}>{call.status_final || 'N/A'}</div>

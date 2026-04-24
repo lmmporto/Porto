@@ -1,138 +1,127 @@
 import { db } from "@/lib/firebase";
-import { collection, query, orderBy, onSnapshot, doc, limit, where, documentId } from "firebase/firestore";
+import { collection, query, where, onSnapshot, documentId } from "firebase/firestore";
+import { formatDuration } from "@/lib/utils";
 
-const ELITE_SDRS = [
-  'amaranta.vieira@nibo.com.br',
-  'andriel.mateus@nibo.com.br',
-  'bruno.rezende@nibo.com.br',
-  'elder.fernando@nibo.com.br',
-  'italo.xavier@nibo.com.br',
-  'mateus.braga@nibo.com.br'
-];
-
-export const subscribeToGlobalStats = (period: string, team: string, callback: (stats: any) => void) => {
-  if (!db) {
-    console.error("❌ Abortando subscrição: Firestore 'db' não inicializado.");
-    return () => {}; 
+const chunkArray = <T>(arr: T[], size: number): T[][] => {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
   }
+  return chunks;
+};
 
-  // TAREFA 3: Cálculo manual para equipes específicas
-  if (team !== 'all') {
-    console.log(`📊 [Cálculo On-the-fly] Calculando KPIs para Equipe: ${team}, Período: ${period}`);
-    const callsRef = collection(db, "calls_analysis");
-    let constraints = [where("teamName", "==", team)];
+/**
+ * Helper genérico para criar subscrições baseadas na soberania do sdr_registry.
+ * Primeiro busca os membros ativos do time e depois assina os dados alvo.
+ */
+const createTeamBasedSubscription = (
+  targetCollection: string,
+  team: string,
+  callback: (data: any[]) => void,
+  idField: string = "ownerEmail"
+) => {
+  if (!db) return () => {};
 
-    if (period !== 'Tudo') {
-      const now = new Date();
-      let startDate = new Date();
-      if (period === 'Hoje') startDate.setHours(0,0,0,0);
-      else if (period === '7D') startDate.setDate(now.getDate() - 7);
-      else if (period === '30D') startDate.setDate(now.getDate() - 30);
-      constraints.push(where('createdAt', '>=', startDate));
+  const registryRef = collection(db, "sdr_registry");
+  const qMembers = team === 'all' 
+    ? query(registryRef, where("isActive", "==", true))
+    : query(registryRef, where("assignedTeam", "==", team), where("isActive", "==", true));
+
+  return onSnapshot(qMembers, (membersSnap) => {
+    const teamEmails = membersSnap.docs
+        .map(d => d.data().email?.toLowerCase().trim())
+        .filter(Boolean) as string[];
+
+    if (teamEmails.length === 0) {
+      callback([]);
+      return;
     }
 
-    const q = query(callsRef, ...constraints);
+    const emailChunks = chunkArray(teamEmails, 30);
+    const unsubscribers: (() => void)[] = [];
+    const resultsByChunk: { [key: number]: any[] } = {};
 
-    return onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(d => d.data());
-      const totalCalls = docs.length;
-
-      if (totalCalls === 0) {
-        callback({ totalCalls: 0, teamAverage: 0, approvalRate: 0, avgDuration: "00:00", recurrent_gaps: {}, top_strengths: {} });
-        return;
-      }
-
-      let totalSpin = 0;
-      let approvedCount = 0;
-      let totalDuration = 0;
-
-      docs.forEach(d => {
-        totalSpin += d.nota_spin || 0;
-        if ((d.nota_spin || 0) >= 7) approvedCount++;
-        totalDuration += d.durationMs || 0;
-      });
-
-      const avgDurationSec = (totalDuration / totalCalls) / 1000;
-      const min = Math.floor(avgDurationSec / 60);
-      const sec = Math.round(avgDurationSec % 60);
-      const formattedDuration = `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-
-      callback({
-        totalCalls,
-        teamAverage: totalSpin / totalCalls,
-        approvalRate: Math.round((approvedCount / totalCalls) * 100),
-        avgDuration: formattedDuration,
-        recurrent_gaps: {}, 
-        top_strengths: {}
-      });
-    });
-  }
-
-  console.log(`📊 [Leitura Eficiente] Buscando KPIs para o período: ${period}`);
-
-  if (period === 'Tudo') {
-    return onSnapshot(doc(db, "dashboard_stats", "global_summary"), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        callback({
-          totalCalls: data.total_calls || 0,
-          teamAverage: data.media_geral || 0,
-          approvalRate: data.taxa_aprovacao || 0,
-          avgDuration: data.duracao_media || "00:00",
-          recurrent_gaps: data.recurrent_gaps || {}, 
-          top_strengths: data.top_strengths || {} 
-        });
+    emailChunks.forEach((chunk, index) => {
+      const dataRef = collection(db, targetCollection);
+      
+      let qData;
+      if (idField === "__name__") {
+        const sdrIds = chunk.map(email => email.replace(/\./g, '_'));
+        qData = query(dataRef, where(documentId(), "in", sdrIds));
       } else {
-        callback({ totalCalls: 0, teamAverage: 0, approvalRate: 0, avgDuration: "00:00", recurrent_gaps: {}, top_strengths: {} });
+        qData = query(dataRef, where(idField, "in", chunk));
       }
-    });
-  }
 
-  const q = query(
-    collection(db, "dashboard_stats"),
-    where(documentId(), "<", "global_summary"),
-    orderBy(documentId(), "desc"),
-    limit(1)
-  );
-
-  return onSnapshot(q, (snapshot) => {
-    if (!snapshot.empty) {
-      const data = snapshot.docs[0].data();
-      callback({
-        totalCalls: data.total_calls || 0,
-        teamAverage: data.media_geral || 0,
-        approvalRate: data.taxa_aprovacao || 0,
-        avgDuration: data.duracao_media || "00:00",
-        recurrent_gaps: data.recurrent_gaps || {}, 
-        top_strengths: data.top_strengths || {} 
+      const unsub = onSnapshot(qData, (snapshot) => {
+        resultsByChunk[index] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const allDocs = Object.values(resultsByChunk).flat();
+        callback(allDocs);
       });
-    } else {
-      callback({ totalCalls: 0, teamAverage: 0, approvalRate: 0, avgDuration: "00:00", recurrent_gaps: {}, top_strengths: {} });
-    }
+      unsubscribers.push(unsub);
+    });
+
+    return () => unsubscribers.forEach(unsub => unsub());
   });
 };
 
-export const subscribeToRanking = (period: string, team: string, callback: (sdrs: any[]) => void) => {
-  if (!db) return () => {};
-
-  console.log(`🏆 [Leitura Eficiente] Buscando Ranking para o período: ${period}, Equipe: ${team}`);
-
-  let q = query(
-    collection(db, "sdrs"), 
-    orderBy("real_average", "desc"), 
-    limit(50)
-  ); 
-
-  if (team !== 'all') {
-    q = query(q, where('teamName', '==', team));
-  } else {
-    // Se for 'all', mantém o filtro de elite para não poluir o ranking global (opcional)
-    q = query(q, where("email", "in", ELITE_SDRS));
-  }
-  
-  return onSnapshot(q, (snapshot) => {
-    callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-  }, (error) => {
-    console.error("❌ Erro no onSnapshot de Ranking:", error);
+export const getKPIs = async (period: string, team: string) => {
+  const API_URL = (process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || '').replace(/\/$/, '');
+  const response = await fetch(`${API_URL}/api/stats?period=${period}&team=${encodeURIComponent(team)}`, {
+    credentials: 'include'
   });
+  if (!response.ok) throw new Error('Falha ao buscar KPIs');
+  return response.json();
+};
+
+export const subscribeToGlobalStats = (period: string, team: string, callback: (stats: any) => void) => {
+  return createTeamBasedSubscription("calls_analysis", team, (allDocs) => {
+    // Filtro de período (Manual no frontend para simplificar a query do Firestore)
+    let filteredDocs = allDocs;
+    if (period !== 'Tudo') {
+        const now = new Date();
+        let startDate = new Date();
+        if (period === 'Hoje') startDate.setHours(0,0,0,0);
+        else if (period === '7D') startDate.setDate(now.getDate() - 7);
+        else if (period === '30D') startDate.setDate(now.getDate() - 30);
+        
+        filteredDocs = allDocs.filter(d => {
+            const createdAt = d.createdAt?.toDate ? d.createdAt.toDate() : new Date(d.createdAt);
+            return createdAt >= startDate;
+        });
+    }
+
+    const totalCalls = filteredDocs.length;
+
+    if (totalCalls === 0) {
+      callback({ totalCalls: 0, teamAverage: 0, approvalRate: 0, avgDuration: "00:00", recurrent_gaps: {}, top_strengths: {} });
+      return;
+    }
+
+    let totalSpin = 0;
+    let approvedCount = 0;
+    let totalDuration = 0;
+
+    filteredDocs.forEach(d => {
+      totalSpin += d.nota_spin || 0;
+      if ((d.nota_spin || 0) >= 7) approvedCount++;
+      totalDuration += d.durationMs || 0;
+    });
+
+    callback({
+      totalCalls,
+      teamAverage: totalSpin / totalCalls,
+      approvalRate: Math.round((approvedCount / totalCalls) * 100),
+      avgDuration: formatDuration(totalDuration / totalCalls),
+      recurrent_gaps: {}, 
+      top_strengths: {}
+    });
+  });
+};
+
+export const subscribeToRanking = (period: string, team: string, callback: (ranking: any[]) => void) => {
+  // O ranking continua lendo da coleção 'sdrs' para performance, mas filtrando pela soberania do sdr_registry
+  return createTeamBasedSubscription("sdrs", team, (allSdrs) => {
+    const sortedRanking = allSdrs.sort((a, b) => (b.real_average || 0) - (a.real_average || 0));
+    callback(sortedRanking);
+  }, "__name__");
 };

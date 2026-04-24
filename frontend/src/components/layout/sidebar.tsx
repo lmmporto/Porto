@@ -14,6 +14,7 @@ export function Sidebar() {
     { href: '/dashboard/me', icon: '👤', label: 'Meu Painel' },
     { href: '/dashboard/calls', icon: '📞', label: 'Chamadas', adminOnly: true }, // Restrito a admin
     { href: '/dashboard/ranking', icon: '🏆', label: 'Ranking', adminOnly: true }, // Restrito a admin
+    { href: '/dashboard/settings', icon: '⚙️', label: 'Configurações', adminOnly: true },
   ];
 
   return (

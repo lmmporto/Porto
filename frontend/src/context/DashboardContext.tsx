@@ -8,8 +8,11 @@ interface DashboardContextType {
   viewingEmail: string | null;
   setViewingEmail: (email: string | null) => void;
   isAdmin: boolean;
-  isSidebarCollapsed: boolean; // Novo estado
-  toggleSidebar: () => void; // Nova função
+  isSidebarCollapsed: boolean;
+  toggleSidebar: () => void;
+  currentTeam: string;
+  setCurrentTeam: (team: string) => void;
+  teamMembers: string[];
 }
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
@@ -20,7 +23,29 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<{ id?: string; email: string | null; name?: string; picture?: string; isAdmin?: boolean } | null>(null);
   const [viewingEmail, setViewingEmailState] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [loadingAuth, setLoadingAuth] = useState(true); // Bloqueio visual The Matrix
+  const [loadingAuth, setLoadingAuth] = useState(true);
+  const [currentTeam, setCurrentTeam] = useState<string>('Time Lucas');
+  const [teamMembers, setTeamMembers] = useState<string[]>([]);
+
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+
+  // Busca dinâmica baseada na soberania do sdr_registry
+  const refreshTeamMembers = async (team: string) => {
+    if (!API_URL) return;
+    try {
+      const res = await fetch(`${API_URL}/sdr-registry/members?team=${team}`, { credentials: 'include' });
+      const data = await res.json();
+      setTeamMembers(data.emails || []);
+    } catch (err) {
+      console.error("Erro ao carregar membros do time:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (currentTeam) {
+      refreshTeamMembers(currentTeam);
+    }
+  }, [currentTeam, API_URL]);
 
   const isAdmin = !!user?.isAdmin;
 
@@ -128,7 +153,10 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <DashboardContext.Provider value={{ user, viewingEmail, setViewingEmail, isAdmin, isSidebarCollapsed, toggleSidebar }}>
+    <DashboardContext.Provider value={{ 
+      user, viewingEmail, setViewingEmail, isAdmin, isSidebarCollapsed, toggleSidebar,
+      currentTeam, setCurrentTeam, teamMembers 
+    }}>
       {children}
     </DashboardContext.Provider>
   );

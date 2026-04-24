@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from 'react';
+import axios from 'axios';
+import { useToast } from '@/hooks/use-toast';
 import {
   Link2,
   Send,
@@ -98,15 +100,13 @@ export function ManualTriggerCard({ theme = 'dark' }: ManualTriggerCardProps) {
   // Valida minimamente o conteúdo no cliente antes de bater no servidor
   const isValidInput = url.trim().length > 0;
 
+  const { toast } = useToast();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!isValidInput) {
-      setResult({
-        uiState: 'INVALID_LINK',
-        message: 'Cole um link ou ID de chamada do HubSpot.',
-      });
-      setUiState('INVALID_LINK');
+      toast({ title: "Atenção", description: "Cole um link ou ID de chamada do HubSpot.", variant: "destructive" });
       return;
     }
 
@@ -116,16 +116,14 @@ export function ManualTriggerCard({ theme = 'dark' }: ManualTriggerCardProps) {
     try {
       const rawUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || '';
       const baseUrl = rawUrl.replace(/\/$/, '');
-      const res = await fetch(`${baseUrl}/api/calls/manual-trigger`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ url: url.trim() }),
+      
+      const response = await axios.post(`${baseUrl}/api/calls/manual-trigger`, { url: url.trim() }, {
+        withCredentials: true
       });
 
-      const data: TriggerResult = await res.json();
+      const data: TriggerResult = response.data;
 
-      // Garante que o uiState do backend é um que conhecemos; usa SERVER_ERROR como fallback
+      // Garante que o uiState do backend é um que conhecemos
       const knownStates: TriggerUiState[] = [
         'QUEUED',
         'ALREADY_DONE',
@@ -140,16 +138,25 @@ export function ManualTriggerCard({ theme = 'dark' }: ManualTriggerCardProps) {
       setResult({ ...data, uiState: resolvedState as TriggerResult['uiState'] });
       setUiState(resolvedState);
 
-      // Limpa o campo apenas em caso de sucesso efetivo
       if (resolvedState === 'QUEUED') {
+        toast({ title: "Sucesso", description: "Chamada enviada para análise!" });
         setUrl('');
+      } else if (resolvedState === 'ALREADY_DONE') {
+        toast({ title: "Informação", description: "Esta chamada já foi analisada." });
+      } else if (resolvedState === 'ALREADY_QUEUED') {
+        toast({ title: "Aguarde", description: "Esta chamada já está na fila de análise." });
+      } else {
+        toast({ title: "Erro", description: data.message || "Erro ao processar chamada.", variant: "destructive" });
       }
-    } catch {
+
+    } catch (error) {
+      console.error("Falha ao enviar chamada:", error);
+      setUiState('SERVER_ERROR');
       setResult({
         uiState: 'SERVER_ERROR',
-        message: 'Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.',
+        message: 'Falha ao enviar chamada. Verifique sua conexão.',
       });
-      setUiState('SERVER_ERROR');
+      toast({ title: "Erro", description: "Falha ao enviar chamada. Tente novamente.", variant: "destructive" });
     }
   };
 

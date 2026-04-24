@@ -4,7 +4,7 @@ import type { SDRCall, CallFilters } from '@/types';
 import { useDashboard } from '@/context/DashboardContext';
 
 export function useCalls(limit = 10) {
-  const { user, isAdmin } = useDashboard();
+  const { user, isAdmin, currentTeam } = useDashboard();
   const [calls, setCalls] = useState<SDRCall[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [lastVisible, setLastVisible] = useState<string | null>(null);
@@ -28,7 +28,7 @@ export function useCalls(limit = 10) {
     const activeFilters = overrideFilters || filtersRef.current;
     const currentLastVisible = isReset ? null : lastVisibleRef.current;
     
-    const signature = JSON.stringify({ activeFilters, isReset, currentLastVisible, isAdmin, email: user?.email });
+    const signature = JSON.stringify({ activeFilters, isReset, currentLastVisible, isAdmin, email: user?.email, currentTeam });
     if (signature === lastSignature.current && !isReset) return;
     lastSignature.current = signature;
 
@@ -48,6 +48,11 @@ export function useCalls(limit = 10) {
           params.append(key, String(value));
         }
       });
+
+      // Se for admin e tiver um time selecionado, passa o time
+      if (isAdmin && currentTeam) {
+        params.append('team', currentTeam);
+      }
 
       if (!isAdmin && user?.email && !activeFilters.ownerEmail) {
         params.append('ownerEmail', user.email);
@@ -74,7 +79,14 @@ export function useCalls(limit = 10) {
       setIsLoading(false);
     }
   // 🚩 DEPENDÊNCIAS ESTÁVEIS: Removido calls.length para evitar re-renders desnecessários
-  }, [limit, user?.email, isAdmin]); 
+  }, [limit, user?.email, isAdmin, currentTeam]); 
+
+  // Gatilho automático ao trocar de time ou autenticação
+  useEffect(() => {
+    if (user) {
+        fetchData(true);
+    }
+  }, [currentTeam, user, fetchData]);
 
   const updateFilters = useCallback((newFilters: CallFilters) => {
     setFilters(newFilters);

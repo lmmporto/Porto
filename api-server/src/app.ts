@@ -9,6 +9,7 @@ import sdrRegistryRouter from './routes/sdr-registro.js';
 import statsRouter from './routes/stats.js';
 import { CONFIG } from './config.js';
 import { checkIfAdmin } from './utils/auth.js';
+import { initializeWorkers } from './services/worker.service.js';
 
 declare global {
   namespace Express {
@@ -169,10 +170,13 @@ app.post('/auth/logout', (req: Request, res: Response, next: NextFunction) => {
 });
 
 app.use('/api/calls', callsRouter);
-app.use('/api/stats', statsRouter);
+app.use('/api', statsRouter); // Alinhado para que /api/stats funcione diretamente
 app.use('/api/sdr-registry', sdrRegistryRouter);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+
+// Inicializa os workers (Cron/Retry)
+initializeWorkers();
 
 app.use((err: ErrorWithStatus, _req: Request, res: Response, _next: NextFunction) => {
   console.error('[SERVER ERROR]:', err.message);

@@ -1,5 +1,16 @@
 import { db } from "@/lib/firebase";
-import { collection, query, orderBy, onSnapshot, limit, where } from "firebase/firestore";
+import { 
+  collection, 
+  query, 
+  orderBy, 
+  onSnapshot, 
+  limit, 
+  where, 
+  getDocs, 
+  startAfter,
+  QueryDocumentSnapshot,
+  DocumentData
+} from "firebase/firestore";
 
 const ELITE_SDRS = [
   'amaranta.vieira@nibo.com.br',
@@ -36,3 +47,45 @@ export const subscribeToCalls = (callback: (calls: any[]) => void) => {
     callback(calls);
   });
 };
+
+/**
+ * 🚀 getPaginatedCalls: Busca robusta por cursor para evitar estouro de memória
+ */
+export const getPaginatedCalls = async (
+  pageSize: number = 10,
+  lastVisibleDoc: QueryDocumentSnapshot<DocumentData> | null = null,
+  sdrEmail: string | null = null
+) => {
+  if (!db) throw new Error("Database not initialized");
+
+  const callsRef = collection(db, 'calls_analysis');
+  let q;
+
+  const constraints = [
+    orderBy('callTimestamp', 'desc'),
+    limit(pageSize)
+  ];
+
+  if (sdrEmail) {
+    constraints.unshift(where('ownerEmail', '==', sdrEmail));
+  }
+
+  if (lastVisibleDoc) {
+    constraints.push(startAfter(lastVisibleDoc));
+  }
+
+  q = query(callsRef, ...constraints);
+  const snapshot = await getDocs(q);
+
+  const calls = snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+
+  return {
+    calls,
+    lastVisibleDoc: snapshot.docs[snapshot.docs.length - 1] || null,
+    hasNextPage: snapshot.docs.length === pageSize
+  };
+};
+

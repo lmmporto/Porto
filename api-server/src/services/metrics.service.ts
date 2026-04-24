@@ -1,6 +1,7 @@
 import { db } from '../firebase.js';
 import admin from 'firebase-admin';
 import { updateTeamStrategy } from './analysis.service.js';
+import { CallStatus } from '../constants/call-processing.js';
 
 export class MetricsService {
   private static M_THRESHOLD = 5;
@@ -10,19 +11,53 @@ export class MetricsService {
     const callsSnapshot = await db
       .collection('calls_analysis')
       .where('ownerEmail', '==', email)
+      .where('processingStatus', '==', CallStatus.DONE)
       .select('nota_spin', 'score_dominio', 'score_dor')
       .get();
 
-    const callsData = callsSnapshot.docs.map(doc => doc.data());
-    const scores = callsData.map(d => d.nota_spin || 0);
-    const domainScores = callsData.map(d => d.score_dominio || 0);
-    const painScores = callsData.map(d => d.score_dor || 0);
+    const callsData = callsSnapshot.docs.map((doc: any) => doc.data());
+
+    const scores = callsData
+      .map((d: any) => Number(d.nota_spin || 0))
+      .filter((score: number) => Number.isFinite(score));
+
+    const domainScores = callsData
+      .map((d: any) => Number(d.score_dominio || 0))
+      .filter((score: number) => Number.isFinite(score));
+
+    const painScores = callsData
+      .map((d: any) => Number(d.score_dor || 0))
+      .filter((score: number) => Number.isFinite(score));
 
     const totalCalls = scores.length;
+    const cleanId = email.replace(/\./g, '_');
 
-    if (totalCalls === 0) return;
+    const registrySnap = await db.collection('sdr_registry').doc(cleanId).get();
+    const registryData = registrySnap.exists ? registrySnap.data() : null;
+    const teamName = registryData?.assignedTeam || 'Equipe não definida';
+    const ownerName = registryData?.name || email.split('@')[0];
 
-    const sumScores = scores.reduce((acc, val) => acc + val, 0);
+    if (totalCalls === 0) {
+      await db.collection('sdrs').doc(cleanId).set(
+        {
+          real_average: 0,
+          ranking_score: 0,
+          total_calls: 0,
+          media_dominio: 0,
+          media_dor: 0,
+          ownerName,
+          name: ownerName,
+          teamName,
+          assignedTeam: teamName,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      return;
+    }
+
+    const sumScores = scores.reduce((acc: number, val: number) => acc + val, 0);
     const realAverage = sumScores / totalCalls;
 
     const v = totalCalls;
@@ -31,13 +66,18 @@ export class MetricsService {
     const C = MetricsService.GLOBAL_AVERAGE_BASELINE;
 
     const rankingScore = (v * R + m * C) / (v + m);
-    const cleanId = email.replace(/\./g, '_');
 
     const mediaDominio =
-      domainScores.reduce((acc, val) => acc + val, 0) / totalCalls;
+      domainScores.length > 0
+        ? domainScores.reduce((acc: number, val: number) => acc + val, 0) /
+        domainScores.length
+        : 0;
 
     const mediaDor =
-      painScores.reduce((acc, val) => acc + val, 0) / totalCalls;
+      painScores.length > 0
+        ? painScores.reduce((acc: number, val: number) => acc + val, 0) /
+        painScores.length
+        : 0;
 
     await db.collection('sdrs').doc(cleanId).set(
       {
@@ -46,6 +86,10 @@ export class MetricsService {
         total_calls: totalCalls,
         media_dominio: parseFloat(mediaDominio.toFixed(2)),
         media_dor: parseFloat(mediaDor.toFixed(2)),
+        ownerName,
+        name: ownerName,
+        teamName,
+        assignedTeam: teamName,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       },
       { merge: true }
@@ -53,16 +97,20 @@ export class MetricsService {
   }
 
   static async updateGlobalSummary(): Promise<void> {
-    const sdrsSnapshot = await db.collection('sdrs').get();
-    const allSdrs = sdrsSnapshot.docs.map(doc => doc.data());
+    const callsSnapshot = await db
+      .collection('calls_analysis')
+      .where('processingStatus', '==', CallStatus.DONE)
+      .select('nota_spin')
+      .get();
 
-    const totalCalls = allSdrs.reduce(
-      (acc, sdr) => acc + (sdr.total_calls || 0),
-      0
-    );
+    const scores = callsSnapshot.docs
+      .map((doc: any) => Number(doc.data().nota_spin || 0))
+      .filter((score: number) => Number.isFinite(score));
 
-    const totalScoreSum = allSdrs.reduce(
-      (acc, sdr) => acc + (sdr.real_average || 0) * (sdr.total_calls || 0),
+    const totalCalls = scores.length;
+
+    const totalScoreSum = scores.reduce(
+      (acc: number, score: number) => acc + score,
       0
     );
 
@@ -78,5 +126,39 @@ export class MetricsService {
     );
 
     await updateTeamStrategy();
+  }
+
+  static async getStatsByTeam(teamName: string): Promise<any[]> {
+    const teamMembersSnapshot = await db
+      .collection('sdr_registry')
+      .where('assignedTeam', '==', teamName)
+      .where('isActive', '==', true)
+      .get();
+
+    const sdrEmails = teamMembersSnapshot.docs
+      .map((doc: any) => doc.data().email)
+      .filter((email: any) => !!email);
+
+    if (sdrEmails.length === 0) return [];
+
+    const chunks: string[][] = [];
+
+    for (let i = 0; i < sdrEmails.length; i += 30) {
+      chunks.push(sdrEmails.slice(i, i + 30));
+    }
+
+    const results = await Promise.all(
+      chunks.map(async (chunk) => {
+        const callsSnapshot = await db
+          .collection('calls_analysis')
+          .where('ownerEmail', 'in', chunk)
+          .where('processingStatus', '==', CallStatus.DONE)
+          .get();
+
+        return callsSnapshot.docs.map((doc: any) => doc.data());
+      })
+    );
+
+    return results.flat();
   }
 }
