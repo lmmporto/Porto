@@ -5,7 +5,7 @@ import { CONFIG } from "../config.js";
 import { handleIncomingCall } from "../services/webhook.service.js";
 import { checkIfAdmin } from "../utils/auth.js";
 import { extractCallId } from '../utils/hubspot-parser.js';
-import { CallStatus } from "../constants/call-processing.js";
+import { CallStatus } from "../domain/analysis/analysis.types.js";
 
 const router = Router();
 

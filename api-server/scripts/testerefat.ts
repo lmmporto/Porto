@@ -1,10 +1,10 @@
-import { CallProcessingOrchestrator } from './src/services/call-processing.orchestrator.ts';
+import { CallProcessingOrchestrator } from '../src/services/call-processing.orchestrator.ts';
 
 async function runTests() {
     console.log("🚀 Iniciando Testes de Validação...");
 
     // Teste 1: Processamento Real
-    const testId = "SEU_ID_DE_CALL_AQUI";
+    const testId = "108120936801";
     const result = await CallProcessingOrchestrator.processCall(testId, "test_worker");
     console.log("Resultado Processamento:", result);
 

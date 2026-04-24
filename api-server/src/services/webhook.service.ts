@@ -1,6 +1,6 @@
 import { db } from '../firebase.js';
 import admin from 'firebase-admin';
-import { CallStatus } from '../constants/call-processing.js';
+import { CallStatus } from '../domain/analysis/analysis.types.js';
 import { CALLS_COLLECTION } from '../constants/collections.js';
 
 /**

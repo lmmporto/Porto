@@ -6,10 +6,12 @@ import {
   CallStatus,
   FailureReason,
   SkipReason,
+} from '../domain/analysis/analysis.types.js';
+import {
   MAX_AUDIO_RETRIES,
   RETRY_INTERVAL_MINUTES,
-  MIN_CALL_DURATION_MS,
-} from '../constants/call-processing.js';
+} from '../domain/analysis/analysis.constants.js';
+import { MIN_CALL_DURATION_MS } from '../domain/analysis/analysis.policy.js';
 import { CALLS_COLLECTION } from '../constants/collections.js';
 
 export interface RefreshPendingAudioCallResult {
