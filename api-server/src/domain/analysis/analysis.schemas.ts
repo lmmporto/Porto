@@ -9,6 +9,7 @@ import {
   type TranscriptionResult,
   type TeamStrategyResult,
   type UpdateDailyStatsOptions,
+  GapCategory,
 } from './analysis.types.js';
 import { sanitizeText } from '../../utils.js';
 
@@ -98,12 +99,31 @@ export const ANALYSIS_RESPONSE_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['timestamp', 'fala_lead', 'resposta_sdr', 'diagnostico', 'recomendacao'],
+        required: [
+          'timestamp',
+          'fala_lead',
+          'resposta_sdr',
+          'classificacao_sdr',
+          'estado_antes',
+          'estado_depois',
+          'evolucao',
+          'diagnostico_curto',
+          'diagnostico_expandido',
+          'recomendacao',
+        ],
         properties: {
           timestamp: { type: 'string' },
           fala_lead: { type: 'string' },
           resposta_sdr: { type: 'string' },
-          diagnostico: { type: 'string' },
+          classificacao_sdr: { type: 'string' },
+          estado_antes: { type: 'string' },
+          estado_depois: { type: 'string' },
+          evolucao: {
+            type: 'string',
+            enum: ['avanço', 'regressão', 'estagnação'],
+          },
+          diagnostico_curto: { type: 'string' },
+          diagnostico_expandido: { type: 'string' },
           recomendacao: { type: 'string' },
         },
       },
@@ -115,7 +135,18 @@ export const ANALYSIS_RESPONSE_SCHEMA = {
     ponto_atencao: { type: 'string' },
     maior_dificuldade: {
       type: 'array',
-      items: { type: 'string' },
+      items: {
+        type: 'string',
+        enum: [
+          'EXPLORACAO_DOR',
+          'CONTROLE_CONVERSA',
+          'PROXIMO_PASSO',
+          'RAPPORT',
+          'OBJECOES',
+          'QUALIFICACAO',
+          'FIT_PRODUTO',
+        ],
+      },
       description: 'Lista de até 3 pontos específicos de dificuldade do SDR.',
     },
     pontos_fortes: {
@@ -182,7 +213,12 @@ export function isPlaybookEntry(value: unknown): value is PlaybookEntry {
     typeof value.timestamp === 'string' &&
     typeof value.fala_lead === 'string' &&
     typeof value.resposta_sdr === 'string' &&
-    typeof value.diagnostico === 'string' &&
+    typeof value.classificacao_sdr === 'string' &&
+    typeof value.estado_antes === 'string' &&
+    typeof value.estado_depois === 'string' &&
+    (value.evolucao === 'avanço' || value.evolucao === 'regressão' || value.evolucao === 'estagnação') &&
+    typeof value.diagnostico_curto === 'string' &&
+    typeof value.diagnostico_expandido === 'string' &&
     typeof value.recomendacao === 'string'
   );
 }
@@ -215,6 +251,16 @@ export function isAnalysisResult(value: unknown): value is AnalysisResult {
     'NAO_IDENTIFICADO',
   ];
 
+  const validGaps: GapCategory[] = [
+    GapCategory.EXPLORACAO_DOR,
+    GapCategory.CONTROLE_CONVERSA,
+    GapCategory.PROXIMO_PASSO,
+    GapCategory.RAPPORT,
+    GapCategory.OBJECOES,
+    GapCategory.QUALIFICACAO,
+    GapCategory.FIT_PRODUTO,
+  ];
+
   return (
     validStatus.includes(value.status_final as AnalysisStatus) &&
     validRoutes.includes(value.rota as AnalysisRoute) &&
@@ -228,7 +274,8 @@ export function isAnalysisResult(value: unknown): value is AnalysisResult {
     typeof value.resumo === 'string' &&
     isStringArray(value.alertas) &&
     typeof value.ponto_atencao === 'string' &&
-    isStringArray(value.maior_dificuldade) &&
+    Array.isArray(value.maior_dificuldade) &&
+    value.maior_dificuldade.every((gap) => validGaps.includes(gap as GapCategory)) &&
     isStringArray(value.pontos_fortes) &&
     isStringArray(value.perguntas_sugeridas) &&
     typeof value.analise_escuta === 'string' &&
@@ -259,7 +306,7 @@ export function normalizeAnalysisResult(value: AnalysisResult): AnalysisResult {
     analise_escuta: sanitizeText(value.analise_escuta),
     objecoes: value.objecoes.map((item) => sanitizeText(item)),
     alertas: value.alertas.map((item) => sanitizeText(item)),
-    maior_dificuldade: value.maior_dificuldade.map((item) => sanitizeText(item)),
+    maior_dificuldade: value.maior_dificuldade.map((item) => sanitizeText(item) as GapCategory),
     pontos_fortes: value.pontos_fortes.map((item) => sanitizeText(item)),
     perguntas_sugeridas: value.perguntas_sugeridas.map((item) => sanitizeText(item)),
     insights_estrategicos: value.insights_estrategicos.map((insight) => ({
@@ -272,7 +319,11 @@ export function normalizeAnalysisResult(value: AnalysisResult): AnalysisResult {
       timestamp: sanitizeText(entry.timestamp),
       fala_lead: sanitizeText(entry.fala_lead),
       resposta_sdr: sanitizeText(entry.resposta_sdr),
-      diagnostico: sanitizeText(entry.diagnostico),
+      classificacao_sdr: sanitizeText(entry.classificacao_sdr),
+      estado_antes: sanitizeText(entry.estado_antes),
+      estado_depois: sanitizeText(entry.estado_depois),
+      diagnostico_curto: sanitizeText(entry.diagnostico_curto),
+      diagnostico_expandido: sanitizeText(entry.diagnostico_expandido),
       recomendacao: sanitizeText(entry.recomendacao),
     })),
     nome_do_lead: value.nome_do_lead

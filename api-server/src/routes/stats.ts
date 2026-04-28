@@ -40,7 +40,7 @@ router.get('/summary', async (req: Request, res: Response) => {
 
     const monthSuffix = getCurrentMonthSuffix();
     const snapshot = await db.collection(SDR_MONTHLY_STATS_COLLECTION).get();
-    
+
     const monthlyDocs = snapshot.docs
       .filter((doc: admin.firestore.QueryDocumentSnapshot) => doc.id.endsWith(monthSuffix))
       .map((doc: admin.firestore.QueryDocumentSnapshot) => doc.data());
@@ -50,7 +50,7 @@ router.get('/summary', async (req: Request, res: Response) => {
     const response = {
       total_calls: processed.total_calls,
       media_geral: Number(processed.media_geral.toFixed(2)),
-      sdr_ranking: processed.ranking, 
+      sdr_ranking: processed.ranking,
       version: "V12_GLOBAL_VITRINE"
     };
 
@@ -123,7 +123,7 @@ router.get('/personal-summary', async (req: Request, res: Response) => {
     const userEmail = (req.user as any).email.toLowerCase().trim();
     const isAdmin = await checkIfAdmin(userEmail);
     const requestedEmail = (req.query.ownerEmail as string)?.toLowerCase().trim();
-    
+
     let targetEmail = userEmail;
     let targetName = (req.query.ownerEmail as string) || "";
 
@@ -194,11 +194,11 @@ router.get('/leaderboard-vitrine', async (req: Request, res: Response) => {
       .orderBy('averageScore', 'desc')
       .limit(6)
       .get();
-    
+
     const topCallsSnapshot = await db
       .collection(CALLS_COLLECTION)
       .orderBy("nota_spin", "desc")
-      .limit(10) 
+      .limit(10)
       .get();
 
     const topCalls = topCallsSnapshot.docs
@@ -279,7 +279,7 @@ router.post("/rebuild-today-stats", requireAdmin, async (req: Request, res: Resp
       const callData = doc.data();
       await updateDailyStats(
         callData,
-        { status_final: 'NAO_SE_APLICA' as AnalysisStatus, nota_spin: null },
+        { status_final: 'NAO_SE_APLICA' as AnalysisStatus, nota_spin: null, rota: 'NAO_IDENTIFICADA' as any },
         { isUpdate: false }
       );
       if (callData.processingStatus === 'DONE') {
@@ -309,7 +309,7 @@ router.get('/stats', async (req: Request, res: Response) => {
 
     // Busca chamadas do time via MetricsService (lógica de chunking/sdr_registry)
     const calls = await MetricsService.getStatsByTeam(teamStr);
-    
+
     if (calls.length === 0) {
       return res.json({ total_calls: 0, media_geral: 0, taxa_aprovacao: 0, duracao_media: 0 });
     }

@@ -3,19 +3,19 @@
 ## Resumo
 - Origem: `C:/Projetos IA/Porto`
 - Saída: `C:/Projetos IA/Porto/NOTEBOOKLM_EXPORT`
-- Total exportado: `225`
+- Total exportado: `229`
 
 ## Por camada
-- Backend: 73
+- Backend: 77
 - Frontend: 140
 - Config: 0
 - Shared: 12
 
 ## Por prioridade
 - Critical: 14
-- High: 12
-- Medium: 77
-- Low: 122
+- High: 16
+- Medium: 78
+- Low: 121
 
 ## Ordem recomendada de upload no NotebookLM
 1. `architecture.md`
@@ -34,15 +34,19 @@
 - [critical] `api-server/src/infrastructure/database/analysis.repository.ts`
 - [critical] `api-server/src/services/analysis.orchestrator.ts`
 - [critical] `api-server/src/services/analysis.service.ts`
-- [critical] `api-server/src/services/processCall.ts`
+- [critical] `api-server/src/services/calls/call-worker.orchestrator.ts`
 - [critical] `api-server/src/types/analysis.ts`
 - [critical] `frontend/src/features/calls/components/analysis-insights.tsx`
 - [critical] `frontend/src/features/calls/components/CallAnalysis.tsx`
 - [critical] `frontend/src/features/dashboard/components/global-gap-analysis.tsx`
 - [high] `api-server/src/infrastructure/ai/gemini.service.ts`
+- [high] `api-server/src/infrastructure/crm/hubspot-call.service.ts`
+- [high] `api-server/src/infrastructure/database/sdr.repository.ts`
+- [high] `api-server/src/infrastructure/database/worker-lock.repository.ts`
 - [high] `api-server/src/routes/calls.ts`
 - [high] `api-server/src/routes/sdr-registro.ts`
 - [high] `api-server/src/services/call-processing.orchestrator.ts`
+- [high] `api-server/src/services/calls/pending-audio-refresh.orchestrator.ts`
 - [high] `api-server/src/services/hubspot.ts`
 - [high] `api-server/src/services/webhook.service.ts`
 - [high] `api-server/src/services/worker.service.ts`
@@ -63,6 +67,7 @@
 - [medium] `api-server/scripts/reset-stuck-calls.ts`
 - [medium] `api-server/src/constants/hubspot.ts`
 - [medium] `api-server/src/firebase.ts`
+- [medium] `api-server/src/infrastructure/database/call.repository.ts`
 - [medium] `api-server/src/infrastructure/storage/temp-file.service.ts`
 - [medium] `api-server/src/middleware/requireAdmin.ts`
 - [medium] `api-server/src/routes/health.ts`
@@ -158,7 +163,6 @@
 - [low] `api-server/src/build.ts`
 - [low] `api-server/src/clients.ts`
 - [low] `api-server/src/config.ts`
-- [low] `api-server/src/constants/call-processing.ts`
 - [low] `api-server/src/constants/collections.ts`
 - [low] `api-server/src/index.ts`
 - [low] `api-server/src/scripts/assign-teams.ts`

@@ -5,7 +5,7 @@
 Este export contém arquivos de backend, frontend, configuração e suporte do projeto.
 
 ## Distribuição
-- Backend: 73
+- Backend: 77
 - Frontend: 140
 - Configuração: 0
 - Críticos: 14
@@ -37,7 +37,7 @@ Arquivos classificados como frontend geralmente concentram:
 - `api-server/src/infrastructure/database/analysis.repository.ts`
 - `api-server/src/services/analysis.orchestrator.ts`
 - `api-server/src/services/analysis.service.ts`
-- `api-server/src/services/processCall.ts`
+- `api-server/src/services/calls/call-worker.orchestrator.ts`
 - `api-server/src/types/analysis.ts`
 - `frontend/src/features/calls/components/analysis-insights.tsx`
 - `frontend/src/features/calls/components/CallAnalysis.tsx`

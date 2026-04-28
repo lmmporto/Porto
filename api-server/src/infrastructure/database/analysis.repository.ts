@@ -31,7 +31,7 @@ import {
 import {
   CALL_LEASE_MINUTES,
 } from '../../domain/analysis/analysis.policy.js';
-
+import { sanitizeText } from '../../utils.js';
 
 /**
  * 🏛️ INFRAESTRUTURA: Repositório do Firestore para Análises.
@@ -57,29 +57,35 @@ export class AnalysisRepository {
    */
   static async updateDailyStats(
     callData: DailyStatsCallData,
-    analysis: Pick<AnalysisResult, 'status_final' | 'nota_spin'>,
+    analysis: Pick<AnalysisResult, 'status_final' | 'nota_spin' | 'rota'>,
     options: UpdateDailyStatsOptions = {}
   ): Promise<void> {
     try {
       const dayId = this.getBusinessDayId();
       const statsRef = db.collection(DASHBOARD_STATS_COLLECTION).doc(dayId);
       const sdrKey = callData.ownerEmail || 'Desconhecido';
+      const rota = analysis.rota || 'NAO_IDENTIFICADA';
 
       const currentNote = getValidNote(analysis);
       const noteDelta = getNoteDelta(currentNote, options);
 
-      await statsRef.set(
-        {
-          [`sdr_ranking.${sdrKey}.total`]: FieldValue.increment(
-            options.isUpdate ? 0 : 1
-          ),
-          [`sdr_ranking.${sdrKey}.sum_notes`]: FieldValue.increment(noteDelta),
-          [`sdr_ranking.${sdrKey}.ownerName`]: callData.ownerName || 'SDR',
-          [`sdr_ranking.${sdrKey}.ownerEmail`]: sdrKey,
-          last_update: FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
+      // Estrutura de atualização multidimensional
+      const updatePayload: Record<string, unknown> = {
+        // 1. Estatísticas por SDR
+        [`sdr_ranking.${sdrKey}.total`]: FieldValue.increment(options.isUpdate ? 0 : 1),
+        [`sdr_ranking.${sdrKey}.sum_notes`]: FieldValue.increment(noteDelta),
+        [`sdr_ranking.${sdrKey}.ownerName`]: callData.ownerName || 'SDR',
+        [`sdr_ranking.${sdrKey}.ownerEmail`]: sdrKey,
+
+        // 2. Estatísticas por ROTA
+        [`routes.${rota}.total_calls`]: FieldValue.increment(options.isUpdate ? 0 : 1),
+        [`routes.${rota}.sum_notes`]: FieldValue.increment(noteDelta),
+
+        // 3. Metadados globais do dia
+        last_update: FieldValue.serverTimestamp(),
+      };
+
+      await statsRef.set(updatePayload, { merge: true });
     } catch (error) {
       console.error('❌ [REPOSITORY ERROR] updateDailyStats:', error);
       throw error;
@@ -282,5 +288,49 @@ export class AnalysisRepository {
     const cleanId = email.replace(/\./g, '_');
     const doc = await db.collection(SDR_REGISTRY_COLLECTION).doc(cleanId).get();
     return doc.exists ? (doc.data() as Record<string, unknown>) : null;
+  }
+
+  static async updateGapSummary(
+    ownerEmail: string | null | undefined,
+    ownerName: string | null | undefined,
+    gaps: string[],
+    strengths: string[] = []
+  ): Promise<void> {
+    if (!gaps.length) return;
+
+    const dayId = this.getBusinessDayId();
+    const dailyRef = db.collection(DASHBOARD_STATS_COLLECTION).doc(dayId);
+    const globalRef = db.collection(DASHBOARD_STATS_COLLECTION).doc('global_summary');
+
+    const updatePayload: Record<string, unknown> = {
+      last_update: FieldValue.serverTimestamp(),
+    };
+
+    for (const gap of gaps) {
+      updatePayload[`recurrent_gaps.${gap}.count`] = FieldValue.increment(1);
+      updatePayload[`recurrent_gaps.${gap}.label`] = gap;
+    }
+
+    for (const strength of strengths) {
+      const safeStrength = sanitizeText(strength).slice(0, 80);
+      if (!safeStrength) continue;
+
+      updatePayload[`top_strengths.${safeStrength}.count`] = FieldValue.increment(1);
+      updatePayload[`top_strengths.${safeStrength}.label`] = safeStrength;
+    }
+
+    if (ownerEmail) {
+      const safeOwner = ownerEmail.replace(/[.$#[\]/]/g, '_');
+      for (const gap of gaps) {
+        updatePayload[`sdr_gap_summary.${safeOwner}.${gap}.count`] = FieldValue.increment(1);
+        updatePayload[`sdr_gap_summary.${safeOwner}.${gap}.ownerEmail`] = ownerEmail;
+        updatePayload[`sdr_gap_summary.${safeOwner}.${gap}.ownerName`] = ownerName || 'SDR';
+      }
+    }
+
+    await Promise.all([
+      dailyRef.set(updatePayload, { merge: true }),
+      globalRef.set(updatePayload, { merge: true }),
+    ]);
   }
 }

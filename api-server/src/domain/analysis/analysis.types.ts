@@ -37,6 +37,16 @@ export type MainProduct =
 
 export type InsightType = 'positive' | 'negative' | 'neutral';
 
+export enum GapCategory {
+  EXPLORACAO_DOR = 'EXPLORACAO_DOR',
+  CONTROLE_CONVERSA = 'CONTROLE_CONVERSA',
+  PROXIMO_PASSO = 'PROXIMO_PASSO',
+  RAPPORT = 'RAPPORT',
+  OBJECOES = 'OBJECOES',
+  QUALIFICACAO = 'QUALIFICACAO',
+  FIT_PRODUTO = 'FIT_PRODUTO',
+}
+
 export interface StrategicInsight {
   label: string;
   value: string;
@@ -47,7 +57,12 @@ export interface PlaybookEntry {
   timestamp: string;
   fala_lead: string;
   resposta_sdr: string;
-  diagnostico: string;
+  classificacao_sdr: string;                          // ex: "[Direcionadora + Investigativa]"
+  estado_antes: string;                               // resumo dos 5 estados antes do turno
+  estado_depois: string;                              // resumo dos 5 estados após o turno
+  evolucao: 'avanço' | 'regressão' | 'estagnação';
+  diagnostico_curto: string;                          // máx 5 palavras — para dashboard
+  diagnostico_expandido: string;                      // 1-2 frases com contexto
   recomendacao: string;
 }
 
@@ -63,7 +78,7 @@ export interface AnalysisResult {
   resumo: string;
   alertas: string[];
   ponto_atencao: string;
-  maior_dificuldade: string[];
+  maior_dificuldade: GapCategory[];
   pontos_fortes: string[];
   perguntas_sugeridas: string[];
   analise_escuta: string;

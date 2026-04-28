@@ -44,7 +44,7 @@ export async function analyzeCallWithGemini(
 
 export async function updateDailyStats(
   callData: DailyStatsCallData,
-  analysis: Pick<AnalysisResult, 'status_final' | 'nota_spin'>,
+  analysis: Pick<AnalysisResult, 'status_final' | 'nota_spin' | 'rota'>,
   options: UpdateDailyStatsOptions = {},
 ): Promise<void> {
   await AnalysisRepository.updateDailyStats(callData, analysis, options);

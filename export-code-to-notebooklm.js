@@ -185,15 +185,11 @@ function hashContent(content) {
 function makeSafeMdFilename(relativePath) {
     let normalized = normalizePath(relativePath);
 
-    // Remove .md duplicado
     if (normalized.endsWith(".md")) {
         normalized = normalized.replace(/\.md$/, "");
     }
 
-    // Substitui barras por _
     normalized = normalized.replace(/\//g, "_");
-
-    // Remove caracteres inválidos
     normalized = normalized.replace(/[<>:"|?*]/g, "_");
 
     return normalized + ".md";
@@ -462,7 +458,7 @@ function writeExport(files) {
 
         const md = buildMarkdownForFile(file);
         const mdFileName = makeSafeMdFilename(file.relativePath);
-        const targetPath = path.join(targetDir, mdFileName);
+        const targetPath = path.join(targetDir, path.basename(mdFileName));
 
         fs.writeFileSync(targetPath, md, "utf8");
         log(`Exportado [${file.priority}]: ${file.relativePath}`);

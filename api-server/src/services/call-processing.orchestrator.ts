@@ -11,11 +11,8 @@ import {
   type OwnerDetails,
 } from '../domain/analysis/analysis.types.js';
 import { MIN_TRANSCRIPT_LENGTH } from '../domain/analysis/analysis.policy.js';
-import {
-  transcribeRecordingFromHubSpot,
-  analyzeCallWithGemini,
-  updateDailyStats,
-} from './analysis.service.js';
+import { AnalysisOrchestrator } from './analysis.orchestrator.js';
+import { AnalysisRepository } from '../infrastructure/database/analysis.repository.js';
 import { withTimeout } from '../utils/timeout.js';
 import type { CallData } from './hubspot.js';
 
@@ -110,10 +107,11 @@ export class CallProcessingOrchestrator {
 
         call.recordingUrl = callData.recordingUrl;
 
+        // ✅ CORRIGIDO: Chamada direta ao Orquestrador e label de log precisa
         finalTranscript = await withTimeout(
-          transcribeRecordingFromHubSpot(call),
+          AnalysisOrchestrator.transcribeRecording(call),
           120_000,
-          'transcribeRecordingFromHubSpot'
+          'AnalysisOrchestrator.transcribeRecording'
         );
         transcriptSource = 'AI_GENERATED';
 
@@ -137,17 +135,27 @@ export class CallProcessingOrchestrator {
       // PASSO 8: Análise Gemini
       await CallRepository.updateStage(callId, 'ANALYZING_GEMINI');
 
+      // ✅ CORRIGIDO: Label de log atualizada para refletir a realidade do código
       const { analysis, rawPrompt, rawResponse, transcriptHash } = await withTimeout(
-        analyzeCallWithGemini(call, owner),
+        AnalysisOrchestrator.analyzeCall(call, owner),
         90_000,
-        'analyzeCallWithGemini'
+        'AnalysisOrchestrator.analyzeCall'
       );
 
       // PASSO 9: Atualizar stats diárias
-      await updateDailyStats(basePayload, analysis, {
-        isUpdate: isReprocess,
-        previousNota,
-      });
+      // 2. Persistimos os dados de estatística delegando diretamente ao Repositório
+      await AnalysisRepository.updateDailyStats(
+        basePayload,
+        {
+          status_final: analysis.status_final,
+          nota_spin: analysis.nota_spin,
+          rota: analysis.rota // 🎯 OBRIGATÓRIO: Sem isso, tudo vira 'NAO_IDENTIFICADA'
+        },
+        {
+          isUpdate: isReprocess, // Booleano mapeado no orchestrator
+          previousNota: previousNota // Caso seja reprocessamento
+        }
+      );
 
       // PASSO 10: Persistir resultado DONE
       const analysisPayload = {
@@ -180,6 +188,12 @@ export class CallProcessingOrchestrator {
       try {
         if (owner.ownerEmail) {
           await MetricsService.updateSDRMetrics(owner.ownerEmail);
+          await AnalysisRepository.updateGapSummary(
+            owner.ownerEmail,
+            owner.ownerName,
+            analysis.maior_dificuldade || [],
+            analysis.pontos_fortes || []
+          );
           await MetricsService.updateGlobalSummary();
         }
       } catch (metricsError) {

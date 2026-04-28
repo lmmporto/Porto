@@ -31,6 +31,23 @@ Analisar a transcrição considerando:
 
 ---
 
+## 🔍 PRÉ-ANÁLISE (OBRIGATÓRIO — executar antes de qualquer turno)
+
+Antes de iniciar a análise por turnos, declare:
+
+- tipo_de_contato: cold call | follow-up | inbound
+- produto_contexto: (identificado a partir da transcrição)
+- estado_inicial:
+  - RAPPORT: inexistente | em construção | estabelecido
+  - DOR: não identificada | superficial | explorando | aprofundada | conectada ao impacto
+  - OBJEÇÕES: inexistente | latente | ativa | contornada | mal gerenciada
+  - CONTROLE DA CALL: SDR no controle | compartilhado | lead no controle | recuperado
+  - PRÓXIMO PASSO: inexistente | sugerido | alinhado | confirmado
+
+⚠️ Essa seção é obrigatória. Sem ela, a análise por turnos não pode começar.
+
+---
+
 ## 🧠 CAMADA 1 — ANÁLISE POR TURNOS
 
 Para cada momento relevante:
@@ -38,14 +55,19 @@ Para cada momento relevante:
 - fala_lead
 - resposta_sdr (obrigatório)
 
-Classifique a resposta do SDR como:
+Classifique a resposta do SDR como (combinações são permitidas e encorajadas):
 - Direcionadora
 - Investigativa
 - Neutra
 - Reativa
 - Passiva
 
-⚠️ Julgamento só pode acontecer após analisar a RESPOSTA do SDR
+Exemplos de combinações válidas:
+- [Direcionadora + Investigativa] → SDR aprofunda e ao mesmo tempo conduz
+- [Reativa + Investigativa] → SDR responde à objeção e transforma em pergunta
+- [Passiva + Neutra] → sinal de alerta — ausência de direcionamento
+
+⚠️ Julgamento só pode acontecer após analisar a RESPOSTA do SDR no contexto do estado atual
 
 ---
 
@@ -121,11 +143,13 @@ Cada entrada DEVE conter:
 - timestamp
 - fala_lead
 - resposta_sdr
-- estado_antes (resumo curto)
-- estado_depois (resumo curto)
-- evolucao (avanço | regressão | estagnação)
-- diagnostico (máx 5 palavras)
-- recomendacao (com frase exata)
+- classificacao_sdr: (ex: [Direcionadora + Investigativa])
+- estado_antes: (resumo curto dos 5 estados)
+- estado_depois: (resumo curto dos 5 estados)
+- evolucao: avanço | regressão | estagnação
+- diagnostico_curto: (máx 5 palavras — para dashboard)
+- diagnostico_expandido: (1-2 frases explicando o que aconteceu e por quê importa)
+- recomendacao: (com frase exata que o SDR poderia ter dito)
 
 ---
 
@@ -144,10 +168,14 @@ Exemplos:
 
 ## 📉 MAIOR DIFICULDADE
 
-Listar até 3 pontos onde houve:
-- regressão de estado
-- estagnação crítica
-- perda de controle não recuperada
+Listar até 3 pontos onde houve maior dificuldade. Você DEVE obrigatoriamente usar apenas os seguintes valores exatos:
+- EXPLORACAO_DOR
+- CONTROLE_CONVERSA
+- PROXIMO_PASSO
+- RAPPORT
+- OBJECOES
+- QUALIFICACAO
+- FIT_PRODUTO
 
 ---
 
@@ -163,14 +191,43 @@ Listar até 3 pontos onde houve:
 
 ## 🧠 CRITÉRIOS DE PONTUAÇÃO
 
-- Domínio e Direcionamento (4.0)
+### Domínio e Direcionamento — peso 4.0
 ⚠️ Baseado na evolução do estado CONTROLE
 
-- Exploração de Dor (4.0)
+- 4.0 → SDR manteve controle em 80%+ dos turnos relevantes
+- 3.0 → Controle predominantemente do SDR, com perdas pontuais recuperadas
+- 2.0 → Controle compartilhado na maior parte da call
+- 1.0 → Lead conduziu a call na maior parte do tempo
+- 0.5 → SDR nunca assumiu ou recuperou o controle
+
+### Exploração de Dor — peso 4.0
 ⚠️ Baseado na progressão do estado DOR
 
-- Próximo Passo (2.0)
-⚠️ Baseado no estado final
+- 4.0 → Dor aprofundada e conectada ao impacto
+- 3.0 → Dor explorada com clareza, mas sem conexão total ao impacto
+- 2.0 → Dor identificada de forma superficial
+- 1.0 → Dor mencionada pelo lead mas não explorada pelo SDR
+- 0.5 → Dor não identificada
+
+### Próximo Passo — peso 2.0
+⚠️ Baseado no estado final de PRÓXIMO PASSO
+
+- 2.0 → Próximo passo confirmado com data/compromisso claro
+- 1.5 → Próximo passo alinhado, mas sem confirmação explícita
+- 1.0 → Próximo passo sugerido sem resposta do lead
+- 0.5 → Próximo passo inexistente
+
+---
+
+## 💬 MENSAGEM FINAL AO SDR
+
+Após toda a análise, escreva uma mensagem direta em até 3 frases:
+1. O que foi executado bem (com base nos estados que avançaram)
+2. O maior gap identificado (estado que regrediu ou ficou travado)
+3. A ação prioritária para a próxima call (específica e aplicável)
+
+Exemplo:
+"Você construiu rapport de forma sólida nos primeiros minutos e recuperou o controle após a objeção de preço — isso foi gestão estratégica. O maior gap foi a exploração de dor: ela ficou superficial durante toda a call, sem conexão com impacto real no negócio do lead. Na próxima call, quando o lead mencionar o problema, use: 'O que acontece com o seu time se esse problema não for resolvido nos próximos 3 meses?' antes de apresentar qualquer solução."
 
 ---
 
