@@ -168,15 +168,19 @@ Exemplos:
 
 ## 📉 MAIOR DIFICULDADE
 
-Listar até 3 pontos onde houve maior dificuldade. Você DEVE obrigatoriamente usar apenas os seguintes valores exatos:
-- EXPLORACAO_DOR
-- CONTROLE_CONVERSA
-- PROXIMO_PASSO
-- RAPPORT
-- OBJECOES
-- QUALIFICACAO
-- FIT_PRODUTO
+Retorne de 1 a 3 categorias fixas no campo maior_dificuldade.
 
+Use APENAS estes valores:
+
+- EXPLORACAO_DOR: SDR não investigou, aprofundou ou conectou dor ao impacto.
+- CONTROLE_CONVERSA: SDR perdeu condução, ficou reativo ou deixou o lead guiar a call.
+- PROXIMO_PASSO: SDR não avançou com clareza para agenda, compromisso ou ação concreta.
+- RAPPORT: SDR não criou conexão, confiança ou contexto suficiente.
+- OBJECOES: SDR não contornou objeções ou aceitou bloqueios cedo demais.
+- QUALIFICACAO: SDR não investigou e compreendeu o cenário atual e o perfil (ICP) do cliente, independentemente de ser ou não o momento ideal de compra.
+- FIT_PRODUTO: SDR não conectou corretamente a dor ao produto ou solução.
+
+Nunca escreva frases livres nesse campo.
 ---
 
 ## 🏷️ METADADOS (TÉCNICO)
