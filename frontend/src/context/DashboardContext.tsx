@@ -112,17 +112,29 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isAdmin, user]);
 
-  // Redirecionamento para não-admins
+  // Guarda de autenticação global
   useEffect(() => {
-    if (user && !isAdmin && pathname === '/dashboard') { // Apenas se tentar acessar a raiz /dashboard
-      router.push('/dashboard/me');
+    if (loadingAuth) return; // Ainda carregando, não redireciona ainda
+
+    const isLoginPage = pathname === '/login';
+
+    // Usuário não logado tentando acessar qualquer rota protegida → /login
+    if (!user && !isLoginPage) {
+      router.replace('/login');
+      return;
     }
-    // Bloqueio de acesso a rotas de gestão para não-admins
-    if (user && !isAdmin && (pathname === '/dashboard/ranking' || pathname === '/dashboard/calls')) {
-      // Se não for admin e tentar acessar rotas restritas, redireciona para o painel pessoal
-      router.push('/dashboard/me');
+
+    // Usuário já logado tentando acessar /login → redireciona para o painel correto
+    if (user && isLoginPage) {
+      router.replace(isAdmin ? '/dashboard' : '/dashboard/me');
+      return;
     }
-  }, [user, isAdmin, router, pathname]);
+
+    // Usuário comum tentando acessar raiz do painel de gestão → painel pessoal
+    if (user && !isAdmin && pathname === '/dashboard') {
+      router.replace('/dashboard/me');
+    }
+  }, [user, isAdmin, loadingAuth, pathname, router]);
 
   const setViewingEmail = (email: string | null) => {
     if (!user?.isAdmin) {

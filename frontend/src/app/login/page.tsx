@@ -1,10 +1,41 @@
 "use client";
 
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { NiboLogo } from '@/components/ui/nibo-logo';
 
 export default function LoginPage() {
+  const router = useRouter();
+  const [checking, setChecking] = useState(true);
+
+  // Se o usuário já estiver logado, redireciona para o painel correto
+  useEffect(() => {
+    const rawUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || '';
+    const apiUrl = rawUrl.replace(/\/$/, '');
+
+    if (!apiUrl) {
+      setChecking(false);
+      return;
+    }
+
+    fetch(`${apiUrl}/auth/me`, { credentials: 'include', cache: 'no-store' })
+      .then(res => {
+        if (res.ok) return res.json();
+        return null;
+      })
+      .then(userData => {
+        if (userData?.email) {
+          // Já está logado: manda para o painel correto sem mostrar a tela de login
+          router.replace(userData.isAdmin ? '/dashboard' : '/dashboard/me');
+        } else {
+          setChecking(false);
+        }
+      })
+      .catch(() => setChecking(false));
+  }, [router]);
+
   const handleGoogleLogin = () => {
     const rawUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_BASE_URL || '';
     const apiBaseUrl = rawUrl.replace(/\/$/, '');
@@ -16,9 +47,17 @@ export default function LoginPage() {
       return;
     }
 
-    // Redireciona na mesma aba para o fluxo oficial
     window.location.href = loginUrl;
   };
+
+  // Enquanto verifica a sessão, exibe um spinner neutro
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-indigo-400 border-t-transparent" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
