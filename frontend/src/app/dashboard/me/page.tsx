@@ -2,13 +2,13 @@
 
 import { useDashboard } from '@/context/DashboardContext';
 import { SdrProfilePanel } from '@/features/dashboard/components/SdrProfilePanel';
-import { formatEmailToSdrId } from '@/lib/utils';
 
 export default function MyDashboardPage() {
-  const { user, viewingEmail } = useDashboard();
+  const { user, viewingEmail, isAdmin } = useDashboard();
 
-  // Filtro de Consciência: Prioriza a simulação se houver
-  const activeEmail = viewingEmail || user?.email;
+  // Impersonação só é permitida para admins.
+  // Usuários comuns sempre visualizam o próprio perfil.
+  const activeEmail = isAdmin ? (viewingEmail || user?.email) : user?.email;
 
   if (!activeEmail) {
     return (
@@ -21,8 +21,5 @@ export default function MyDashboardPage() {
     );
   }
 
-  // O sdrId para busca no Firestore é o email puro (normalização ocorre no painel)
-  const sdrId = activeEmail;
-
-  return <SdrProfilePanel sdrId={sdrId} />;
+  return <SdrProfilePanel sdrId={activeEmail} />;
 }
