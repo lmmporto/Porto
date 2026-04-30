@@ -131,7 +131,7 @@ app.get(
   async (req: Request, res: Response) => {
     const userEmail = (req.user as any)?.email || '';
     const isAdmin = await checkIfAdmin(userEmail);
-    const destination = isAdmin ? '/dashboard' : '/me';
+    const destination = isAdmin ? '/dashboard' : '/dashboard/me';
     req.session.save(() => res.redirect(`${CONFIG.FRONTEND_URL}${destination}`));
   }
 );
