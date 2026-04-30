@@ -35,25 +35,13 @@ export type MainProduct =
   | 'Ferramenta do Radar e CAC'
   | 'NAO_IDENTIFICADO';
 
-export type InsightType = 'positive' | 'negative' | 'neutral';
-
-export enum GapCategory {
-  EXPLORACAO_DOR = 'EXPLORACAO_DOR',
-  CONTROLE_CONVERSA = 'CONTROLE_CONVERSA',
-  PROXIMO_PASSO = 'PROXIMO_PASSO',
-  RAPPORT = 'RAPPORT',
-  OBJECOES = 'OBJECOES',
-  QUALIFICACAO = 'QUALIFICACAO',
-  FIT_PRODUTO = 'FIT_PRODUTO',
-}
-
-export interface StrategicInsight {
+export type StrategicInsight = {
   label: string;
   value: string;
-  type: InsightType;
-}
+  type: 'positive' | 'negative' | 'neutral';
+};
 
-export interface PlaybookEntry {
+export type PlaybookEntry = {
   timestamp: string;
   fala_lead: string;
   resposta_sdr: string;
@@ -64,26 +52,38 @@ export interface PlaybookEntry {
   diagnostico_curto: string;                          // máx 5 palavras — para dashboard
   diagnostico_expandido: string;                      // 1-2 frases com contexto
   recomendacao: string;
-}
+};
 
 export interface AnalysisResult {
-  status_final: AnalysisStatus;
-  rota: AnalysisRoute;
-  produto_principal: MainProduct;
-  objecoes: string[];
-  insights_estrategicos: StrategicInsight[];
-  nota_spin: number | null;
-  score_dominio: number;
-  score_dor: number;
-  resumo: string;
-  alertas: string[];
-  ponto_atencao: string;
-  maior_dificuldade: GapCategory[];
-  pontos_fortes: string[];
-  perguntas_sugeridas: string[];
-  analise_escuta: string;
-  playbook_detalhado: PlaybookEntry[];
+  status_final?: 'EXCELENTE' | 'BOM' | 'ATENCAO' | 'CRITICO';
+  rota?: AnalysisRoute;
+  produto_principal?: MainProduct;
+  objecoes?: string[];
+  insights_estrategicos?: StrategicInsight[];
+  nota_spin?: number | null;
+  score_dominio?: number;
+  score_dor?: number;
+  resumo?: string;
+  alertas?: string[];
+  ponto_atencao?: string;
+  maior_dificuldade?: Array<
+    | 'EXPLORACAO_DOR'
+    | 'CONTROLE_CONVERSA'
+    | 'PROXIMO_PASSO'
+    | 'RAPPORT'
+    | 'OBJECOES'
+    | 'QUALIFICACAO'
+    | 'FIT_PRODUTO'
+  >;
+  pontos_fortes?: string[];
+  perguntas_sugeridas?: string[];
+  analise_escuta?: string;
+  playbook_detalhado?: PlaybookEntry[];
   nome_do_lead?: string;
+  
+  // --- novos campos ---
+  score_proximo_passo?: number;
+  mensagem_final_sdr?: string;
 }
 
 export interface AnalysisWithDebug {
@@ -137,6 +137,9 @@ export interface SdrDoc {
   totalScore?: number;
   real_average?: number;
   ranking_score?: number;
+  media_dominio?: number;
+  media_dor?: number;
+  media_proximo_passo?: number | null;
 }
 
 /**
@@ -147,6 +150,7 @@ export interface AggregatedStatsDoc {
   sum_notes?: number;
   approved_count?: number;
   media_geral?: number;
+  media_proximo_passo_geral?: number | null;
   taxa_aprovacao?: number;
 }
 

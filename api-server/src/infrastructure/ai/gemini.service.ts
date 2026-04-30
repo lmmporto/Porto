@@ -3,7 +3,7 @@ import { createPartFromUri, createUserContent } from '@google/genai';
 import { gemini } from '../../clients.js';
 import { CONFIG } from '../../config.js';
 import {
-  ANALYSIS_RESPONSE_SCHEMA,
+  ANALYSIS_RESPONSE_JSON_SCHEMA,
   TRANSCRIPTION_RESPONSE_SCHEMA,
   TEAM_STRATEGY_RESPONSE_SCHEMA,
 } from '../../domain/analysis/analysis.schemas.js';
@@ -135,7 +135,7 @@ export class GeminiService {
       contents: prompt,
       config: {
         responseMimeType: 'application/json',
-        responseJsonSchema: ANALYSIS_RESPONSE_SCHEMA,
+        responseJsonSchema: ANALYSIS_RESPONSE_JSON_SCHEMA,
         temperature: 0.1,
       },
     });

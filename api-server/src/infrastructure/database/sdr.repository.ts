@@ -27,12 +27,13 @@ export class SdrRepository {
     nota_spin: unknown;
     score_dominio: unknown;
     score_dor: unknown;
+    score_proximo_passo: unknown;
   }[]> {
     const snapshot = await db
       .collection(CALLS_COLLECTION)
       .where('ownerEmail', '==', email)
       .where('processingStatus', '==', CallStatus.DONE)
-      .select('nota_spin', 'score_dominio', 'score_dor')
+      .select('nota_spin', 'score_dominio', 'score_dor', 'score_proximo_passo')
       .get();
 
     return snapshot.docs.map((doc: any) => doc.data());

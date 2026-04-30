@@ -44,6 +44,7 @@ export class MetricsService {
         total_calls: 0,
         media_dominio: 0,
         media_dor: 0,
+        media_proximo_passo: null,
         ownerName,
         name: ownerName,
         teamName,
@@ -72,12 +73,28 @@ export class MetricsService {
         ? painScores.reduce((acc: number, val: number) => acc + val, 0) / painScores.length
         : 0;
 
+    const callsComProximoPasso = callsData.filter(
+      (call: any) =>
+        typeof call.score_proximo_passo === 'number' &&
+        !isNaN(call.score_proximo_passo) &&
+        call.score_proximo_passo > 0
+    );
+
+    const mediaProximoPasso =
+      callsComProximoPasso.length > 0
+        ? callsComProximoPasso.reduce(
+            (acc: number, call: any) => acc + call.score_proximo_passo,
+            0
+          ) / callsComProximoPasso.length
+        : null;
+
     await SdrRepository.upsertSdr(cleanId, {
       real_average: parseFloat(realAverage.toFixed(2)),
       ranking_score: parseFloat(rankingScore.toFixed(2)),
       total_calls: totalCalls,
       media_dominio: parseFloat(mediaDominio.toFixed(2)),
       media_dor: parseFloat(mediaDor.toFixed(2)),
+      media_proximo_passo: mediaProximoPasso !== null ? parseFloat(mediaProximoPasso.toFixed(2)) : null,
       ownerName,
       name: ownerName,
       teamName,

@@ -160,29 +160,65 @@ export class CallProcessingOrchestrator {
       );
 
       // PASSO 10: Persistir resultado DONE
+      const scoreProximoPasso = (() => {
+        if (
+          typeof analysis.score_proximo_passo === 'number' &&
+          !isNaN(analysis.score_proximo_passo)
+        ) {
+          return analysis.score_proximo_passo;
+        }
+
+        const dominio = analysis.score_dominio ?? 0;
+        const dor     = analysis.score_dor ?? 0;
+        const inferido = Math.max(0, 10 - dominio - dor);
+
+        console.warn(
+          '[Orchestrator] score_proximo_passo ausente — valor inferido:',
+          inferido
+        );
+
+        return Math.min(inferido, 2);
+      })();
+
       const analysisPayload = {
         transcript: finalTranscript,
         transcriptSource,
-        status_final: analysis.status_final,
+        status_final: analysis.status_final ?? null,
         rota: analysis.rota,
         produto_principal: analysis.produto_principal,
         objecoes: analysis.objecoes,
-        insights_estrategicos: analysis.insights_estrategicos,
+        insights_estrategicos: Array.isArray(analysis.insights_estrategicos)
+          ? analysis.insights_estrategicos
+          : [],
         nota_spin: analysis.nota_spin !== null ? Number(analysis.nota_spin) : null,
+        score_dominio: analysis.score_dominio,
+        score_dor: analysis.score_dor,
+        score_proximo_passo: scoreProximoPasso,
         resumo: analysis.resumo,
-        alertas: analysis.alertas,
-        ponto_atencao: analysis.ponto_atencao,
+        alertas: analysis.alertas ?? [],
+        ponto_atencao: analysis.ponto_atencao ?? '',
         maior_dificuldade: analysis.maior_dificuldade,
-        pontos_fortes: analysis.pontos_fortes,
-        analise_escuta: analysis.analise_escuta,
-        perguntas_sugeridas: analysis.perguntas_sugeridas,
+        pontos_fortes: analysis.pontos_fortes ?? [],
+        analise_escuta: analysis.analise_escuta ?? '',
+        perguntas_sugeridas: analysis.perguntas_sugeridas ?? [],
         playbook_detalhado: analysis.playbook_detalhado,
-        analysisResult: analysis,
+        nome_do_lead: analysis.nome_do_lead ?? '',
+        mensagem_final_sdr: analysis.mensagem_final_sdr ?? '',
+        analysisResult: JSON.parse(JSON.stringify(analysis)),
         lastAnalysisVersion: CURRENT_ANALYSIS_VERSION,
         lastTranscriptHash: transcriptHash,
         rawPrompt,
         rawResponse,
       };
+
+      console.log('[Orchestrator] Análise processada:', {
+        callId:              basePayload.callId,
+        ownerEmail:          basePayload.ownerEmail,
+        score_dominio:       analysisPayload.score_dominio,
+        score_dor:           analysisPayload.score_dor,
+        score_proximo_passo: analysisPayload.score_proximo_passo,
+        status_final:        analysisPayload.status_final,
+      });
 
       await CallRepository.markDone(callId, basePayload, analysisPayload);
 

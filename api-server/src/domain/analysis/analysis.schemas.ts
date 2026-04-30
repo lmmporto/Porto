@@ -1,10 +1,5 @@
-// src/domain/analysis/analysis.schemas.ts
+import { z } from 'zod';
 import {
-  type AnalysisStatus,
-  type AnalysisRoute,
-  type MainProduct,
-  type StrategicInsight,
-  type PlaybookEntry,
   type AnalysisResult,
   type TranscriptionResult,
   type TeamStrategyResult,
@@ -13,104 +8,101 @@ import {
 } from './analysis.types.js';
 import { sanitizeText } from '../../utils.js';
 
-export const ANALYSIS_RESPONSE_SCHEMA = {
+export const StrategicInsightSchema = z.object({
+  label: z.string(),
+  value: z.string(),
+  type: z.enum(['positive', 'negative', 'neutral']),
+});
+
+export const PlaybookEntrySchema = z.object({
+  timestamp: z.string(),
+  fala_lead: z.string(),
+  resposta_sdr: z.string(),
+  classificacao_sdr: z.string(),
+  estado_antes: z.string(),
+  estado_depois: z.string(),
+  evolucao: z.enum(['avanço', 'regressão', 'estagnação']),
+  diagnostico_curto: z.string(),
+  diagnostico_expandido: z.string(),
+  recomendacao: z.string(),
+});
+
+export const ANALYSIS_RESPONSE_SCHEMA = z.object({
+  status_final: z.enum(['EXCELENTE', 'BOM', 'ATENCAO', 'CRITICO']).nullable().optional().default(null),
+  rota: z.enum(['ROTA_A', 'ROTA_B', 'ROTA_C', 'ROTA_D']).nullable().optional().default(null),
+  produto_principal: z.enum([
+    'Nibo Obrigações Plus',
+    'Nibo WhatsApp',
+    'Nibo Conciliador',
+    'Nibo Emissor',
+    'Ferramenta do Radar e CAC',
+    'NAO_IDENTIFICADO',
+  ]).nullable().optional().default(null),
+  objecoes: z.array(z.string()).optional().default([]),
+  insights_estrategicos: z.array(StrategicInsightSchema).optional().default([]),
+  nota_spin: z.number().nullable().optional().default(null),
+  score_dominio: z.number().min(0).max(4).optional().default(0),
+  score_dor: z.number().min(0).max(4).optional().default(0),
+  resumo: z.string().optional().default(''),
+  playbook_detalhado: z.array(PlaybookEntrySchema).optional().default([]),
+  alertas: z.array(z.string()).optional().default([]),
+  ponto_atencao: z.string().optional().default(''),
+  maior_dificuldade: z.array(
+    z.enum([
+      'EXPLORACAO_DOR',
+      'CONTROLE_CONVERSA',
+      'PROXIMO_PASSO',
+      'RAPPORT',
+      'OBJECOES',
+      'QUALIFICACAO',
+      'FIT_PRODUTO',
+    ])
+  ).optional().default([]),
+  pontos_fortes: z.array(z.string()).optional().default([]),
+  perguntas_sugeridas: z.array(z.string()).optional().default([]),
+  analise_escuta: z.string().optional().default(''),
+  nome_do_lead: z.string().optional().default(''),
+  
+  // --- novos campos ---
+  score_proximo_passo: z.number().min(0).max(2).optional(),
+  mensagem_final_sdr: z.string().optional().default(''),
+});
+
+export const ANALYSIS_RESPONSE_JSON_SCHEMA = {
   type: 'object',
-  additionalProperties: false,
-  required: [
-    'status_final',
-    'nota_spin',
-    'rota',
-    'produto_principal',
-    'objecoes',
-    'insights_estrategicos',
-    'resumo',
-    'alertas',
-    'playbook_detalhado',
-    'ponto_atencao',
-    'maior_dificuldade',
-    'pontos_fortes',
-    'perguntas_sugeridas',
-    'analise_escuta',
-    'score_dominio',
-    'score_dor',
-  ],
   properties: {
-    status_final: {
-      type: 'string',
-      enum: ['APROVADO', 'REPROVADO', 'ATENCAO', 'NAO_SE_APLICA'],
-    },
-    rota: {
-      type: 'string',
-      enum: ['ROTA_A', 'ROTA_B', 'ROTA_C', 'ROTA_D'],
-    },
-    produto_principal: {
-      type: 'string',
-      enum: [
-        'Nibo Obrigações Plus',
-        'Nibo WhatsApp',
-        'Nibo Conciliador',
-        'Nibo Emissor',
-        'Ferramenta do Radar e CAC',
-        'NAO_IDENTIFICADO',
-      ],
-    },
-    objecoes: {
-      type: 'array',
-      items: { type: 'string' },
-    },
-    insights_estrategicos: {
-      type: 'array',
-      items: {
+    status_final: { type: 'string', enum: ['EXCELENTE', 'BOM', 'ATENCAO', 'CRITICO'] },
+    rota: { type: 'string', enum: ['ROTA_A', 'ROTA_B', 'ROTA_C', 'ROTA_D'] },
+    produto_principal: { type: 'string', enum: [
+      'Nibo Obrigações Plus',
+      'Nibo WhatsApp',
+      'Nibo Conciliador',
+      'Nibo Emissor',
+      'Ferramenta do Radar e CAC',
+      'NAO_IDENTIFICADO',
+    ]},
+    objecoes: { type: 'array', items: { type: 'string' } },
+    insights_estrategicos: { 
+      type: 'array', 
+      items: { 
         type: 'object',
-        additionalProperties: false,
-        required: ['label', 'value', 'type'],
         properties: {
-          label: {
-            type: 'string',
-            description: 'Nome dinâmico do insight',
-          },
-          value: {
-            type: 'string',
-            description: 'Valor percentual ou qualitativo',
-          },
-          type: {
-            type: 'string',
-            enum: ['positive', 'negative', 'neutral'],
-          },
+          label: { type: 'string' },
+          value: { type: 'string' },
+          type: { type: 'string', enum: ['positive', 'negative', 'neutral'] }
         },
-      },
+        required: ['label', 'value', 'type']
+      } 
     },
-    nota_spin: { type: ['number', 'null'] },
-    score_dominio: {
-      type: 'number',
-      description:
-        'Nota de 0 a 10 para o domínio da condução da chamada pelo SDR.',
-    },
-    score_dor: {
-      type: 'number',
-      description:
-        'Nota de 0 a 10 para a profundidade na exploração da dor do cliente.',
-    },
+    nota_spin: { type: 'number' },
+    score_dominio: { type: 'number' },
+    score_dor: { type: 'number' },
+    score_proximo_passo: { type: 'number' },
     resumo: { type: 'string' },
-    playbook_detalhado: {
-      type: 'array',
-      description:
-        'Lista estruturada de momentos críticos da call com diagnóstico e recomendação.',
-      items: {
+    playbook_detalhado: { 
+      type: 'array', 
+      items: { 
         type: 'object',
-        additionalProperties: false,
-        required: [
-          'timestamp',
-          'fala_lead',
-          'resposta_sdr',
-          'classificacao_sdr',
-          'estado_antes',
-          'estado_depois',
-          'evolucao',
-          'diagnostico_curto',
-          'diagnostico_expandido',
-          'recomendacao',
-        ],
         properties: {
           timestamp: { type: 'string' },
           fala_lead: { type: 'string' },
@@ -118,49 +110,29 @@ export const ANALYSIS_RESPONSE_SCHEMA = {
           classificacao_sdr: { type: 'string' },
           estado_antes: { type: 'string' },
           estado_depois: { type: 'string' },
-          evolucao: {
-            type: 'string',
-            enum: ['avanço', 'regressão', 'estagnação'],
-          },
+          evolucao: { type: 'string', enum: ['avanço', 'regressão', 'estagnação'] },
           diagnostico_curto: { type: 'string' },
           diagnostico_expandido: { type: 'string' },
-          recomendacao: { type: 'string' },
-        },
-      },
+          recomendacao: { type: 'string' }
+        }
+      } 
     },
-    alertas: {
-      type: 'array',
-      items: { type: 'string' },
-    },
+    alertas: { type: 'array', items: { type: 'string' } },
     ponto_atencao: { type: 'string' },
-    maior_dificuldade: {
-      type: 'array',
-      items: {
-        type: 'string',
-        enum: [
-          'EXPLORACAO_DOR',
-          'CONTROLE_CONVERSA',
-          'PROXIMO_PASSO',
-          'RAPPORT',
-          'OBJECOES',
-          'QUALIFICACAO',
-          'FIT_PRODUTO',
-        ],
-      },
-      description: 'Lista de até 3 pontos específicos de dificuldade do SDR.',
+    maior_dificuldade: { 
+      type: 'array', 
+      items: { 
+        type: 'string', 
+        enum: ['EXPLORACAO_DOR', 'CONTROLE_CONVERSA', 'PROXIMO_PASSO', 'RAPPORT', 'OBJECOES', 'QUALIFICACAO', 'FIT_PRODUTO'] 
+      } 
     },
-    pontos_fortes: {
-      type: 'array',
-      items: { type: 'string' },
-    },
-    perguntas_sugeridas: {
-      type: 'array',
-      items: { type: 'string' },
-    },
+    pontos_fortes: { type: 'array', items: { type: 'string' } },
+    perguntas_sugeridas: { type: 'array', items: { type: 'string' } },
     analise_escuta: { type: 'string' },
     nome_do_lead: { type: 'string' },
-  },
-} as const;
+    mensagem_final_sdr: { type: 'string' }
+  }
+};
 
 export const TRANSCRIPTION_RESPONSE_SCHEMA = {
   type: 'object',
@@ -186,103 +158,19 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-export function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === 'string');
+export function isStrategicInsight(data: unknown): data is StrategicInsight {
+  return StrategicInsightSchema.safeParse(data).success;
 }
 
-export function isStrategicInsight(value: unknown): value is StrategicInsight {
-  if (!isPlainObject(value)) {
+export function isAnalysisResult(data: unknown): data is AnalysisResult {
+  const result = ANALYSIS_RESPONSE_SCHEMA.safeParse(data);
+
+  if (!result.success) {
+    console.warn('[isAnalysisResult] Falha na validação:', result.error.flatten());
     return false;
   }
 
-  return (
-    typeof value.label === 'string' &&
-    typeof value.value === 'string' &&
-    (value.type === 'positive' ||
-      value.type === 'negative' ||
-      value.type === 'neutral')
-  );
-}
-
-export function isPlaybookEntry(value: unknown): value is PlaybookEntry {
-  if (!isPlainObject(value)) {
-    return false;
-  }
-
-  return (
-    typeof value.timestamp === 'string' &&
-    typeof value.fala_lead === 'string' &&
-    typeof value.resposta_sdr === 'string' &&
-    typeof value.classificacao_sdr === 'string' &&
-    typeof value.estado_antes === 'string' &&
-    typeof value.estado_depois === 'string' &&
-    (value.evolucao === 'avanço' || value.evolucao === 'regressão' || value.evolucao === 'estagnação') &&
-    typeof value.diagnostico_curto === 'string' &&
-    typeof value.diagnostico_expandido === 'string' &&
-    typeof value.recomendacao === 'string'
-  );
-}
-
-export function isAnalysisResult(value: unknown): value is AnalysisResult {
-  if (!isPlainObject(value)) {
-    return false;
-  }
-
-  const validStatus: AnalysisStatus[] = [
-    'APROVADO',
-    'REPROVADO',
-    'ATENCAO',
-    'NAO_SE_APLICA',
-  ];
-
-  const validRoutes: AnalysisRoute[] = [
-    'ROTA_A',
-    'ROTA_B',
-    'ROTA_C',
-    'ROTA_D',
-  ];
-
-  const validProducts: MainProduct[] = [
-    'Nibo Obrigações Plus',
-    'Nibo WhatsApp',
-    'Nibo Conciliador',
-    'Nibo Emissor',
-    'Ferramenta do Radar e CAC',
-    'NAO_IDENTIFICADO',
-  ];
-
-  const validGaps: GapCategory[] = [
-    GapCategory.EXPLORACAO_DOR,
-    GapCategory.CONTROLE_CONVERSA,
-    GapCategory.PROXIMO_PASSO,
-    GapCategory.RAPPORT,
-    GapCategory.OBJECOES,
-    GapCategory.QUALIFICACAO,
-    GapCategory.FIT_PRODUTO,
-  ];
-
-  return (
-    validStatus.includes(value.status_final as AnalysisStatus) &&
-    validRoutes.includes(value.rota as AnalysisRoute) &&
-    validProducts.includes(value.produto_principal as MainProduct) &&
-    isStringArray(value.objecoes) &&
-    Array.isArray(value.insights_estrategicos) &&
-    value.insights_estrategicos.every(isStrategicInsight) &&
-    (typeof value.nota_spin === 'number' || value.nota_spin === null) &&
-    typeof value.score_dominio === 'number' &&
-    typeof value.score_dor === 'number' &&
-    typeof value.resumo === 'string' &&
-    isStringArray(value.alertas) &&
-    typeof value.ponto_atencao === 'string' &&
-    Array.isArray(value.maior_dificuldade) &&
-    value.maior_dificuldade.every((gap) => validGaps.includes(gap as GapCategory)) &&
-    isStringArray(value.pontos_fortes) &&
-    isStringArray(value.perguntas_sugeridas) &&
-    typeof value.analise_escuta === 'string' &&
-    Array.isArray(value.playbook_detalhado) &&
-    value.playbook_detalhado.every(isPlaybookEntry) &&
-    (value.nome_do_lead === undefined || typeof value.nome_do_lead === 'string')
-  );
+  return true;
 }
 
 export function isTranscriptionResult(value: unknown): value is TranscriptionResult {
@@ -299,22 +187,26 @@ export function isTeamStrategyResult(value: unknown): value is TeamStrategyResul
 }
 
 export function normalizeAnalysisResult(value: AnalysisResult): AnalysisResult {
+  // Passa pelo Zod parse de forma síncrona para aplicar os defaults (.default([]))
+  // que resolvem o problema de `undefined.map`
+  const normalized = ANALYSIS_RESPONSE_SCHEMA.parse(value);
+
   return {
-    ...value,
-    resumo: sanitizeText(value.resumo),
-    ponto_atencao: sanitizeText(value.ponto_atencao),
-    analise_escuta: sanitizeText(value.analise_escuta),
-    objecoes: value.objecoes.map((item) => sanitizeText(item)),
-    alertas: value.alertas.map((item) => sanitizeText(item)),
-    maior_dificuldade: value.maior_dificuldade.map((item) => sanitizeText(item) as GapCategory),
-    pontos_fortes: value.pontos_fortes.map((item) => sanitizeText(item)),
-    perguntas_sugeridas: value.perguntas_sugeridas.map((item) => sanitizeText(item)),
-    insights_estrategicos: value.insights_estrategicos.map((insight) => ({
+    ...normalized,
+    resumo: normalized.resumo ? sanitizeText(normalized.resumo) : '',
+    ponto_atencao: normalized.ponto_atencao ? sanitizeText(normalized.ponto_atencao) : '',
+    analise_escuta: normalized.analise_escuta ? sanitizeText(normalized.analise_escuta) : '',
+    objecoes: (normalized.objecoes || []).map((item) => sanitizeText(item)),
+    alertas: (normalized.alertas || []).map((item) => sanitizeText(item)),
+    maior_dificuldade: (normalized.maior_dificuldade || []).map((item) => sanitizeText(item) as GapCategory),
+    pontos_fortes: (normalized.pontos_fortes || []).map((item) => sanitizeText(item)),
+    perguntas_sugeridas: (normalized.perguntas_sugeridas || []).map((item) => sanitizeText(item)),
+    insights_estrategicos: (normalized.insights_estrategicos || []).map((insight) => ({
       ...insight,
       label: sanitizeText(insight.label),
       value: sanitizeText(insight.value),
     })),
-    playbook_detalhado: value.playbook_detalhado.map((entry) => ({
+    playbook_detalhado: (normalized.playbook_detalhado || []).map((entry) => ({
       ...entry,
       timestamp: sanitizeText(entry.timestamp),
       fala_lead: sanitizeText(entry.fala_lead),
@@ -326,9 +218,12 @@ export function normalizeAnalysisResult(value: AnalysisResult): AnalysisResult {
       diagnostico_expandido: sanitizeText(entry.diagnostico_expandido),
       recomendacao: sanitizeText(entry.recomendacao),
     })),
-    nome_do_lead: value.nome_do_lead
-      ? sanitizeText(value.nome_do_lead)
-      : undefined,
+    nome_do_lead: sanitizeText(normalized.nome_do_lead || ''),
+    status_final: normalized.status_final ?? null,
+    rota: normalized.rota ?? null,
+    produto_principal: normalized.produto_principal ?? null,
+    nota_spin: normalized.nota_spin ?? null,
+    score_proximo_passo: normalized.score_proximo_passo,
   };
 }
 
