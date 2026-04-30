@@ -82,9 +82,9 @@ export async function refreshPendingAudioCall(
     const callDate = hsTimestamp ? new Date(hsTimestamp) : new Date();
     const safeDate = Number.isNaN(callDate.getTime()) ? new Date() : callDate;
 
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
-    if (safeDate < twentyFourHoursAgo) {
+    if (safeDate < thirtyDaysAgo) {
       console.log(
         `⏭️ [OLD] Descarte por antiguidade: ${callId} (${safeDate.toLocaleDateString()}).`
       );

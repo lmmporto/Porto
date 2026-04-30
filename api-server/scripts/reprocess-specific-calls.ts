@@ -6,7 +6,7 @@ import admin from 'firebase-admin';
 import { fetchCall, fetchOwnerDetails } from '../src/services/hubspot.js';
 import { CONFIG } from '../src/config.js';
 
-const CALL_IDS_TO_REPROCESS = ['108720764323'];
+const CALL_IDS_TO_REPROCESS = ['108879315793', '108872394526', '108881898653'];
 
 async function reprocessSpecificCalls() {
   console.log(`\n🚀 [REPROCESS] Iniciando reprocessamento para ${CALL_IDS_TO_REPROCESS.length} chamadas específicas...`);

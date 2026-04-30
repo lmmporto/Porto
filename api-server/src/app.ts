@@ -10,6 +10,7 @@ import statsRouter from './routes/stats.js';
 import { CONFIG } from './config.js';
 import { checkIfAdmin } from './utils/auth.js';
 import { initializeWorkers } from './services/worker.service.js';
+import helpChatRouter from './routes/help-chat.routes.js';
 
 declare global {
   namespace Express {
@@ -38,7 +39,7 @@ const isDev = process.env.NODE_ENV === 'development';
 app.set('trust proxy', 1);
 
 const allowedOrigins = [
-  'https://sdr-pjt.vercel.app', 
+  'https://sdr-pjt.vercel.app',
   'http://localhost:3000',
   'http://localhost:3001'
 ];
@@ -61,11 +62,11 @@ app.use(
     secret: requireConfigValue(CONFIG.SESSION_SECRET, 'SESSION_SECRET'),
     resave: false,
     saveUninitialized: false,
-    proxy: true, 
+    proxy: true,
     cookie: {
       httpOnly: true,
-      secure: true,    
-      sameSite: 'none', 
+      secure: true,
+      sameSite: 'none',
       maxAge: 1000 * 60 * 60 * 24 * 7,
     },
   })
@@ -89,7 +90,7 @@ if (isDev) {
         email: impersonateEmail || 'lucas.porto@nibo.com.br',
         name: impersonateEmail ? `Simulando: ${impersonateEmail}` : 'Lucas Porto (Dev Mode)',
       };
-      
+
       // Realizamos o cast para any para permitir a sobrescrita do predicado de tipo
       (req as any).isAuthenticated = () => true;
     }
@@ -130,7 +131,7 @@ app.get(
   async (req: Request, res: Response) => {
     const userEmail = (req.user as any)?.email || '';
     const isAdmin = await checkIfAdmin(userEmail);
-    const destination = isAdmin ? '/dashboard' : '/dashboard/me';
+    const destination = isAdmin ? '/dashboard' : '/me';
     req.session.save(() => res.redirect(`${CONFIG.FRONTEND_URL}${destination}`));
   }
 );
@@ -165,7 +166,7 @@ app.post('/auth/logout', (req: Request, res: Response, next: NextFunction) => {
         httpOnly: true,
         secure: true,
         sameSite: 'none',
-        path: '/' 
+        path: '/'
       });
       res.json({ success: true });
     });
@@ -173,9 +174,10 @@ app.post('/auth/logout', (req: Request, res: Response, next: NextFunction) => {
 });
 
 app.use('/api/calls', callsRouter);
-app.use('/api', statsRouter); // Alinhado para que /api/stats funcione diretamente
-app.use('/api/sdr-registry', sdrRegistryRouter);
 
+app.use('/api/sdr-registry', sdrRegistryRouter);
+app.use('/api/help-chat', helpChatRouter);
+app.use('/api', statsRouter); // Alinhado para que /api/stats funcione diretamente
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
 // Inicializa os workers (Cron/Retry)

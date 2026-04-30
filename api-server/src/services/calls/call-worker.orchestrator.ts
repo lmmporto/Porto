@@ -105,6 +105,7 @@ const checkAndProcessCalls = async (): Promise<void> => {
         CallRepository.findByStatus(CallStatus.PENDING_AUDIO, {
           limit: 10,
           nextRetryAtBefore: now,
+          includeNullRetry: true,
         }),
         new Promise<FirebaseFirestore.QuerySnapshot>((_, reject) =>
           setTimeout(() => reject(new Error('TIMEOUT_PENDING_AUDIO')), 5_000)

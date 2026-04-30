@@ -98,14 +98,16 @@ export class CallProcessingOrchestrator {
       let finalTranscript = '';
       let transcriptSource: string | null = null;
 
+      const audioUrl = callData.recordingUrl || call.recordingUrl || '';
+      const audioAvailable = !!(callData.hasAudio || call.hasAudio) && !!audioUrl;
+
       if (callData.hasTranscript && callData.transcript) {
         finalTranscript = callData.transcript;
         transcriptSource = callData.transcriptSource || 'HUBSPOT';
 
-      } else if (callData.hasAudio && callData.recordingUrl) {
+      } else if (audioAvailable) {
         await CallRepository.updateStage(callId, 'TRANSCRIBING');
-
-        call.recordingUrl = callData.recordingUrl;
+        call.recordingUrl = audioUrl;
 
         // ✅ CORRIGIDO: Chamada direta ao Orquestrador e label de log precisa
         finalTranscript = await withTimeout(

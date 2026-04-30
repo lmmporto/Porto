@@ -8,11 +8,13 @@
     "build": "tsx ./src/build.ts",
     "start": "node dist/index.cjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "migrate:gaps": "tsx ./scripts/dorSdr.ts"
+    "migrate:gaps": "tsx ./scripts/dorSdr.ts",
+    "ingest": "tsx ./src/scripts/ingest-help-articles.ts"
   },
   "dependencies": {
     "@google/genai": "^1.0.1",
     "@google/generative-ai": "^0.24.1",
+    "@supabase/supabase-js": "^2.105.1",
     "axios": "^1.10.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2",

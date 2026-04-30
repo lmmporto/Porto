@@ -18,13 +18,14 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
         '/dashboard/me',
         '/dashboard/calls',
         '/dashboard/ranking',
-        '/dashboard/sdrs'
+        '/dashboard/sdrs',
+        '/me',
       ];
       const isAllowed = allowedSdrRoutes.some(route => pathname?.startsWith(route));
 
       // Se estiver na raiz do painel de gestão ou em rota não permitida, manda para o painel pessoal
       if (!isAllowed || pathname === '/dashboard') {
-        router.replace('/dashboard/me');
+        router.replace('/me');
       }
     }
   }, [user, isAdmin, pathname, router]);

@@ -191,14 +191,43 @@ export class CallRepository {
     opts: {
       limit?: number;
       nextRetryAtBefore?: FirebaseFirestore.Timestamp;
+      includeNullRetry?: boolean;
     } = {}
-  ): Promise<FirebaseFirestore.QuerySnapshot> {
+  ): Promise<FirebaseFirestore.QuerySnapshot | any> {
     let query: FirebaseFirestore.Query = db.collection(CALLS_COLLECTION);
 
     if (Array.isArray(status)) {
       query = query.where('processingStatus', 'in', status);
     } else {
       query = query.where('processingStatus', '==', status);
+    }
+
+    // Se incluir nulos for solicitado e houver filtro de tempo (FILA 2)
+    if (opts.includeNullRetry && opts.nextRetryAtBefore) {
+      // Query 1: Próxima tentativa agendada e vencida
+      const q1Promise = query
+        .where('nextRetryAt', '<=', opts.nextRetryAtBefore)
+        .orderBy('nextRetryAt', 'asc')
+        .limit(opts.limit ?? 10)
+        .get();
+
+      // Query 2: Próxima tentativa nunca definida (campo inexistente/null)
+      const q2Promise = query
+        .where('nextRetryAt', '==', null)
+        .limit(opts.limit ?? 10)
+        .get();
+
+      const [snap1, snap2] = await Promise.all([q1Promise, q2Promise]);
+
+      // Une os resultados e remove duplicatas por ID (caso existam, embora improvável aqui)
+      const combinedDocs = [...snap1.docs, ...snap2.docs].slice(0, opts.limit ?? 10);
+      
+      return {
+        docs: combinedDocs,
+        empty: combinedDocs.length === 0,
+        size: combinedDocs.length,
+        forEach: (callback: any) => combinedDocs.forEach(callback)
+      };
     }
 
     if (opts.nextRetryAtBefore) {
