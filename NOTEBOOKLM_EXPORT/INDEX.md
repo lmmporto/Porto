@@ -1,256 +1,240 @@
-# INDEX - NotebookLM Export V2
+# INDEX - NOTEBOOKLM EXPORT V3
 
 ## Resumo
+- MODE: B
 - Origem: `C:/Projetos IA/Porto`
 - Saída: `C:/Projetos IA/Porto/NOTEBOOKLM_EXPORT`
-- Total exportado: `229`
+- Total exportado: 205
 
-## Por camada
-- Backend: 77
-- Frontend: 140
-- Config: 0
-- Shared: 12
+## Como usar no NotebookLM (ordem ideal)
+1. INDEX.md
+2. ARCHITECTURE_MAP.md
+3. CORE_FLOW.md
+4. Pasta CRITICAL/
+5. Pasta HIGH/
+6. Depois MEDIUM/LOW/SUPPORT conforme necessidade
 
-## Por prioridade
-- Critical: 14
-- High: 16
-- Medium: 78
-- Low: 121
+---
 
-## Ordem recomendada de upload no NotebookLM
-1. `architecture.md`
-2. `INDEX.md`
-3. Pasta `00_CRITICAL`
-4. Pasta `01_HIGH`
-5. Arquivos específicos de `02_MEDIUM` conforme a tarefa
+## CRITICAL
+- [`.gemini/antigravity/knowledge/analysis-schema-v10.md`](./CRITICAL/.gemini/antigravity/knowledge/analysis-schema-v10.md.md)
+- [`api-server/src/domain/analysis/analysis.constants.ts`](./CRITICAL/api-server/src/domain/analysis/analysis.constants.ts.md)
+- [`api-server/src/domain/analysis/analysis.policy.ts`](./CRITICAL/api-server/src/domain/analysis/analysis.policy.ts.md)
+- [`api-server/src/domain/analysis/analysis.prompts.ts`](./CRITICAL/api-server/src/domain/analysis/analysis.prompts.ts.md)
+- [`api-server/src/domain/analysis/analysis.schemas.ts`](./CRITICAL/api-server/src/domain/analysis/analysis.schemas.ts.md)
+- [`api-server/src/domain/analysis/analysis.types.ts`](./CRITICAL/api-server/src/domain/analysis/analysis.types.ts.md)
+- [`api-server/src/domain/analysis/ranking.logic.ts`](./CRITICAL/api-server/src/domain/analysis/ranking.logic.ts.md)
+- [`api-server/src/infrastructure/ai/gemini.service.ts`](./CRITICAL/api-server/src/infrastructure/ai/gemini.service.ts.md)
+- [`api-server/src/infrastructure/crm/hubspot-call.service.ts`](./CRITICAL/api-server/src/infrastructure/crm/hubspot-call.service.ts.md)
+- [`api-server/src/infrastructure/database/analysis.repository.ts`](./CRITICAL/api-server/src/infrastructure/database/analysis.repository.ts.md)
+- [`api-server/src/infrastructure/database/call.repository.ts`](./CRITICAL/api-server/src/infrastructure/database/call.repository.ts.md)
+- [`api-server/src/infrastructure/database/sdr.repository.ts`](./CRITICAL/api-server/src/infrastructure/database/sdr.repository.ts.md)
+- [`api-server/src/infrastructure/database/worker-lock.repository.ts`](./CRITICAL/api-server/src/infrastructure/database/worker-lock.repository.ts.md)
+- [`api-server/src/services/analysis.orchestrator.ts`](./CRITICAL/api-server/src/services/analysis.orchestrator.ts.md)
+- [`api-server/src/services/analysis.service.ts`](./CRITICAL/api-server/src/services/analysis.service.ts.md)
+- [`api-server/src/services/call-processing.orchestrator.ts`](./CRITICAL/api-server/src/services/call-processing.orchestrator.ts.md)
+- [`api-server/src/services/calls/call-worker.orchestrator.ts`](./CRITICAL/api-server/src/services/calls/call-worker.orchestrator.ts.md)
+- [`api-server/src/services/calls/pending-audio-refresh.orchestrator.ts`](./CRITICAL/api-server/src/services/calls/pending-audio-refresh.orchestrator.ts.md)
+- [`api-server/src/services/webhook.service.ts`](./CRITICAL/api-server/src/services/webhook.service.ts.md)
+- [`api-server/src/services/worker.service.ts`](./CRITICAL/api-server/src/services/worker.service.ts.md)
 
-## Arquivos exportados
-- [critical] `api-server/src/domain/analysis/analysis.constants.ts`
-- [critical] `api-server/src/domain/analysis/analysis.policy.ts`
-- [critical] `api-server/src/domain/analysis/analysis.prompts.ts`
-- [critical] `api-server/src/domain/analysis/analysis.schemas.ts`
-- [critical] `api-server/src/domain/analysis/analysis.types.ts`
-- [critical] `api-server/src/domain/analysis/ranking.logic.ts`
-- [critical] `api-server/src/infrastructure/database/analysis.repository.ts`
-- [critical] `api-server/src/services/analysis.orchestrator.ts`
-- [critical] `api-server/src/services/analysis.service.ts`
-- [critical] `api-server/src/services/calls/call-worker.orchestrator.ts`
-- [critical] `api-server/src/types/analysis.ts`
-- [critical] `frontend/src/features/calls/components/analysis-insights.tsx`
-- [critical] `frontend/src/features/calls/components/CallAnalysis.tsx`
-- [critical] `frontend/src/features/dashboard/components/global-gap-analysis.tsx`
-- [high] `api-server/src/infrastructure/ai/gemini.service.ts`
-- [high] `api-server/src/infrastructure/crm/hubspot-call.service.ts`
-- [high] `api-server/src/infrastructure/database/sdr.repository.ts`
-- [high] `api-server/src/infrastructure/database/worker-lock.repository.ts`
-- [high] `api-server/src/routes/calls.ts`
-- [high] `api-server/src/routes/sdr-registro.ts`
-- [high] `api-server/src/services/call-processing.orchestrator.ts`
-- [high] `api-server/src/services/calls/pending-audio-refresh.orchestrator.ts`
-- [high] `api-server/src/services/hubspot.ts`
-- [high] `api-server/src/services/webhook.service.ts`
-- [high] `api-server/src/services/worker.service.ts`
-- [high] `frontend/src/app/dashboard/calls/[id]/page.tsx`
-- [high] `frontend/src/app/dashboard/calls/page.tsx`
-- [high] `frontend/src/app/dashboard/sdrs/[id]/page.tsx`
-- [high] `frontend/src/app/dashboard/sdrs/page.tsx`
-- [high] `frontend/src/features/gaps/components/gap-analysis-header.tsx`
-- [medium] `ai-context/database_schema.md`
-- [medium] `api-server/chave-firebase.json.json`
-- [medium] `api-server/package.json`
-- [medium] `api-server/scripts/check-calls.ts`
-- [medium] `api-server/scripts/check-hubspot-calls.ts`
-- [medium] `api-server/scripts/check-sdr-metrics.ts`
-- [medium] `api-server/scripts/check-stuck-calls.ts`
-- [medium] `api-server/scripts/migrate-sdr.js`
-- [medium] `api-server/scripts/reprocess-specific-calls.ts`
-- [medium] `api-server/scripts/reset-stuck-calls.ts`
-- [medium] `api-server/src/constants/hubspot.ts`
-- [medium] `api-server/src/firebase.ts`
-- [medium] `api-server/src/infrastructure/database/call.repository.ts`
-- [medium] `api-server/src/infrastructure/storage/temp-file.service.ts`
-- [medium] `api-server/src/middleware/requireAdmin.ts`
-- [medium] `api-server/src/routes/health.ts`
-- [medium] `api-server/src/routes/stats.ts`
-- [medium] `api-server/src/services/coaching.service.ts`
-- [medium] `api-server/src/services/metrics.service.ts`
-- [medium] `api-server/src/services/recupera_ouro.ts`
-- [medium] `api-server/src/services/refreshPendingAudioCall.ts`
-- [medium] `api-server/src/types.d.ts`
-- [medium] `api-server/src/types.ts`
-- [medium] `api-server/src/utils/auth.ts`
-- [medium] `api-server/src/utils/hubspot-parser.ts`
-- [medium] `frontend/package.json`
-- [medium] `frontend/src/app/(dashboard)/calls/[id]/page.tsx`
-- [medium] `frontend/src/app/(dashboard)/calls/page.tsx`
-- [medium] `frontend/src/app/dashboard/coaching/page.tsx`
-- [medium] `frontend/src/app/dashboard/evolution/page.tsx`
-- [medium] `frontend/src/app/dashboard/gaps/[id]/page.tsx`
-- [medium] `frontend/src/app/dashboard/insights/page.tsx`
-- [medium] `frontend/src/app/dashboard/layout.tsx`
-- [medium] `frontend/src/app/dashboard/me/page.tsx`
-- [medium] `frontend/src/app/dashboard/page.tsx`
-- [medium] `frontend/src/app/dashboard/ranking/page.tsx`
-- [medium] `frontend/src/app/dashboard/settings/page.tsx`
-- [medium] `frontend/src/app/dashboard/team/page.tsx`
-- [medium] `frontend/src/app/dashboard/teams/page.tsx`
-- [medium] `frontend/src/app/dashboard/upload/page.tsx`
-- [medium] `frontend/src/components/dashboard/CallCard.tsx`
-- [medium] `frontend/src/components/dashboard/ManualTriggerCard.tsx`
-- [medium] `frontend/src/components/dashboard/SDRCard.tsx`
-- [medium] `frontend/src/components/dashboard/SDRRanking.tsx`
-- [medium] `frontend/src/components/dashboard/SidebarNav.tsx`
-- [medium] `frontend/src/components/dashboard/TeamCard.tsx`
-- [medium] `frontend/src/context/DashboardContext.tsx`
-- [medium] `frontend/src/features/calls/api/calls.service.ts`
-- [medium] `frontend/src/features/calls/components/call-header.tsx`
-- [medium] `frontend/src/features/calls/components/CallFilters.tsx`
-- [medium] `frontend/src/features/calls/components/CallInsights.tsx`
-- [medium] `frontend/src/features/calls/components/CallList.tsx`
-- [medium] `frontend/src/features/calls/components/calls-table.tsx`
-- [medium] `frontend/src/features/calls/components/coaching-timeline.tsx`
-- [medium] `frontend/src/features/calls/components/listening-stats.tsx`
-- [medium] `frontend/src/features/calls/mocks/call-detail.mock.ts`
-- [medium] `frontend/src/features/calls/mocks/calls-list.mock.ts`
-- [medium] `frontend/src/features/calls/mocks/calls.ts`
-- [medium] `frontend/src/features/dashboard/api/dashboard.service.ts`
-- [medium] `frontend/src/features/dashboard/components/ConsolidatedReading.tsx`
-- [medium] `frontend/src/features/dashboard/components/FilterBar.tsx`
-- [medium] `frontend/src/features/dashboard/components/HealthRadar.tsx`
-- [medium] `frontend/src/features/dashboard/components/sdr-leaderboard.tsx`
-- [medium] `frontend/src/features/dashboard/components/SdrProfilePanel.tsx`
-- [medium] `frontend/src/features/dashboard/components/team-stats-grid.tsx`
-- [medium] `frontend/src/features/dashboard/components/TeamStats.tsx`
-- [medium] `frontend/src/features/dashboard/components/TopObjections.tsx`
-- [medium] `frontend/src/features/dashboard/components/TopPerformance.tsx`
-- [medium] `frontend/src/features/dashboard/mocks/team-data.mock.ts`
-- [medium] `frontend/src/features/gaps/components/sdr-impact-list.tsx`
-- [medium] `frontend/src/features/sdrs/components/sdr-insights-summary.tsx`
-- [medium] `frontend/src/features/sdrs/components/sdr-stats-cards.tsx`
-- [medium] `frontend/src/features/sdrs/mocks/sdr-profile.mock.ts`
-- [medium] `frontend/src/hooks/useCallsEngine.ts`
-- [medium] `frontend/src/hooks/useSDRDashboardSync.ts`
-- [medium] `frontend/src/lib/firebase.ts`
-- [medium] `frontend/src/types/call.ts`
-- [medium] `frontend/src/types/index.ts`
-- [low] `.agents/skills/porto-safe-implement/SKILL.md`
-- [low] `.gitignore`
-- [low] `ai-context/agent_prompt.md`
-- [low] `ai-context/architecture.md`
-- [low] `ai-context/coding_rules.md`
-- [low] `ai-context/important_files.md`
-- [low] `ai-context/project_context.md`
-- [low] `ai-context/system_flows.md`
-- [low] `api-server/.env`
-- [low] `api-server/.gitignore`
-- [low] `api-server/avaliacao.ts`
-- [low] `api-server/fix-teams.ts`
-- [low] `api-server/INSTRUCTIONS.MD`
-- [low] `api-server/limpeza.js`
-- [low] `api-server/salvastats.ts`
-- [low] `api-server/scriptgenerico.js`
-- [low] `api-server/scripts/check-full-status.ts`
-- [low] `api-server/scripts/check-owner.ts`
-- [low] `api-server/scripts/check-queue.ts`
-- [low] `api-server/scripts/check-status.ts`
-- [low] `api-server/scripts/debug-process.ts`
-- [low] `api-server/scripts/migrate-registry-ids.js`
-- [low] `api-server/scripts/queue-reprocess.ts`
-- [low] `api-server/scripts/reprocessamento.js`
-- [low] `api-server/scripts/sync-teams.ts`
-- [low] `api-server/scripts/testerefat.ts`
-- [low] `api-server/src/app.ts`
-- [low] `api-server/src/build.ts`
-- [low] `api-server/src/clients.ts`
-- [low] `api-server/src/config.ts`
-- [low] `api-server/src/constants/collections.ts`
-- [low] `api-server/src/index.ts`
-- [low] `api-server/src/scripts/assign-teams.ts`
-- [low] `api-server/src/scripts/find-teams.ts`
-- [low] `api-server/src/scripts/list-registry.ts`
-- [low] `api-server/src/scripts/sync-all.ts`
-- [low] `api-server/src/utils.ts`
-- [low] `api-server/src/utils/timeout.ts`
-- [low] `api-server/tsconfig.json`
-- [low] `CHANGELOG.md`
-- [low] `export-code-to-notebooklm.js`
-- [low] `frontend/.gitignore`
-- [low] `frontend/apphosting.yaml`
-- [low] `frontend/components.json`
-- [low] `frontend/docs/architecture.md`
-- [low] `frontend/docs/blueprint.md`
-- [low] `frontend/next-env.d.ts`
-- [low] `frontend/next.config.ts`
-- [low] `frontend/postcss.config.mjs`
-- [low] `frontend/README.md`
-- [low] `frontend/src/ai/dev.ts`
-- [low] `frontend/src/ai/flows/extract-key-points.ts`
-- [low] `frontend/src/ai/flows/summarize-call.ts`
-- [low] `frontend/src/ai/flows/transcribe-call.ts`
-- [low] `frontend/src/ai/genkit.ts`
-- [low] `frontend/src/app/globals.css`
-- [low] `frontend/src/app/layout.tsx`
-- [low] `frontend/src/app/lib/placeholder-images.json`
-- [low] `frontend/src/app/login/page.tsx`
-- [low] `frontend/src/app/me/page.tsx`
-- [low] `frontend/src/app/page.tsx`
-- [low] `frontend/src/components/layout/header.tsx`
-- [low] `frontend/src/components/layout/sidebar.tsx`
-- [low] `frontend/src/components/theme-provider.tsx`
-- [low] `frontend/src/components/ui/accordion.tsx`
-- [low] `frontend/src/components/ui/alert-dialog.tsx`
-- [low] `frontend/src/components/ui/alert.tsx`
-- [low] `frontend/src/components/ui/avatar.tsx`
-- [low] `frontend/src/components/ui/badge.tsx`
-- [low] `frontend/src/components/ui/button.tsx`
-- [low] `frontend/src/components/ui/calendar.tsx`
-- [low] `frontend/src/components/ui/card.tsx`
-- [low] `frontend/src/components/ui/carousel.tsx`
-- [low] `frontend/src/components/ui/chart.tsx`
-- [low] `frontend/src/components/ui/checkbox.tsx`
-- [low] `frontend/src/components/ui/collapsible.tsx`
-- [low] `frontend/src/components/ui/dialog.tsx`
-- [low] `frontend/src/components/ui/dropdown-menu.tsx`
-- [low] `frontend/src/components/ui/form.tsx`
-- [low] `frontend/src/components/ui/input.tsx`
-- [low] `frontend/src/components/ui/label.tsx`
-- [low] `frontend/src/components/ui/menubar.tsx`
-- [low] `frontend/src/components/ui/nibo-logo.tsx`
-- [low] `frontend/src/components/ui/popover.tsx`
-- [low] `frontend/src/components/ui/progress.tsx`
-- [low] `frontend/src/components/ui/radio-group.tsx`
-- [low] `frontend/src/components/ui/scroll-area.tsx`
-- [low] `frontend/src/components/ui/select.tsx`
-- [low] `frontend/src/components/ui/separator.tsx`
-- [low] `frontend/src/components/ui/sheet.tsx`
-- [low] `frontend/src/components/ui/sidebar.tsx`
-- [low] `frontend/src/components/ui/skeleton.tsx`
-- [low] `frontend/src/components/ui/slider.tsx`
-- [low] `frontend/src/components/ui/switch.tsx`
-- [low] `frontend/src/components/ui/table.tsx`
-- [low] `frontend/src/components/ui/tabs.tsx`
-- [low] `frontend/src/components/ui/textarea.tsx`
-- [low] `frontend/src/components/ui/toast.tsx`
-- [low] `frontend/src/components/ui/toaster.tsx`
-- [low] `frontend/src/components/ui/tooltip.tsx`
-- [low] `frontend/src/context/CallContext.tsx`
-- [low] `frontend/src/features/coaching/components/coaching-priority-list.tsx`
-- [low] `frontend/src/features/coaching/mocks/coaching-queue.mock.ts`
-- [low] `frontend/src/features/evolution/components/evolution-chart.tsx`
-- [low] `frontend/src/features/evolution/components/evolution-table.tsx`
-- [low] `frontend/src/features/evolution/mocks/evolution-data.mock.ts`
-- [low] `frontend/src/features/gaps/mocks/gap-detail.mock.ts`
-- [low] `frontend/src/features/insights/components/ai-recommendations.tsx`
-- [low] `frontend/src/features/insights/components/trend-indicators.tsx`
-- [low] `frontend/src/features/insights/mocks/ai-insights.mock.ts`
-- [low] `frontend/src/hooks/use-mobile.tsx`
-- [low] `frontend/src/hooks/use-toast.ts`
-- [low] `frontend/src/lib/groupers.ts`
-- [low] `frontend/src/lib/metrics.ts`
-- [low] `frontend/src/lib/mock-call.ts`
-- [low] `frontend/src/lib/placeholder-images.json`
-- [low] `frontend/src/lib/placeholder-images.ts`
-- [low] `frontend/src/lib/utils.ts`
-- [low] `frontend/tailwind.config.ts`
-- [low] `frontend/tsconfig.json`
-- [low] `notebooklm-export.config.json`
+---
+
+## HIGH
+- [`api-server/src/app.ts`](./HIGH/api-server/src/app.ts.md)
+- [`api-server/src/clients.ts`](./HIGH/api-server/src/clients.ts.md)
+- [`api-server/src/config.ts`](./HIGH/api-server/src/config.ts.md)
+- [`api-server/src/config/rag.config.ts`](./HIGH/api-server/src/config/rag.config.ts.md)
+- [`api-server/src/constants/hubspot.ts`](./HIGH/api-server/src/constants/hubspot.ts.md)
+- [`api-server/src/firebase.ts`](./HIGH/api-server/src/firebase.ts.md)
+- [`api-server/src/index.ts`](./HIGH/api-server/src/index.ts.md)
+- [`api-server/src/middleware/requireAdmin.ts`](./HIGH/api-server/src/middleware/requireAdmin.ts.md)
+- [`api-server/src/routes/calls.ts`](./HIGH/api-server/src/routes/calls.ts.md)
+- [`api-server/src/routes/health.ts`](./HIGH/api-server/src/routes/health.ts.md)
+- [`api-server/src/routes/help-chat.routes.ts`](./HIGH/api-server/src/routes/help-chat.routes.ts.md)
+- [`api-server/src/routes/sdr-registro.ts`](./HIGH/api-server/src/routes/sdr-registro.ts.md)
+- [`api-server/src/routes/stats.ts`](./HIGH/api-server/src/routes/stats.ts.md)
+- [`api-server/src/services/hubspot.ts`](./HIGH/api-server/src/services/hubspot.ts.md)
+- [`api-server/src/utils/hubspot-parser.ts`](./HIGH/api-server/src/utils/hubspot-parser.ts.md)
+- [`api-server/tsconfig.json`](./HIGH/api-server/tsconfig.json.md)
+- [`frontend/src/lib/firebase.ts`](./HIGH/frontend/src/lib/firebase.ts.md)
+- [`frontend/src/types/index.ts`](./HIGH/frontend/src/types/index.ts.md)
+- [`frontend/tsconfig.json`](./HIGH/frontend/tsconfig.json.md)
+
+---
+
+## MEDIUM
+- [`api-server/src/constants/collections.ts`](./MEDIUM/api-server/src/constants/collections.ts.md)
+- [`api-server/src/types.d.ts`](./MEDIUM/api-server/src/types.d.ts.md)
+- [`api-server/src/types.ts`](./MEDIUM/api-server/src/types.ts.md)
+- [`api-server/src/types/analysis.ts`](./MEDIUM/api-server/src/types/analysis.ts.md)
+- [`api-server/src/utils.ts`](./MEDIUM/api-server/src/utils.ts.md)
+- [`api-server/src/utils/auth.ts`](./MEDIUM/api-server/src/utils/auth.ts.md)
+- [`api-server/src/utils/timeout.ts`](./MEDIUM/api-server/src/utils/timeout.ts.md)
+- [`frontend/src/features/help-chat/types.ts`](./MEDIUM/frontend/src/features/help-chat/types.ts.md)
+- [`frontend/src/lib/utils.ts`](./MEDIUM/frontend/src/lib/utils.ts.md)
+- [`frontend/src/types/call.ts`](./MEDIUM/frontend/src/types/call.ts.md)
+
+---
+
+## LOW
+- [`api-server/src/build.ts`](./LOW/api-server/src/build.ts.md)
+- [`api-server/src/infrastructure/storage/temp-file.service.ts`](./LOW/api-server/src/infrastructure/storage/temp-file.service.ts.md)
+- [`api-server/src/scripts/assign-teams.ts`](./LOW/api-server/src/scripts/assign-teams.ts.md)
+- [`api-server/src/scripts/find-teams.ts`](./LOW/api-server/src/scripts/find-teams.ts.md)
+- [`api-server/src/scripts/ingest-help-articles.ts`](./LOW/api-server/src/scripts/ingest-help-articles.ts.md)
+- [`api-server/src/scripts/list-registry.ts`](./LOW/api-server/src/scripts/list-registry.ts.md)
+- [`api-server/src/scripts/sync-all.ts`](./LOW/api-server/src/scripts/sync-all.ts.md)
+- [`api-server/src/scripts/test-endpoint.ts`](./LOW/api-server/src/scripts/test-endpoint.ts.md)
+- [`api-server/src/services/coaching.service.ts`](./LOW/api-server/src/services/coaching.service.ts.md)
+- [`api-server/src/services/metrics.service.ts`](./LOW/api-server/src/services/metrics.service.ts.md)
+- [`api-server/src/services/rag.service.ts`](./LOW/api-server/src/services/rag.service.ts.md)
+- [`api-server/src/services/recupera_ouro.ts`](./LOW/api-server/src/services/recupera_ouro.ts.md)
+- [`api-server/src/services/refreshPendingAudioCall.ts`](./LOW/api-server/src/services/refreshPendingAudioCall.ts.md)
+- [`frontend/src/ai/dev.ts`](./LOW/frontend/src/ai/dev.ts.md)
+- [`frontend/src/ai/flows/extract-key-points.ts`](./LOW/frontend/src/ai/flows/extract-key-points.ts.md)
+- [`frontend/src/ai/flows/summarize-call.ts`](./LOW/frontend/src/ai/flows/summarize-call.ts.md)
+- [`frontend/src/ai/flows/transcribe-call.ts`](./LOW/frontend/src/ai/flows/transcribe-call.ts.md)
+- [`frontend/src/ai/genkit.ts`](./LOW/frontend/src/ai/genkit.ts.md)
+- [`frontend/src/app/(dashboard)/calls/[id]/page.tsx`](./LOW/frontend/src/app/(dashboard)/calls/[id]/page.tsx.md)
+- [`frontend/src/app/(dashboard)/calls/page.tsx`](./LOW/frontend/src/app/(dashboard)/calls/page.tsx.md)
+- [`frontend/src/app/dashboard/calls/[id]/page.tsx`](./LOW/frontend/src/app/dashboard/calls/[id]/page.tsx.md)
+- [`frontend/src/app/dashboard/calls/page.tsx`](./LOW/frontend/src/app/dashboard/calls/page.tsx.md)
+- [`frontend/src/app/dashboard/coaching/page.tsx`](./LOW/frontend/src/app/dashboard/coaching/page.tsx.md)
+- [`frontend/src/app/dashboard/evolution/page.tsx`](./LOW/frontend/src/app/dashboard/evolution/page.tsx.md)
+- [`frontend/src/app/dashboard/gaps/[id]/page.tsx`](./LOW/frontend/src/app/dashboard/gaps/[id]/page.tsx.md)
+- [`frontend/src/app/dashboard/insights/page.tsx`](./LOW/frontend/src/app/dashboard/insights/page.tsx.md)
+- [`frontend/src/app/dashboard/layout.tsx`](./LOW/frontend/src/app/dashboard/layout.tsx.md)
+- [`frontend/src/app/dashboard/me/page.tsx`](./LOW/frontend/src/app/dashboard/me/page.tsx.md)
+- [`frontend/src/app/dashboard/page.tsx`](./LOW/frontend/src/app/dashboard/page.tsx.md)
+- [`frontend/src/app/dashboard/ranking/page.tsx`](./LOW/frontend/src/app/dashboard/ranking/page.tsx.md)
+- [`frontend/src/app/dashboard/sdrs/[id]/page.tsx`](./LOW/frontend/src/app/dashboard/sdrs/[id]/page.tsx.md)
+- [`frontend/src/app/dashboard/sdrs/page.tsx`](./LOW/frontend/src/app/dashboard/sdrs/page.tsx.md)
+- [`frontend/src/app/dashboard/settings/page.tsx`](./LOW/frontend/src/app/dashboard/settings/page.tsx.md)
+- [`frontend/src/app/dashboard/team/page.tsx`](./LOW/frontend/src/app/dashboard/team/page.tsx.md)
+- [`frontend/src/app/dashboard/teams/page.tsx`](./LOW/frontend/src/app/dashboard/teams/page.tsx.md)
+- [`frontend/src/app/dashboard/upload/page.tsx`](./LOW/frontend/src/app/dashboard/upload/page.tsx.md)
+- [`frontend/src/app/globals.css`](./LOW/frontend/src/app/globals.css.md)
+- [`frontend/src/app/help-chat/page.tsx`](./LOW/frontend/src/app/help-chat/page.tsx.md)
+- [`frontend/src/app/layout.tsx`](./LOW/frontend/src/app/layout.tsx.md)
+- [`frontend/src/app/lib/placeholder-images.json`](./LOW/frontend/src/app/lib/placeholder-images.json.md)
+- [`frontend/src/app/login/page.tsx`](./LOW/frontend/src/app/login/page.tsx.md)
+- [`frontend/src/app/me/page.tsx`](./LOW/frontend/src/app/me/page.tsx.md)
+- [`frontend/src/app/page.tsx`](./LOW/frontend/src/app/page.tsx.md)
+- [`frontend/src/components/dashboard/CallCard.tsx`](./LOW/frontend/src/components/dashboard/CallCard.tsx.md)
+- [`frontend/src/components/dashboard/ManualTriggerCard.tsx`](./LOW/frontend/src/components/dashboard/ManualTriggerCard.tsx.md)
+- [`frontend/src/components/dashboard/SDRCard.tsx`](./LOW/frontend/src/components/dashboard/SDRCard.tsx.md)
+- [`frontend/src/components/dashboard/SDRRanking.tsx`](./LOW/frontend/src/components/dashboard/SDRRanking.tsx.md)
+- [`frontend/src/components/dashboard/SidebarNav.tsx`](./LOW/frontend/src/components/dashboard/SidebarNav.tsx.md)
+- [`frontend/src/components/dashboard/TeamCard.tsx`](./LOW/frontend/src/components/dashboard/TeamCard.tsx.md)
+- [`frontend/src/components/layout/header.tsx`](./LOW/frontend/src/components/layout/header.tsx.md)
+- [`frontend/src/components/layout/sidebar.tsx`](./LOW/frontend/src/components/layout/sidebar.tsx.md)
+- [`frontend/src/components/theme-provider.tsx`](./LOW/frontend/src/components/theme-provider.tsx.md)
+- [`frontend/src/components/ui/accordion.tsx`](./LOW/frontend/src/components/ui/accordion.tsx.md)
+- [`frontend/src/components/ui/alert-dialog.tsx`](./LOW/frontend/src/components/ui/alert-dialog.tsx.md)
+- [`frontend/src/components/ui/alert.tsx`](./LOW/frontend/src/components/ui/alert.tsx.md)
+- [`frontend/src/components/ui/avatar.tsx`](./LOW/frontend/src/components/ui/avatar.tsx.md)
+- [`frontend/src/components/ui/badge.tsx`](./LOW/frontend/src/components/ui/badge.tsx.md)
+- [`frontend/src/components/ui/button.tsx`](./LOW/frontend/src/components/ui/button.tsx.md)
+- [`frontend/src/components/ui/calendar.tsx`](./LOW/frontend/src/components/ui/calendar.tsx.md)
+- [`frontend/src/components/ui/card.tsx`](./LOW/frontend/src/components/ui/card.tsx.md)
+- [`frontend/src/components/ui/carousel.tsx`](./LOW/frontend/src/components/ui/carousel.tsx.md)
+- [`frontend/src/components/ui/chart.tsx`](./LOW/frontend/src/components/ui/chart.tsx.md)
+- [`frontend/src/components/ui/checkbox.tsx`](./LOW/frontend/src/components/ui/checkbox.tsx.md)
+- [`frontend/src/components/ui/collapsible.tsx`](./LOW/frontend/src/components/ui/collapsible.tsx.md)
+- [`frontend/src/components/ui/dialog.tsx`](./LOW/frontend/src/components/ui/dialog.tsx.md)
+- [`frontend/src/components/ui/dropdown-menu.tsx`](./LOW/frontend/src/components/ui/dropdown-menu.tsx.md)
+- [`frontend/src/components/ui/form.tsx`](./LOW/frontend/src/components/ui/form.tsx.md)
+- [`frontend/src/components/ui/input.tsx`](./LOW/frontend/src/components/ui/input.tsx.md)
+- [`frontend/src/components/ui/label.tsx`](./LOW/frontend/src/components/ui/label.tsx.md)
+- [`frontend/src/components/ui/menubar.tsx`](./LOW/frontend/src/components/ui/menubar.tsx.md)
+- [`frontend/src/components/ui/nibo-logo.tsx`](./LOW/frontend/src/components/ui/nibo-logo.tsx.md)
+- [`frontend/src/components/ui/popover.tsx`](./LOW/frontend/src/components/ui/popover.tsx.md)
+- [`frontend/src/components/ui/progress.tsx`](./LOW/frontend/src/components/ui/progress.tsx.md)
+- [`frontend/src/components/ui/radio-group.tsx`](./LOW/frontend/src/components/ui/radio-group.tsx.md)
+- [`frontend/src/components/ui/scroll-area.tsx`](./LOW/frontend/src/components/ui/scroll-area.tsx.md)
+- [`frontend/src/components/ui/select.tsx`](./LOW/frontend/src/components/ui/select.tsx.md)
+- [`frontend/src/components/ui/separator.tsx`](./LOW/frontend/src/components/ui/separator.tsx.md)
+- [`frontend/src/components/ui/sheet.tsx`](./LOW/frontend/src/components/ui/sheet.tsx.md)
+- [`frontend/src/components/ui/sidebar.tsx`](./LOW/frontend/src/components/ui/sidebar.tsx.md)
+- [`frontend/src/components/ui/skeleton.tsx`](./LOW/frontend/src/components/ui/skeleton.tsx.md)
+- [`frontend/src/components/ui/slider.tsx`](./LOW/frontend/src/components/ui/slider.tsx.md)
+- [`frontend/src/components/ui/switch.tsx`](./LOW/frontend/src/components/ui/switch.tsx.md)
+- [`frontend/src/components/ui/table.tsx`](./LOW/frontend/src/components/ui/table.tsx.md)
+- [`frontend/src/components/ui/tabs.tsx`](./LOW/frontend/src/components/ui/tabs.tsx.md)
+- [`frontend/src/components/ui/textarea.tsx`](./LOW/frontend/src/components/ui/textarea.tsx.md)
+- [`frontend/src/components/ui/toast.tsx`](./LOW/frontend/src/components/ui/toast.tsx.md)
+- [`frontend/src/components/ui/toaster.tsx`](./LOW/frontend/src/components/ui/toaster.tsx.md)
+- [`frontend/src/components/ui/tooltip.tsx`](./LOW/frontend/src/components/ui/tooltip.tsx.md)
+- [`frontend/src/context/CallContext.tsx`](./LOW/frontend/src/context/CallContext.tsx.md)
+- [`frontend/src/context/DashboardContext.tsx`](./LOW/frontend/src/context/DashboardContext.tsx.md)
+- [`frontend/src/features/calls/api/calls.service.ts`](./LOW/frontend/src/features/calls/api/calls.service.ts.md)
+- [`frontend/src/features/calls/components/analysis-insights.tsx`](./LOW/frontend/src/features/calls/components/analysis-insights.tsx.md)
+- [`frontend/src/features/calls/components/call-header.tsx`](./LOW/frontend/src/features/calls/components/call-header.tsx.md)
+- [`frontend/src/features/calls/components/CallAnalysis.tsx`](./LOW/frontend/src/features/calls/components/CallAnalysis.tsx.md)
+- [`frontend/src/features/calls/components/CallFilters.tsx`](./LOW/frontend/src/features/calls/components/CallFilters.tsx.md)
+- [`frontend/src/features/calls/components/CallInsights.tsx`](./LOW/frontend/src/features/calls/components/CallInsights.tsx.md)
+- [`frontend/src/features/calls/components/CallList.tsx`](./LOW/frontend/src/features/calls/components/CallList.tsx.md)
+- [`frontend/src/features/calls/components/calls-table.tsx`](./LOW/frontend/src/features/calls/components/calls-table.tsx.md)
+- [`frontend/src/features/calls/components/coaching-timeline.tsx`](./LOW/frontend/src/features/calls/components/coaching-timeline.tsx.md)
+- [`frontend/src/features/calls/components/listening-stats.tsx`](./LOW/frontend/src/features/calls/components/listening-stats.tsx.md)
+- [`frontend/src/features/calls/mocks/call-detail.mock.ts`](./LOW/frontend/src/features/calls/mocks/call-detail.mock.ts.md)
+- [`frontend/src/features/calls/mocks/calls-list.mock.ts`](./LOW/frontend/src/features/calls/mocks/calls-list.mock.ts.md)
+- [`frontend/src/features/calls/mocks/calls.ts`](./LOW/frontend/src/features/calls/mocks/calls.ts.md)
+- [`frontend/src/features/coaching/components/coaching-priority-list.tsx`](./LOW/frontend/src/features/coaching/components/coaching-priority-list.tsx.md)
+- [`frontend/src/features/coaching/mocks/coaching-queue.mock.ts`](./LOW/frontend/src/features/coaching/mocks/coaching-queue.mock.ts.md)
+- [`frontend/src/features/dashboard/api/dashboard.service.ts`](./LOW/frontend/src/features/dashboard/api/dashboard.service.ts.md)
+- [`frontend/src/features/dashboard/components/ConsolidatedReading.tsx`](./LOW/frontend/src/features/dashboard/components/ConsolidatedReading.tsx.md)
+- [`frontend/src/features/dashboard/components/FilterBar.tsx`](./LOW/frontend/src/features/dashboard/components/FilterBar.tsx.md)
+- [`frontend/src/features/dashboard/components/global-gap-analysis.tsx`](./LOW/frontend/src/features/dashboard/components/global-gap-analysis.tsx.md)
+- [`frontend/src/features/dashboard/components/HealthRadar.tsx`](./LOW/frontend/src/features/dashboard/components/HealthRadar.tsx.md)
+- [`frontend/src/features/dashboard/components/sdr-leaderboard.tsx`](./LOW/frontend/src/features/dashboard/components/sdr-leaderboard.tsx.md)
+- [`frontend/src/features/dashboard/components/SdrProfilePanel.tsx`](./LOW/frontend/src/features/dashboard/components/SdrProfilePanel.tsx.md)
+- [`frontend/src/features/dashboard/components/team-stats-grid.tsx`](./LOW/frontend/src/features/dashboard/components/team-stats-grid.tsx.md)
+- [`frontend/src/features/dashboard/components/TeamStats.tsx`](./LOW/frontend/src/features/dashboard/components/TeamStats.tsx.md)
+- [`frontend/src/features/dashboard/components/TopObjections.tsx`](./LOW/frontend/src/features/dashboard/components/TopObjections.tsx.md)
+- [`frontend/src/features/dashboard/components/TopPerformance.tsx`](./LOW/frontend/src/features/dashboard/components/TopPerformance.tsx.md)
+- [`frontend/src/features/dashboard/mocks/team-data.mock.ts`](./LOW/frontend/src/features/dashboard/mocks/team-data.mock.ts.md)
+- [`frontend/src/features/evolution/components/evolution-chart.tsx`](./LOW/frontend/src/features/evolution/components/evolution-chart.tsx.md)
+- [`frontend/src/features/evolution/components/evolution-table.tsx`](./LOW/frontend/src/features/evolution/components/evolution-table.tsx.md)
+- [`frontend/src/features/evolution/mocks/evolution-data.mock.ts`](./LOW/frontend/src/features/evolution/mocks/evolution-data.mock.ts.md)
+- [`frontend/src/features/gaps/components/gap-analysis-header.tsx`](./LOW/frontend/src/features/gaps/components/gap-analysis-header.tsx.md)
+- [`frontend/src/features/gaps/components/sdr-impact-list.tsx`](./LOW/frontend/src/features/gaps/components/sdr-impact-list.tsx.md)
+- [`frontend/src/features/gaps/mocks/gap-detail.mock.ts`](./LOW/frontend/src/features/gaps/mocks/gap-detail.mock.ts.md)
+- [`frontend/src/features/help-chat/components/ChatInput.tsx`](./LOW/frontend/src/features/help-chat/components/ChatInput.tsx.md)
+- [`frontend/src/features/help-chat/components/ChatMessage.tsx`](./LOW/frontend/src/features/help-chat/components/ChatMessage.tsx.md)
+- [`frontend/src/features/help-chat/components/FeedbackButtons.tsx`](./LOW/frontend/src/features/help-chat/components/FeedbackButtons.tsx.md)
+- [`frontend/src/features/help-chat/components/HelpChat.tsx`](./LOW/frontend/src/features/help-chat/components/HelpChat.tsx.md)
+- [`frontend/src/features/help-chat/components/SourceCards.tsx`](./LOW/frontend/src/features/help-chat/components/SourceCards.tsx.md)
+- [`frontend/src/features/help-chat/hooks/useHelpChat.ts`](./LOW/frontend/src/features/help-chat/hooks/useHelpChat.ts.md)
+- [`frontend/src/features/insights/components/ai-recommendations.tsx`](./LOW/frontend/src/features/insights/components/ai-recommendations.tsx.md)
+- [`frontend/src/features/insights/components/trend-indicators.tsx`](./LOW/frontend/src/features/insights/components/trend-indicators.tsx.md)
+- [`frontend/src/features/insights/mocks/ai-insights.mock.ts`](./LOW/frontend/src/features/insights/mocks/ai-insights.mock.ts.md)
+- [`frontend/src/features/sdrs/components/sdr-insights-summary.tsx`](./LOW/frontend/src/features/sdrs/components/sdr-insights-summary.tsx.md)
+- [`frontend/src/features/sdrs/components/sdr-stats-cards.tsx`](./LOW/frontend/src/features/sdrs/components/sdr-stats-cards.tsx.md)
+- [`frontend/src/features/sdrs/mocks/sdr-profile.mock.ts`](./LOW/frontend/src/features/sdrs/mocks/sdr-profile.mock.ts.md)
+- [`frontend/src/hooks/use-mobile.tsx`](./LOW/frontend/src/hooks/use-mobile.tsx.md)
+- [`frontend/src/hooks/use-toast.ts`](./LOW/frontend/src/hooks/use-toast.ts.md)
+- [`frontend/src/hooks/useCallsEngine.ts`](./LOW/frontend/src/hooks/useCallsEngine.ts.md)
+- [`frontend/src/hooks/useSDRDashboardSync.ts`](./LOW/frontend/src/hooks/useSDRDashboardSync.ts.md)
+- [`frontend/src/lib/groupers.ts`](./LOW/frontend/src/lib/groupers.ts.md)
+- [`frontend/src/lib/metrics.ts`](./LOW/frontend/src/lib/metrics.ts.md)
+- [`frontend/src/lib/mock-call.ts`](./LOW/frontend/src/lib/mock-call.ts.md)
+- [`frontend/src/lib/placeholder-images.json`](./LOW/frontend/src/lib/placeholder-images.json.md)
+- [`frontend/src/lib/placeholder-images.ts`](./LOW/frontend/src/lib/placeholder-images.ts.md)
+
+---
+
+## SUPPORT
+- [`.agents/skills/porto-safe-implement/SKILL.md`](./SUPPORT/.agents/skills/porto-safe-implement/SKILL.md.md)
+- [`.gemini/antigravity/knowledge/context-export-pattern.md`](./SUPPORT/.gemini/antigravity/knowledge/context-export-pattern.md.md)
+- [`.gemini/antigravity/knowledge/firestore-listeners-pattern.md`](./SUPPORT/.gemini/antigravity/knowledge/firestore-listeners-pattern.md.md)
+- [`.gemini/antigravity/knowledge/firestore-migration-pattern.md`](./SUPPORT/.gemini/antigravity/knowledge/firestore-migration-pattern.md.md)
+- [`.gemini/antigravity/knowledge/README.md`](./SUPPORT/.gemini/antigravity/knowledge/README.md.md)
+- [`api-server/package.json`](./SUPPORT/api-server/package.json.md)
+- [`CHANGELOG.md`](./SUPPORT/CHANGELOG.md.md)
+- [`frontend/docs/architecture.md`](./SUPPORT/frontend/docs/architecture.md.md)
+- [`frontend/docs/blueprint.md`](./SUPPORT/frontend/docs/blueprint.md.md)
+- [`frontend/package.json`](./SUPPORT/frontend/package.json.md)
+- [`frontend/README.md`](./SUPPORT/frontend/README.md.md)
+- [`package.json`](./SUPPORT/package.json.md)

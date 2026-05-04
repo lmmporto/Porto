@@ -372,4 +372,117 @@ router.post('/worker/run', requireAdmin, async (req: Request, res: Response) => 
   }
 });
 
+/**
+ * GET /ranking
+ * Agrega calls por SDR com filtros de período, time e rota.
+ * Substitui o onSnapshot de calls_analysis no frontend.
+ */
+router.get('/ranking', async (req: Request, res: Response) => {
+  try {
+    if (!req.isAuthenticated()) return res.status(401).send();
+
+    const { team, period, route } = req.query;
+    const teamStr = team as string;
+    const periodStr = (period as string) || 'Tudo';
+    const routeStr = (route as string) || 'all';
+
+    // Busca emails do time via sdr_registry
+    let membersQuery: FirebaseFirestore.Query = db.collection('sdr_registry')
+      .where('isActive', '==', true);
+
+    if (teamStr && teamStr !== 'all' && teamStr !== 'Todos os squads') {
+      membersQuery = membersQuery.where('assignedTeam', '==', teamStr);
+    }
+
+    const membersSnap = await membersQuery.get();
+    const teamEmails = membersSnap.docs
+      .map(d => (d.data().email as string)?.toLowerCase().trim())
+      .filter(Boolean);
+
+    if (teamEmails.length === 0) {
+      return res.json([]);
+    }
+
+    // Filtro de período
+    let startDate: Date | null = null;
+    if (periodStr !== 'Tudo') {
+      startDate = new Date();
+      if (periodStr === 'Hoje') startDate.setHours(0, 0, 0, 0);
+      else if (periodStr === '7D') startDate.setDate(startDate.getDate() - 7);
+      else if (periodStr === '30D') startDate.setDate(startDate.getDate() - 30);
+    }
+
+    // Busca calls em chunks de 30 (limite do Firestore para 'in')
+    const chunks: string[][] = [];
+    for (let i = 0; i < teamEmails.length; i += 30) {
+      chunks.push(teamEmails.slice(i, i + 30));
+    }
+
+    const allCalls: any[] = [];
+
+    for (const chunk of chunks) {
+      let q: FirebaseFirestore.Query = db.collection(CALLS_COLLECTION)
+        .where('ownerEmail', 'in', chunk)
+        .where('processingStatus', '==', 'DONE');
+
+      if (startDate) {
+        q = q.where('callTimestamp', '>=',
+          admin.firestore.Timestamp.fromDate(startDate));
+      }
+
+      if (routeStr !== 'all') {
+        q = q.where('rota', '==', `ROTA_${routeStr.toUpperCase()}`);
+      }
+
+      const snap = await q.get();
+      snap.docs.forEach(doc => allCalls.push(doc.data()));
+    }
+
+    // Agrega por SDR
+    const sdrMap: Record<string, {
+      name: string;
+      picture?: string;
+      teamName?: string;
+      total_calls: number;
+      totalScore: number;
+    }> = {};
+
+    allCalls.forEach(d => {
+      const email = d.ownerEmail;
+      if (!email) return;
+      if (!sdrMap[email]) {
+        sdrMap[email] = {
+          name: d.ownerName || email,
+          picture: d.ownerPicture,
+          teamName: d.teamName,
+          total_calls: 0,
+          totalScore: 0,
+        };
+      }
+      sdrMap[email].total_calls += 1;
+      sdrMap[email].totalScore += d.nota_spin || 0;
+    });
+
+    const ranking = Object.entries(sdrMap).map(([email, data]) => ({
+      id: email.replace(/\./g, '_'),
+      email,
+      name: data.name,
+      picture: data.picture,
+      teamName: data.teamName,
+      total_calls: data.total_calls,
+      real_average: data.total_calls > 0
+        ? Number((data.totalScore / data.total_calls).toFixed(2))
+        : 0,
+      ranking_score: data.total_calls > 0
+        ? Number((data.totalScore / data.total_calls).toFixed(2))
+        : 0,
+    })).sort((a, b) => b.real_average - a.real_average);
+
+    return res.json(ranking);
+  } catch (error: any) {
+    console.error('Erro em GET /ranking:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

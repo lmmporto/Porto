@@ -5,7 +5,7 @@ import { collection, onSnapshot, doc } from 'firebase/firestore';
 import { HealthRadar } from '@/features/dashboard/components/HealthRadar';
 import { ConsolidatedReading } from '@/features/dashboard/components/ConsolidatedReading';
 import Link from 'next/link';
-import { subscribeToGlobalStats, subscribeToRanking, getKPIs } from '@/features/dashboard/api/dashboard.service';
+import { getRanking, getKPIs } from '@/features/dashboard/api/dashboard.service';
 import { getInitials } from '@/lib/utils';
 import { useDashboard } from '@/context/DashboardContext';
 
@@ -20,18 +20,12 @@ export default function DashboardPage() {
   const [globalStats, setGlobalStats] = useState<any>(null);
   const [summaryData, setSummaryData] = useState<any>(null);
 
-  // Subscribe to SDRs for the scatter chart and ranking
+  // Unificado: Busca KPIs e Ranking via REST API (Backend Sovereignty)
   useEffect(() => {
-    const unsubSdrs = subscribeToRanking(activePeriod, currentTeam, activeRoute, setRanking);
-    return () => unsubSdrs();
-  }, [activePeriod, currentTeam, activeRoute]);
-
-  // Fetch KPIs via REST API (Backend Sovereignty)
-  useEffect(() => {
-    const fetchKPIs = async () => {
+    const fetchData = async () => {
       try {
+        // 1. Busca KPIs
         const stats = await getKPIs(activePeriod, currentTeam, activeRoute);
-        // Adaptando nomes de campos do backend para o frontend
         const adaptedStats = {
           totalCalls: stats.total_calls ?? 0,
           teamAverage: stats.media_geral ?? 0,
@@ -45,16 +39,21 @@ export default function DashboardPage() {
         };
         setGlobalStats(adaptedStats);
         setSummaryData(adaptedStats.leitura_consolidada || null);
+
+        // 2. Busca Ranking
+        const rankingData = await getRanking(activePeriod, currentTeam, activeRoute);
+        setRanking(rankingData);
+
       } catch (err) {
-        console.error("Erro ao carregar KPIs:", err);
+        console.error("Erro ao carregar dados do dashboard:", err);
       }
     };
 
-    fetchKPIs();
-    // Opcional: Polling a cada 30s se quiser "pseudo real-time" para squads
-    const interval = setInterval(fetchKPIs, 30000);
+    fetchData();
+    const interval = setInterval(fetchData, 60000); // Polling a cada 60s
     return () => clearInterval(interval);
   }, [activePeriod, currentTeam, activeRoute]);
+
 
   const sortedGaps = globalStats?.recurrent_gaps
     ? Object.entries(globalStats.recurrent_gaps)

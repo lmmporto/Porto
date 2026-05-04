@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { subscribeToRanking } from "@/features/dashboard/api/dashboard.service";
+import { getRanking } from "@/features/dashboard/api/dashboard.service";
 import { cn, getInitials } from "@/lib/utils";
 
 interface TopPerformanceProps {
@@ -16,9 +16,20 @@ export const TopPerformance = ({ filters }: TopPerformanceProps) => {
   const currentRoute = filters?.route || 'all';
 
   useEffect(() => {
-    const unsubscribe = subscribeToRanking(currentPeriod, currentTeam, currentRoute, setSdrs);
-    return () => unsubscribe();
+    const fetchRanking = async () => {
+      try {
+        const data = await getRanking(currentPeriod, currentTeam, currentRoute);
+        setSdrs(data);
+      } catch (err) {
+        console.error("Erro ao carregar ranking:", err);
+      }
+    };
+    
+    fetchRanking();
+    const interval = setInterval(fetchRanking, 60000); // Polling a cada 60s
+    return () => clearInterval(interval);
   }, [currentPeriod, currentTeam, currentRoute]);
+
 
   return (
     <div className="glass-card p-6 rounded-[24px] border border-white/5">
