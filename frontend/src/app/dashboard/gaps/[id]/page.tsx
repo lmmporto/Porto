@@ -1,3 +1,5 @@
+"use client";
+
 import { useState } from "react"
 import { gapDetailMock } from "@/features/gaps/mocks/gap-detail.mock"
 import { GapAnalysisHeader } from "@/features/gaps/components/gap-analysis-header"

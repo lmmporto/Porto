@@ -1,3 +1,5 @@
+"use client";
+
 import { useState } from "react"
 import { callsListMock } from "@/features/calls/mocks/calls-list.mock"
 import { CallsTable } from "@/features/calls/components/calls-table"
