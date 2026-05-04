@@ -3,3 +3,4 @@ ai-context/
 NOTEBOOKLM_EXPORT/ 
 
 node_modules/
+.env*
