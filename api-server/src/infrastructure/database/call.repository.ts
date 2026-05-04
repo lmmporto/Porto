@@ -204,29 +204,36 @@ export class CallRepository {
 
     // Se incluir nulos for solicitado e houver filtro de tempo (FILA 2)
     if (opts.includeNullRetry && opts.nextRetryAtBefore) {
-      // Query 1: Próxima tentativa agendada e vencida
-      const q1Promise = query
+      const baseQuery = Array.isArray(status)
+        ? db.collection(CALLS_COLLECTION).where('processingStatus', 'in', status)
+        : db.collection(CALLS_COLLECTION).where('processingStatus', '==', status);
+
+      // Query 1: nextRetryAt existe e já venceu
+      const q1Promise = baseQuery
         .where('nextRetryAt', '<=', opts.nextRetryAtBefore)
         .orderBy('nextRetryAt', 'asc')
         .limit(opts.limit ?? 10)
         .get();
 
-      // Query 2: Próxima tentativa nunca definida (campo inexistente/null)
-      const q2Promise = query
-        .where('nextRetryAt', '==', null)
+      // Query 2: nextRetryAt não existe (campo ausente no documento)
+      // Nota: No Firestore, orderBy também atua como um filtro de existência do campo
+      const q2Promise = baseQuery
+        .orderBy('createdAt', 'asc')
         .limit(opts.limit ?? 10)
         .get();
 
       const [snap1, snap2] = await Promise.all([q1Promise, q2Promise]);
 
-      // Une os resultados e remove duplicatas por ID (caso existam, embora improvável aqui)
-      const combinedDocs = [...snap1.docs, ...snap2.docs].slice(0, opts.limit ?? 10);
-      
+      // Merge sem duplicatas
+      const snap1Ids = new Set(snap1.docs.map(d => d.id));
+      const uniqueQ2 = snap2.docs.filter(d => !snap1Ids.has(d.id));
+      const combinedDocs = [...snap1.docs, ...uniqueQ2].slice(0, opts.limit ?? 10);
+
       return {
         docs: combinedDocs,
         empty: combinedDocs.length === 0,
         size: combinedDocs.length,
-        forEach: (callback: any) => combinedDocs.forEach(callback)
+        forEach: (callback: any) => combinedDocs.forEach(callback),
       };
     }
 
