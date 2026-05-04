@@ -48,13 +48,31 @@ O **Porto** é um ecossistema de monitoramento e análise de performance para **
 4.  **Consumo de Dados**: O Dashboard consome agregados pré-calculados na coleção `dashboard_stats` em vez de consultar calls individuais, garantindo performance e baixo custo de leitura no Firestore.
 5.  **Tratamento de Erros**: Falhas na IA devem resultar em status `FAILED_ANALYSIS` com log detalhado, nunca silenciando o erro.
 
-## 💡 Decisões Importantes
-- **Metodologia SPIN**: A análise de IA é estritamente orientada a identificar perguntas de Situação, Problema, Implicação e Necessidade de Solução.
+## 💡 Decisões Importantes e Atualizações
+- **Metodologia SPIN**: A análise de IA é estritamente orientada a identificar perguntas de Situação, Problema, Implicação e Necessidade de Solução. O prompt do "Mestre Mentor" exige rastreamento dos 5 estados (Rapport, Dor, Objeções, Controle, Próximo Passo) em cada turno.
 - **Métrica Dual**: 
     - `real_average`: Média aritmética simples para relatórios gerenciais.
     - `ranking_score`: Média Bayesiana ("Turbo") para o Ranking, evitando que SDRs com poucas calls (ex: 1 call nota 10) dominem o topo injustamente.
-- **Pipeline Unificado**: Optou-se por usar o Gemini para transcrição e análise simultânea, reduzindo latência e custo em comparação ao uso de modelos separados (ex: Whisper + GPT).
-- **Hospedagem**: Backend no Render (pela facilidade com Node/Express) e Frontend na Vercel (otimização Next.js).
+- **Pipeline Unificado**: Optou-se por usar o Gemini para transcrição e análise simultânea, reduzindo latência e custo.
+- **Fallback de Áudio Fresco**: O orquestrador agora prioriza dados recém-buscados do HubSpot (recordingUrl) em detrimento do cache do Firestore, resolvendo o problema de ligações travadas sem áudio.
+- **Recuperação de Chamadas "Órfãs"**: O Repositório agora utiliza `includeNullRetry` para fazer merges de queries paralelas, recuperando documentos presos em `PENDING_AUDIO` sem campo `nextRetryAt`.
+- **Limite de Descarte por Antiguidade**: Aumentado de 24 horas para 30 dias na fila `PENDING_AUDIO` (OLD_CALL_PURGE), permitindo tempo adequado para recuperação de áudios atrasados.
+- **Defensiva no Frontend**: Componentes que exibem dados da IA (como o `CallInsights.tsx` e `SdrProfilePanel.tsx`) possuem "guards" defensivos (ex: validar se `insights_estrategicos` é um array de objetos ou se `score_proximo_passo` existe) para evitar quebra ao processar dados históricos.
+- **Métrica "Próximo Passo"**: Implementada a visualização do `score_proximo_passo` no Flight Deck do SDR (KPI card e barra de progresso) e no Health Radar. O cálculo da média consolidada (`media_proximo_passo`) ignora registros ausentes ou zerados para não distorcer a performance histórica.
+- **Validação e Normalização com Zod**: Migrada a validação de respostas da IA para Zod (`analysis.schemas.ts`). O sistema utiliza `ANALYSIS_RESPONSE_SCHEMA.parse()` dentro de `normalizeAnalysisResult` para garantir que campos opcionais recebam valores padrão (defaults) antes de qualquer operação de mapeamento ou sanitização, eliminando erros de `undefined.map()`.
+- **Justiça Contextual (Prompt V10)**: O motor de IA ("Mestre Mentor") foi atualizado com regras estritas de "Justiça Contextual". Ele é instruído a não penalizar o SDR por problemas técnicos (áudio ruim, queda de ligação) ou por leads que não são o interlocutor correto. O foco da nota mudou para a **Capacidade de Adaptação** e **Gestão Estratégica** dos estados da conversa.
+- **Persistência com Fallback Logístico**: O orquestrador (`call-processing.orchestrator.ts`) implementa um fallback matemático para o `score_proximo_passo` (`10 - dominio - dor`) caso a IA não o retorne em modelos antigos. Além disso, utiliza `JSON.parse(JSON.stringify())` para sanitizar o payload antes do Firestore, removendo campos `undefined` que causariam falha na escrita.
+- **Defensiva no Frontend**: Componentes como `CallInsights.tsx` e `SdrProfilePanel.tsx` utilizam guards ternários e validações de array (`Array.isArray`) para lidar com a transição do campo `insights_estrategicos` de string (legado) para array de objetos (novo).
+- **Hospedagem**: Backend no Render (CI exige sincronia estrita do `pnpm-lock.yaml`) e Frontend na Vercel.
+- **Correção de Loop de Redirect (30/04/2026)**: Removido guard legado no `SdrProfilePanel.tsx` que redirecionava o email do admin para `/dashboard`. Esse guard criava um loop infinito com a regra do `DashboardContext` que manda usuários comuns de `/dashboard` para `/dashboard/me`. Regra: nunca adicionar redirects hardcoded por email em componentes — toda lógica de redirect deve viver exclusivamente no `DashboardContext`.
+- **Problema de isAdmin (30/04/2026)**: O flag `isAdmin` é derivado do campo `admins` no documento `configuracoes/gerais` do Firestore. Se um email de admin não estiver nesse documento, o sistema trata o usuário como SDR comum e oculta o dashboard gerencial. Para corrigir, rodar o script `api-server/scripts/check-and-fix-admins.ts`. Nunca hardcodar emails de admin no código frontend.
 
 ---
 *Documentação gerada automaticamente pela Antigravity para referência contínua.*
+
+## Documentos de padrões estabelecidos
+
+- `firestore-listeners-pattern.md` — regras de cleanup de listeners
+- `analysis-schema-v10.md` — schema V10, scores e enums do motor de IA
+- `firestore-migration-pattern.md` — padrão de scripts de migração
+- `context-export-pattern.md` — padrão de exportação no DashboardContext

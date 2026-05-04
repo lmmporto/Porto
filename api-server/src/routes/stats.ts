@@ -299,44 +299,57 @@ router.post("/rebuild-today-stats", requireAdmin, async (req: Request, res: Resp
  */
 router.get('/stats', async (req: Request, res: Response) => {
   try {
-    const { team, period } = req.query;
+    const { team, period, route } = req.query;
     const teamStr = team as string;
+    const periodStr = (period as string) || 'Tudo';
+    const routeStr = (route as string) || 'all';
 
     if (teamStr === 'Todos os squads' || teamStr === 'all' || !teamStr) {
-      const statsDoc = await db.collection('dashboard_stats').doc('global_summary').get();
-      return res.json(statsDoc.data() || {});
+      // Para "todos os squads" sem filtro de rota/período,
+      // o global_summary ainda serve
+      if (periodStr === 'Tudo' && routeStr === 'all') {
+        const statsDoc = await db.collection('dashboard_stats').doc('global_summary').get();
+        return res.json(statsDoc.data() || {});
+      }
+
+      // Com filtros ativos, precisa agregar na hora via calls
+      // (global_summary não tem granularidade de rota/período)
+      const calls = await MetricsService.getStatsByTeam('all', periodStr, routeStr);
+      return res.json(aggregateCalls(calls));
     }
 
-    // Busca chamadas do time via MetricsService (lógica de chunking/sdr_registry)
-    const calls = await MetricsService.getStatsByTeam(teamStr);
+    // Passar period e route para o MetricsService
+    const calls = await MetricsService.getStatsByTeam(teamStr, periodStr, routeStr);
 
     if (calls.length === 0) {
       return res.json({ total_calls: 0, media_geral: 0, taxa_aprovacao: 0, duracao_media: 0 });
     }
 
-    // Agregação de KPIs
-    let totalSpin = 0;
-    let approvedCount = 0;
-    let totalDuration = 0;
-
-    calls.forEach((c: any) => {
-      totalSpin += c.nota_spin || 0;
-      if ((c.nota_spin || 0) >= 7) approvedCount++;
-      totalDuration += c.durationMs || 0;
-    });
-
-    const stats = {
-      total_calls: calls.length,
-      media_geral: Number((totalSpin / calls.length).toFixed(2)),
-      taxa_aprovacao: Math.round((approvedCount / calls.length) * 100),
-      duracao_media: Math.round(totalDuration / calls.length)
-    };
-
-    res.json(stats);
+    return res.json(aggregateCalls(calls));
   } catch (error: any) {
     console.error("Erro em GET /stats:", error);
     res.status(500).json({ error: error.message });
   }
 });
+
+// Helper extraído para evitar duplicação
+function aggregateCalls(calls: any[]) {
+  let totalSpin = 0;
+  let approvedCount = 0;
+  let totalDuration = 0;
+
+  calls.forEach((c: any) => {
+    totalSpin += c.nota_spin || 0;
+    if ((c.nota_spin || 0) >= 7) approvedCount++;
+    totalDuration += c.durationMs || 0;
+  });
+
+  return {
+    total_calls: calls.length,
+    media_geral: Number((totalSpin / calls.length).toFixed(2)),
+    taxa_aprovacao: Math.round((approvedCount / calls.length) * 100),
+    duracao_media: Math.round(totalDuration / calls.length),
+  };
+}
 
 export default router;

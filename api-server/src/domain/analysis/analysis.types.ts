@@ -20,9 +20,10 @@ export const CURRENT_ANALYSIS_VERSION = 'V10_MESTRE_MENTOR';
 export const BUSINESS_TIMEZONE = 'America/Fortaleza';
 
 export type AnalysisStatus =
-  | 'APROVADO'
-  | 'REPROVADO'
+  | 'EXCELENTE'
+  | 'BOM'
   | 'ATENCAO'
+  | 'CRITICO'
   | 'NAO_SE_APLICA';
 
 export type AnalysisRoute = 'ROTA_A' | 'ROTA_B' | 'ROTA_C' | 'ROTA_D';
@@ -55,7 +56,7 @@ export type PlaybookEntry = {
 };
 
 export interface AnalysisResult {
-  status_final?: 'EXCELENTE' | 'BOM' | 'ATENCAO' | 'CRITICO';
+  status_final?: AnalysisStatus;
   rota?: AnalysisRoute;
   produto_principal?: MainProduct;
   objecoes?: string[];

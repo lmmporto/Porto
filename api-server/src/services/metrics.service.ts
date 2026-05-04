@@ -118,9 +118,44 @@ export class MetricsService {
     await updateTeamStrategy();
   }
 
-  static async getStatsByTeam(teamName: string): Promise<any[]> {
+  static async getStatsByTeam(
+    teamName: string,
+    period?: string,
+    route?: string
+  ): Promise<any[]> {
     const emails = await SdrRepository.findActiveEmailsByTeam(teamName);
     if (emails.length === 0) return [];
-    return SdrRepository.findCallsByEmails(emails);
+
+    const calls = await SdrRepository.findCallsByEmails(emails);
+
+    let filtered = calls;
+
+    // Filtro de período
+    if (period && period !== 'Tudo') {
+      const now = new Date();
+      let startDate = new Date();
+
+      if (period === 'Hoje') {
+        startDate.setHours(0, 0, 0, 0);
+      } else if (period === '7D') {
+        startDate.setDate(now.getDate() - 7);
+      } else if (period === '30D') {
+        startDate.setDate(now.getDate() - 30);
+      }
+
+      filtered = filtered.filter((c: any) => {
+        const ts = c.callTimestamp?.toDate
+          ? c.callTimestamp.toDate()
+          : new Date(c.callTimestamp || c.createdAt);
+        return ts >= startDate;
+      });
+    }
+
+    // Filtro de rota
+    if (route && route !== 'all' && route !== 'ALL') {
+      filtered = filtered.filter((c: any) => c.rota === route);
+    }
+
+    return filtered;
   }
 }

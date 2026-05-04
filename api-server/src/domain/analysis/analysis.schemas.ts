@@ -4,7 +4,7 @@ import {
   type TranscriptionResult,
   type TeamStrategyResult,
   type UpdateDailyStatsOptions,
-  GapCategory,
+  type StrategicInsight,
 } from './analysis.types.js';
 import { sanitizeText } from '../../utils.js';
 
@@ -198,7 +198,7 @@ export function normalizeAnalysisResult(value: AnalysisResult): AnalysisResult {
     analise_escuta: normalized.analise_escuta ? sanitizeText(normalized.analise_escuta) : '',
     objecoes: (normalized.objecoes || []).map((item) => sanitizeText(item)),
     alertas: (normalized.alertas || []).map((item) => sanitizeText(item)),
-    maior_dificuldade: (normalized.maior_dificuldade || []).map((item) => sanitizeText(item) as GapCategory),
+    maior_dificuldade: (normalized.maior_dificuldade || []).map((item) => sanitizeText(item) as any),
     pontos_fortes: (normalized.pontos_fortes || []).map((item) => sanitizeText(item)),
     perguntas_sugeridas: (normalized.perguntas_sugeridas || []).map((item) => sanitizeText(item)),
     insights_estrategicos: (normalized.insights_estrategicos || []).map((insight) => ({
@@ -219,9 +219,9 @@ export function normalizeAnalysisResult(value: AnalysisResult): AnalysisResult {
       recomendacao: sanitizeText(entry.recomendacao),
     })),
     nome_do_lead: sanitizeText(normalized.nome_do_lead || ''),
-    status_final: normalized.status_final ?? null,
-    rota: normalized.rota ?? null,
-    produto_principal: normalized.produto_principal ?? null,
+    status_final: normalized.status_final ?? undefined,
+    rota: normalized.rota ?? undefined,
+    produto_principal: normalized.produto_principal ?? undefined,
     nota_spin: normalized.nota_spin ?? null,
     score_proximo_passo: normalized.score_proximo_passo,
   };

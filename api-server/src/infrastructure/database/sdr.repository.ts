@@ -74,11 +74,15 @@ export class SdrRepository {
    * Mova EXATAMENTE a query de getStatsByTeam do metrics.service.ts.
    */
   static async findActiveEmailsByTeam(teamName: string): Promise<string[]> {
-    const snapshot = await db
+    let q = db
       .collection(SDR_REGISTRY_COLLECTION)
-      .where('assignedTeam', '==', teamName)
-      .where('isActive', '==', true)
-      .get();
+      .where('isActive', '==', true);
+
+    if (teamName !== 'all' && teamName !== 'Todos os squads') {
+      q = q.where('assignedTeam', '==', teamName);
+    }
+
+    const snapshot = await q.get();
 
     return snapshot.docs
       .map((doc: any) => doc.data().email)

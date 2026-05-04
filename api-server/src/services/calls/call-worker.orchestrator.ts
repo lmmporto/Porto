@@ -155,7 +155,7 @@ const checkAndProcessCalls = async (): Promise<void> => {
 
       console.log(`[Worker] FILA 3 respondeu. Empty: ${snapshot.empty}`);
 
-      const toRetry = snapshot.docs.filter((doc) => {
+      const toRetry = snapshot.docs.filter((doc: admin.firestore.QueryDocumentSnapshot) => {
         const data = doc.data();
         return (
           data.processingStatus === CallStatus.RETRY_ANALYSIS ||

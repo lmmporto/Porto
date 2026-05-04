@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createClient } from '@supabase/supabase-js';
-import { ragConfig, validateRagConfig } from '../config/rag.config';
+import { ragConfig, validateRagConfig } from '../config/rag.config.js';
 
 // 1. Validar e carregar configurações
 validateRagConfig();
@@ -77,10 +77,9 @@ async function generateEmbedding(text: string): Promise<number[]> {
   // Inicializando o modelo
   const model = genAI.getGenerativeModel({ model: "gemini-embedding-001" });
 
-  // Enviando um objeto de requisição com outputDimensionality focado em 768
+  // Enviando um objeto de requisição
   const result = await model.embedContent({
-    content: { role: "user", parts: [{ text }] },
-    outputDimensionality: 768
+    content: { role: "user", parts: [{ text }] }
   });
 
   return result.embedding.values;

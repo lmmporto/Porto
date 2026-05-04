@@ -34,8 +34,7 @@ export const ragService = {
   async embedQuery(query: string): Promise<number[]> {
     const model = getGenAI().getGenerativeModel({ model: "gemini-embedding-001" });
     const result = await model.embedContent({
-      content: { role: "user", parts: [{ text: query }] },
-      outputDimensionality: 768
+      content: { role: "user", parts: [{ text: query }] }
     });
     return result.embedding.values;
   },

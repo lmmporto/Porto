@@ -76,6 +76,8 @@ export class AnalysisRepository {
         [`sdr_ranking.${sdrKey}.sum_notes`]: FieldValue.increment(noteDelta),
         [`sdr_ranking.${sdrKey}.ownerName`]: callData.ownerName || 'SDR',
         [`sdr_ranking.${sdrKey}.ownerEmail`]: sdrKey,
+        [`sdr_ranking.${sdrKey}.routes.${rota}.total`]: FieldValue.increment(options.isUpdate ? 0 : 1),
+        [`sdr_ranking.${sdrKey}.routes.${rota}.sum_notes`]: FieldValue.increment(noteDelta),
 
         // 2. Estatísticas por ROTA
         [`routes.${rota}.total_calls`]: FieldValue.increment(options.isUpdate ? 0 : 1),
