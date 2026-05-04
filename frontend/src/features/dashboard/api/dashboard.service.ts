@@ -91,7 +91,7 @@ export const getKPIs = async (period: string, team: string, route: string = 'all
 
 export const subscribeToGlobalStats = (period: string, team: string, route: string = 'all', callback: (stats: any) => void) => {
   return createTeamBasedSubscription("calls_analysis", team, (allDocs) => {
-    // Filtro de período (Manual no frontend para simplificar a query do Firestore)
+    // Filtro de período — campo correto nos documentos: callTimestamp
     let filteredDocs = allDocs;
     if (period !== 'Tudo') {
         const now = new Date();
@@ -101,14 +101,16 @@ export const subscribeToGlobalStats = (period: string, team: string, route: stri
         else if (period === '30D') startDate.setDate(now.getDate() - 30);
         
         filteredDocs = allDocs.filter(d => {
-            const createdAt = d.createdAt?.toDate ? d.createdAt.toDate() : new Date(d.createdAt);
-            return createdAt >= startDate;
+            const ts = d.callTimestamp?.toDate ? d.callTimestamp.toDate() : new Date(d.callTimestamp || d.createdAt);
+            return ts >= startDate;
         });
     }
 
-    // Filtro de rota — campo esperado no documento: "rota" (ex: "A", "B", "C")
+    // Filtro de rota — o campo no Firestore é "ROTA_A", "ROTA_B", "ROTA_C"
+    // O frontend envia "A", "B", "C" → normalizar para "ROTA_X"
     if (route !== 'all') {
-      filteredDocs = filteredDocs.filter(d => d.rota === route);
+      const rotaKey = `ROTA_${route.toUpperCase()}`;
+      filteredDocs = filteredDocs.filter(d => d.rota === rotaKey);
     }
 
     const totalCalls = filteredDocs.length;
@@ -145,7 +147,7 @@ export const subscribeToRanking = (period: string, team: string, route: string =
   return createTeamBasedSubscription("calls_analysis", team, (allDocs) => {
     let filteredDocs = allDocs;
 
-    // Filtro de período
+    // Filtro de período — campo correto nos documentos: callTimestamp
     if (period !== 'Tudo') {
       const now = new Date();
       let startDate = new Date();
@@ -153,14 +155,16 @@ export const subscribeToRanking = (period: string, team: string, route: string =
       else if (period === '7D') startDate.setDate(now.getDate() - 7);
       else if (period === '30D') startDate.setDate(now.getDate() - 30);
       filteredDocs = filteredDocs.filter(d => {
-        const createdAt = d.createdAt?.toDate ? d.createdAt.toDate() : new Date(d.createdAt);
-        return createdAt >= startDate;
+        const ts = d.callTimestamp?.toDate ? d.callTimestamp.toDate() : new Date(d.callTimestamp || d.createdAt);
+        return ts >= startDate;
       });
     }
 
-    // Filtro de rota
+    // Filtro de rota — o campo no Firestore é "ROTA_A", "ROTA_B", "ROTA_C"
+    // O frontend envia "A", "B", "C" → normalizar para "ROTA_X"
     if (route !== 'all') {
-      filteredDocs = filteredDocs.filter(d => d.rota === route);
+      const rotaKey = `ROTA_${route.toUpperCase()}`;
+      filteredDocs = filteredDocs.filter(d => d.rota === rotaKey);
     }
 
     // Agregar por SDR na hora

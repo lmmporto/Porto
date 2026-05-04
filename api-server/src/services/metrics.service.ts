@@ -151,9 +151,11 @@ export class MetricsService {
       });
     }
 
-    // Filtro de rota
+    // Filtro de rota — o campo no Firestore é "ROTA_A", "ROTA_B", "ROTA_C"
+    // O frontend envia "A", "B", "C" → normalizar para "ROTA_X"
     if (route && route !== 'all' && route !== 'ALL') {
-      filtered = filtered.filter((c: any) => c.rota === route);
+      const rotaKey = `ROTA_${route.toUpperCase()}`;
+      filtered = filtered.filter((c: any) => c.rota === rotaKey);
     }
 
     return filtered;
