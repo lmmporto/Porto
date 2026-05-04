@@ -108,13 +108,58 @@ export default function CallDetailPage() {
       {insightsEstrategicos.length > 0 && (
         <section className="grid md:grid-cols-3 gap-6">
           {insightsEstrategicos.map((insight: any, idx: number) => (
-            <div key={idx} className="glass-card p-6 rounded-xl border-t-2" style={{ borderTopColor: insight.type === 'positive' ? '#4edea3' : '#ffb4ab' }}>
+            <div 
+              key={idx} 
+              className="glass-card p-6 rounded-xl border-t-2" 
+              style={{ 
+                borderTopColor: insight.type === 'positive' ? '#4edea3' : 
+                               insight.type === 'negative' ? '#ffb4ab' : '#94a3b8' 
+              }}
+            >
               <p className="label-elite mb-2">{insight.label}</p>
               <p className="text-2xl font-black font-headline">{insight.value}</p>
             </div>
           ))}
         </section>
       )}
+
+      {/* Mensagem Final ao SDR */}
+      {call.mensagem_final_sdr && (
+        <section className="glass-card p-8 rounded-xl bg-primary/5 border-l-4 border-primary">
+          <h3 className="label-elite mb-4 flex items-center gap-2"><MessageSquareText size={16} className="text-primary" /> Feedback Direto ao SDR</h3>
+          <p className="text-lg text-white font-medium italic">
+            "{call.mensagem_final_sdr}"
+          </p>
+        </section>
+      )}
+
+      {/* Pontos Fortes e Alertas */}
+      <section className="grid md:grid-cols-2 gap-6">
+        {Array.isArray(call.pontos_fortes) && call.pontos_fortes.length > 0 && (
+          <div className="glass-card p-6 rounded-xl border-l-4 border-secondary">
+            <h3 className="label-elite mb-4 flex items-center gap-2"><TrendingUp size={16} className="text-secondary" /> Pontos de Mérito</h3>
+            <ul className="space-y-2">
+              {call.pontos_fortes.map((item: string, idx: number) => (
+                <li key={idx} className="text-sm text-on-surface-variant flex items-center gap-2">
+                  <CheckCircle size={14} className="text-secondary shrink-0" /> {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {Array.isArray(call.alertas) && call.alertas.length > 0 && (
+          <div className="glass-card p-6 rounded-xl border-l-4 border-yellow">
+            <h3 className="label-elite mb-4 flex items-center gap-2"><AlertTriangle size={16} className="text-yellow" /> Alertas de Risco</h3>
+            <ul className="space-y-2">
+              {call.alertas.map((item: string, idx: number) => (
+                <li key={idx} className="text-sm text-on-surface-variant flex items-center gap-2">
+                  <AlertTriangle size={14} className="text-yellow shrink-0" /> {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
 
       {/* Resumo Executivo */}
       <section className="glass-card p-8 rounded-xl">

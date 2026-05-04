@@ -26,7 +26,7 @@ import {
 } from '@/components/ui/select';
 
 import type { SDRCall } from '@/types';
-import { isWithinPeriod, getGlobalStats, getSDRRanking } from '@/lib/metrics';
+import { isWithinPeriod, calculateAverageSpin, getSDRRanking } from '@/lib/metrics';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -143,7 +143,7 @@ export default function DashboardPage() {
 
     return { 
       filteredCalls: filtered, 
-      stats: getGlobalStats(filtered), 
+      stats: { avgSpin: calculateAverageSpin(filtered) }, 
       sdrSummary: getSDRRanking(filtered) 
     };
   }, [calls, period, searchTerm]);

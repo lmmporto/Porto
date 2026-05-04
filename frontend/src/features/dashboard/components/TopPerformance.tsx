@@ -6,18 +6,19 @@ import { subscribeToRanking } from "@/features/dashboard/api/dashboard.service";
 import { cn, getInitials } from "@/lib/utils";
 
 interface TopPerformanceProps {
-  filters?: { period: string; team?: string; }; 
+  filters?: { period: string; team?: string; route?: string; }; 
 }
 
 export const TopPerformance = ({ filters }: TopPerformanceProps) => {
   const [sdrs, setSdrs] = useState<any[]>([]);
   const currentPeriod = filters?.period || 'Tudo'; 
   const currentTeam = filters?.team || 'all';
+  const currentRoute = filters?.route || 'all';
 
   useEffect(() => {
-    const unsubscribe = subscribeToRanking(currentPeriod, currentTeam, setSdrs);
+    const unsubscribe = subscribeToRanking(currentPeriod, currentTeam, currentRoute, setSdrs);
     return () => unsubscribe();
-  }, [currentPeriod, currentTeam]);
+  }, [currentPeriod, currentTeam, currentRoute]);
 
   return (
     <div className="glass-card p-6 rounded-[24px] border border-white/5">

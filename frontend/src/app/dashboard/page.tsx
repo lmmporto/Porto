@@ -22,15 +22,15 @@ export default function DashboardPage() {
 
   // Subscribe to SDRs for the scatter chart and ranking
   useEffect(() => {
-    const unsubSdrs = subscribeToRanking(activePeriod, currentTeam, setRanking);
+    const unsubSdrs = subscribeToRanking(activePeriod, currentTeam, activeRoute, setRanking);
     return () => unsubSdrs();
-  }, [activePeriod, currentTeam]);
+  }, [activePeriod, currentTeam, activeRoute]);
 
   // Fetch KPIs via REST API (Backend Sovereignty)
   useEffect(() => {
     const fetchKPIs = async () => {
       try {
-        const stats = await getKPIs(activePeriod, currentTeam);
+        const stats = await getKPIs(activePeriod, currentTeam, activeRoute);
         // Adaptando nomes de campos do backend para o frontend
         const adaptedStats = {
           totalCalls: stats.total_calls ?? 0,
@@ -54,7 +54,7 @@ export default function DashboardPage() {
     // Opcional: Polling a cada 30s se quiser "pseudo real-time" para squads
     const interval = setInterval(fetchKPIs, 30000);
     return () => clearInterval(interval);
-  }, [activePeriod, currentTeam]);
+  }, [activePeriod, currentTeam, activeRoute]);
 
   const sortedGaps = globalStats?.recurrent_gaps
     ? Object.entries(globalStats.recurrent_gaps)

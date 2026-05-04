@@ -61,18 +61,19 @@ export const getPaginatedCalls = async (
   const callsRef = collection(db, 'calls_analysis');
   let q;
 
-  const constraints = [
-    orderBy('callTimestamp', 'desc'),
-    limit(pageSize)
-  ];
+  const constraints: any[] = [];
 
   if (sdrEmail) {
-    constraints.unshift(where('ownerEmail', '==', sdrEmail));
+    constraints.push(where('ownerEmail', '==', sdrEmail));
   }
+
+  constraints.push(orderBy('callTimestamp', 'desc'));
 
   if (lastVisibleDoc) {
     constraints.push(startAfter(lastVisibleDoc));
   }
+
+  constraints.push(limit(pageSize));
 
   q = query(callsRef, ...constraints);
   const snapshot = await getDocs(q);

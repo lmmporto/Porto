@@ -63,7 +63,7 @@ const filterValidCalls = (calls: SDRCall[]) => calls.filter(c => {
     if (isDone && hasNumericScore) return true;
     
     // Fallback para notas legadas
-    if (hasNumericScore && c.nota_spin > 0) return true;
+    if (hasNumericScore && (c.nota_spin ?? 0) > 0) return true;
     
     return false;
 });

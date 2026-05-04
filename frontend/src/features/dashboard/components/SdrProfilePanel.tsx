@@ -7,14 +7,28 @@ import Link from 'next/link';
 import { formatEmailToSdrId } from '@/lib/utils';
 import { useDashboard } from '@/context/DashboardContext';
 import { FilterBar } from '@/features/dashboard/components/FilterBar';
-import { useRouter } from 'next/navigation';
+import { ManualTriggerCard } from '@/components/dashboard/ManualTriggerCard';
+import { SDRRanking } from '@/components/dashboard/SDRRanking';
+import type { DashboardSummary, SDRCall } from '@/types';
 
 interface SdrProfilePanelProps {
   sdrId?: string; // ID formatado (opcional se sdrData for passado)
   sdrData?: any;  // Objeto completo do SDR (opcional)
 }
 
-const getPriorityContent = (gaps: any[] | undefined, insights: any[] | undefined, hasPerformance: boolean) => {
+const getPriorityContent = (gaps: any[] | undefined, rawInsights: any[] | undefined, hasPerformance: boolean) => {
+  const insights =
+    Array.isArray(rawInsights)
+      ? rawInsights.filter(
+          (i: any): i is { label: string; value: string; type: 'positive' | 'negative' | 'neutral' } =>
+            typeof i === 'object' &&
+            i !== null &&
+            typeof i.label === 'string' &&
+            typeof i.value === 'string' &&
+            ['positive', 'negative', 'neutral'].includes(i.type)
+        )
+      : [];
+
   if (!hasPerformance) {
     return {
       mainGoal: 'N/A: Sem Histórico',
@@ -62,7 +76,6 @@ const getPriorityContent = (gaps: any[] | undefined, insights: any[] | undefined
 
 export function SdrProfilePanel({ sdrId, sdrData: initialSdrData }: SdrProfilePanelProps) {
   const { user } = useDashboard();
-  const router = useRouter();
   const [sdrData, setSdrData] = useState<any>(initialSdrData || null);
   const [priorityCalls, setPriorityCalls] = useState<any[]>([]);
   const [allCalls, setAllCalls] = useState<any[]>([]);
@@ -72,19 +85,48 @@ export function SdrProfilePanel({ sdrId, sdrData: initialSdrData }: SdrProfilePa
   const [historyPeriod, setHistoryPeriod] = useState('Tudo'); // Estado para o filtro do histórico
   const [currentPage, setCurrentPage] = useState(1);
 
-  useEffect(() => {
-    if (sdrId === 'lucas_porto@nibo_com_br' || sdrId === 'lucas.porto@nibo.com.br') {
-      router.push('/dashboard');
-    }
-  }, [sdrId, router]);
+  // Estado do Ranking colapsável (lazy loading)
+  const [isRankingOpen, setIsRankingOpen] = useState(false);
+  const [rankingSummary, setRankingSummary] = useState<DashboardSummary | null>(null);
+  const [rankingTopCalls, setRankingTopCalls] = useState<SDRCall[]>([]);
+  const [isRankingLoading, setIsRankingLoading] = useState(false);
 
-  if (sdrId === 'lucas_porto@nibo_com_br' || sdrId === 'lucas.porto@nibo.com.br') {
-    return null;
-  }
+  // Lazy loading do ranking — só busca quando aberto pela primeira vez
+  useEffect(() => {
+    if (!isRankingOpen || rankingSummary !== null) return;
+
+    const fetchRankingData = async () => {
+      setIsRankingLoading(true);
+      try {
+        const rawUrl =
+          process.env.NEXT_PUBLIC_API_URL ||
+          process.env.NEXT_PUBLIC_API_BASE_URL ||
+          '';
+        const baseUrl = rawUrl.replace(/\/$/, '');
+
+        const [resSum, resVit] = await Promise.all([
+          fetch(`${baseUrl}/api/stats/summary`, { credentials: 'include' }),
+          fetch(`${baseUrl}/api/stats/leaderboard-vitrine`, { credentials: 'include' }),
+        ]);
+
+        const summaryData = await resSum.json();
+        const vitrineData = await resVit.json();
+
+        setRankingSummary(summaryData);
+        setRankingTopCalls(vitrineData.topCalls || []);
+      } catch (e) {
+        console.error('Erro ao carregar dados do ranking');
+      } finally {
+        setIsRankingLoading(false);
+      }
+    };
+
+    fetchRankingData();
+  }, [isRankingOpen, rankingSummary]);
 
   // Sincronização de Impersonate: Reseta filtros ao trocar de SDR
   useEffect(() => {
-    setFilters({ period: 'Tudo', route: 'all' });
+    setFilters((prev) => ({ ...prev, period: 'Tudo', route: 'all' }));
   }, [sdrId]);
 
   useEffect(() => {
@@ -173,7 +215,7 @@ export function SdrProfilePanel({ sdrId, sdrData: initialSdrData }: SdrProfilePa
     });
 
     return () => unsubAllCalls();
-  }, [sdrData, historyPeriod]);
+  }, [sdrData?.email, historyPeriod]);
 
   // Paginação no Frontend
   const paginatedCalls = allCalls.slice((currentPage - 1) * 10, currentPage * 10);
@@ -191,7 +233,7 @@ export function SdrProfilePanel({ sdrId, sdrData: initialSdrData }: SdrProfilePa
     
     let constraints = [
       where('ownerEmail', '==', sdrEmail),
-      where('status_final', '!=', 'APROVADO')
+      where('status_final', 'in', ['ATENCAO', 'CRITICO'])
     ];
 
     if (filters.route !== 'all') {
@@ -233,10 +275,16 @@ export function SdrProfilePanel({ sdrId, sdrData: initialSdrData }: SdrProfilePa
     return () => {
       unsubPriorityCalls();
     };
-  }, [sdrData, filters]);
+  }, [sdrData?.email, filters]);
 
 
   if (loading) return <div className="flex h-screen items-center justify-center text-soft">Carregando Flight Deck...</div>;
+
+  const scoreProximoPasso: number | null =
+    sdrData && typeof sdrData.media_proximo_passo === 'number' && !isNaN(sdrData.media_proximo_passo)
+      ? sdrData.media_proximo_passo
+      : null;
+
   const priorityContent = getPriorityContent(sdrData?.recurrent_gaps, sdrData?.insights_estrategicos, !!sdrData?.hasPerformance);
 
   return (
@@ -524,7 +572,7 @@ export function SdrProfilePanel({ sdrId, sdrData: initialSdrData }: SdrProfilePa
         <FilterBar filters={filters} setFilters={setFilters} />
 
         {/* KPIs */}
-        <section className="mt-5 grid grid-cols-2 gap-4 xl:grid-cols-4">
+        <section className="mt-5 grid grid-cols-2 gap-4 xl:grid-cols-5">
           <article className="kpi-card rounded-[20px] p-5">
             <div className="tiny-caps text-[11px] font-semibold text-white/38">Nota SPIN</div>
             <div className="metric-value mt-4 text-[42px] font-semibold text-green2">{sdrData.real_average?.toFixed(1) || '0.0'}</div>
@@ -548,7 +596,64 @@ export function SdrProfilePanel({ sdrId, sdrData: initialSdrData }: SdrProfilePa
               {sdrData.media_dominio > 0 ? Math.round(sdrData.media_dominio * 10) + '%' : 'N/A'}
             </div>
           </article>
+
+          <article className="kpi-card rounded-[20px] p-5">
+            <div className="tiny-caps text-[11px] font-semibold text-white/38">Próximo Passo</div>
+            <div className="metric-value mt-4 text-[42px] font-semibold text-orange-400">
+              {scoreProximoPasso !== null ? scoreProximoPasso.toFixed(1) : '—'}
+            </div>
+          </article>
         </section>
+
+        {/* RANKING DA EQUIPE — colapsável com lazy loading */}
+        <article className="glass-soft mt-5 rounded-[22px] overflow-hidden">
+          {/* Header clicável */}
+          <button
+            onClick={() => setIsRankingOpen((prev) => !prev)}
+            className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/5 transition-colors"
+          >
+            <div className="flex items-center gap-3">
+              <span className="section-dot-orange" />
+              <div>
+                <div className="tiny-caps text-[11px] font-semibold text-white/40">Equipe</div>
+                <div className="text-[16px] font-semibold text-white mt-0.5">Ranking da Equipe</div>
+              </div>
+              <span className="text-[12px] text-white/40 ml-2 hidden sm:inline">
+                Ver onde você está + Top 10 Elite
+              </span>
+            </div>
+            <svg
+              className={`w-4 h-4 text-white/50 flex-shrink-0 transition-transform duration-200 ${
+                isRankingOpen ? 'rotate-180' : ''
+              }`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {/* Conteúdo colapsável */}
+          {isRankingOpen && (
+            <div className="px-5 pb-5 border-t border-white/8">
+              {isRankingLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-white/60 mr-3" />
+                  <span className="text-[13px] text-white/40">Carregando ranking...</span>
+                </div>
+              ) : (
+                <div className="pt-4">
+                  <SDRRanking
+                    summary={rankingSummary}
+                    topCalls={rankingTopCalls}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </article>
 
         {/* MAIN */}
         <main className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-[1.2fr_0.8fr]">
@@ -581,7 +686,13 @@ export function SdrProfilePanel({ sdrId, sdrData: initialSdrData }: SdrProfilePa
                           <h3 className="text-[16px] font-semibold text-white">
                             {call.nome_do_lead || call.title || call.call_title || 'Lead não identificado'}
                           </h3>
-                          <span className="badge-danger rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase">{call.status_final}</span>
+                          {call.status_final && (
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                              call.status_final === 'APROVADO' ? 'pill-green' : 'badge-danger'
+                            }`}>
+                              {call.status_final}
+                            </span>
+                          )}
                         </div>
                         <div className="mt-1 flex gap-3 text-[12px] text-white/40">
                           <span>Score: {call.nota_spin?.toFixed(1)}</span>
@@ -605,6 +716,9 @@ export function SdrProfilePanel({ sdrId, sdrData: initialSdrData }: SdrProfilePa
 
           {/* DIREITA */}
           <aside className="space-y-5">
+            {/* Ação prioritária — disparo de análise manual */}
+            <ManualTriggerCard theme="dark" />
+
             {/* PRIORIDADE */}
             <article className="glass rounded-[24px] p-5 md:p-6">
               <div className="flex items-center gap-3">
@@ -721,10 +835,10 @@ export function SdrProfilePanel({ sdrId, sdrData: initialSdrData }: SdrProfilePa
               <div>
                 <div className="mb-2 flex items-center justify-between text-[13px] font-medium text-white/62">
                   <span>Próximo Passo</span>
-                  <span>{sdrData.next_step_score > 0 ? Math.round(sdrData.next_step_score * 10) + '%' : 'N/A'}</span> {/* Placeholder ou campo real */}
+                  <span>{scoreProximoPasso !== null ? Math.round(scoreProximoPasso * 10) + '%' : '—'}</span>
                 </div>
                 <div className="progress-track">
-                  <div className="progress-fill-orange h-full rounded-full" style={{ width: `${Math.round((sdrData.next_step_score || 0) * 10)}%` }}></div>
+                  <div className="progress-fill-orange h-full rounded-full" style={{ width: `${Math.round((scoreProximoPasso || 0) * 10)}%` }}></div>
                 </div>
               </div>
             </div>
@@ -910,7 +1024,13 @@ export function SdrProfilePanel({ sdrId, sdrData: initialSdrData }: SdrProfilePa
                       <div>{call.nome_do_lead || call.title || call.call_title || 'Lead não identificado'}</div>
                       <div>{call.duration ? `${Math.round(call.duration / 60000)}min` : 'N/A'}</div>
                       <div>{call.nota_spin?.toFixed(1) || 'N/A'}</div>
-                      <div className={call.status_final === 'APROVADO' ? 'text-green2' : 'text-red2'}>{call.status_final || 'N/A'}</div>
+                      <div className={
+                        call.status_final === 'EXCELENTE' ? 'text-green2' :
+                        call.status_final === 'BOM' ? 'text-[#7C72FF]' :
+                        call.status_final === 'ATENCAO' ? 'text-yellow' :
+                        call.status_final === 'CRITICO' ? 'text-red2' :
+                        'text-white/40'
+                      }>{call.status_final || 'N/A'}</div>
                       <div className="text-white/56">{call.resumo?.substring(0, 30) || 'N/A'}</div>
                       <div>
                         <Link href={`/dashboard/calls/${call.id}`} className="secondary-btn rounded-xl px-3 py-2 text-[12px] font-semibold">

@@ -3,7 +3,7 @@
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Users, BarChart3, Target } from 'lucide-react';
-import { calculateAverageSpin, getStatusCounts } from '@/lib/metrics';
+import { calculateAverageSpin } from '@/lib/metrics';
 import type { SDRCall } from '@/types';
 
 interface TeamCardProps {
@@ -14,7 +14,9 @@ interface TeamCardProps {
 export function TeamCard({ teamName, calls }: TeamCardProps) {
   // 1. Médias e Status agora vêm filtrados (só DONE) do metrics.ts
   const avgSpin = calculateAverageSpin(calls);
-  const statusCounts = getStatusCounts(calls);
+  
+  // getStatusCounts foi removido do metrics.ts. Contagens de status removidas temporariamente.
+  const statusCounts = { APROVADO: 0, ATENCAO: 0, REPROVADO: 0, NAO_IDENTIFICADO: 0 };
   
   // 2. Contamos SDRs que tiveram pelo menos uma tentativa
   const sdrsCount = new Set(calls.map(c => c.ownerName).filter(Boolean)).size;

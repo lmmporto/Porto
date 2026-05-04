@@ -8,6 +8,7 @@ interface SdrPoint {
   rota?: string;
   media_dominio?: number;
   media_dor?: number;
+  media_proximo_passo?: number | null;
   total_calls?: number;
   real_average?: number;
 }
@@ -100,12 +101,14 @@ export function HealthRadar({ data }: HealthRadarProps) {
         const ttRoute = tooltip.querySelector('#ttRoute');
         const ttDomain = tooltip.querySelector('#ttDomain');
         const ttPain = tooltip.querySelector('#ttPain');
+        const ttNextStep = tooltip.querySelector('#ttNextStep');
         const ttCalls = tooltip.querySelector('#ttCalls');
 
         if (ttTitle) ttTitle.textContent = sdr.name || sdr.email || 'SDR';
         if (ttRoute) ttRoute.textContent = sdr.rota || '-';
         if (ttDomain) ttDomain.textContent = (sdr.media_dominio ?? 0).toFixed(1);
         if (ttPain) ttPain.textContent = (sdr.media_dor ?? 0).toFixed(1);
+        if (ttNextStep) ttNextStep.textContent = typeof sdr.media_proximo_passo === 'number' ? sdr.media_proximo_passo.toFixed(1) : '-';
         if (ttCalls) ttCalls.textContent = String(sdr.total_calls ?? 0);
 
         const areaRect = area.getBoundingClientRect();
@@ -224,6 +227,9 @@ export function HealthRadar({ data }: HealthRadarProps) {
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, fontSize: 12, marginTop: 6, color: 'rgba(255,255,255,0.74)' }}>
             <span>Exploração</span><strong id="ttPain" style={{ color: 'white' }}></strong>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, fontSize: 12, marginTop: 6, color: 'rgba(255,255,255,0.74)' }}>
+            <span>Próximo Passo</span><strong id="ttNextStep" style={{ color: 'white' }}></strong>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, fontSize: 12, marginTop: 6, color: 'rgba(255,255,255,0.74)' }}>
             <span>Calls analisadas</span><strong id="ttCalls" style={{ color: 'white' }}></strong>

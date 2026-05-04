@@ -1,3 +1,4 @@
+import { useState } from "react"
 import { gapDetailMock } from "@/features/gaps/mocks/gap-detail.mock"
 import { GapAnalysisHeader } from "@/features/gaps/components/gap-analysis-header"
 import { SdrImpactList } from "@/features/gaps/components/sdr-impact-list"
@@ -8,6 +9,9 @@ import { ArrowLeft } from "lucide-react"
 
 export default function GapDetailPage({ params }: { params: { id: string } }) {
   const data = gapDetailMock
+  const [page, setPage] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasNextPage, setHasNextPage] = useState(false);
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto pb-10">
@@ -21,7 +25,14 @@ export default function GapDetailPage({ params }: { params: { id: string } }) {
       
       <div className="space-y-4">
         <h2 className="text-xl font-semibold">Exemplos para treinamento</h2>
-        <CallsTable calls={data.exampleCalls} />
+        <CallsTable 
+          calls={data.exampleCalls} 
+          isLoading={isLoading}
+          page={page}
+          hasNextPage={hasNextPage}
+          onNextPage={() => setPage((p) => p + 1)}
+          onPrevPage={() => setPage((p) => Math.max(1, p - 1))}
+        />
       </div>
     </div>
   )

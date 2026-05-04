@@ -15,16 +15,19 @@ interface SdrPageProps {
 
 export default function SdrDetailPage({ params }: SdrPageProps) {
   const resolvedParams = use(params);
-  const sdrId = resolvedParams.id;
+  const rawId = resolvedParams.id;
+  const sdrId = rawId ?? '';
   const { user, isAdmin } = useDashboard();
   const router = useRouter();
+
+  if (!sdrId) return null;
 
   useEffect(() => {
     if (!user) return; // Aguarda o usuário carregar
 
     // Usuário comum só pode ver o próprio perfil
     if (!isAdmin) {
-      const ownId = formatEmailToSdrId(user.email);
+      const ownId = formatEmailToSdrId(user.email ?? '');
       if (sdrId !== ownId && sdrId !== user.email) {
         // Redireciona para a página pessoal sem expor o perfil de outro SDR
         router.replace('/me');
@@ -41,7 +44,7 @@ export default function SdrDetailPage({ params }: SdrPageProps) {
 
   // Usuário comum que tentou acessar um perfil alheio: não renderiza (o redirect vai acontecer)
   if (!isAdmin) {
-    const ownId = formatEmailToSdrId(user.email);
+    const ownId = formatEmailToSdrId(user.email ?? '');
     if (sdrId !== ownId && sdrId !== user.email) {
       return null;
     }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation'; // Importar useRouter e usePathname
 
 interface DashboardContextType {
@@ -13,6 +13,7 @@ interface DashboardContextType {
   currentTeam: string;
   setCurrentTeam: (team: string) => void;
   teamMembers: string[];
+  checkUser: () => Promise<void>;
 }
 
 const DashboardContext = createContext<DashboardContextType | undefined>(undefined);
@@ -50,53 +51,54 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   const isAdmin = !!user?.isAdmin;
 
   // Lógica de autenticação real temporariamente simplificada para MVP
-  useEffect(() => {
-    const checkUser = async () => {
-      setLoadingAuth(true);
+  const checkUser = useCallback(async () => {
+    setLoadingAuth(true);
 
-      // 🔍 DIAGNÓSTICO DE AMBIENTE (Logs Temporários)
-      const envUrl = process.env.NEXT_PUBLIC_API_URL;
-      const envBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
-      
-      const rawApiUrl = envUrl || envBaseUrl || '';
-      const apiUrl = rawApiUrl.trim().replace(/\/$/, '');
+    // 🔍 DIAGNÓSTICO DE AMBIENTE (Logs Temporários)
+    const envUrl = process.env.NEXT_PUBLIC_API_URL;
+    const envBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    
+    const rawApiUrl = envUrl || envBaseUrl || '';
+    const apiUrl = rawApiUrl.trim().replace(/\/$/, '');
 
-      console.log("🛠️ Auth Debug:", {
-        envUrl: envUrl || 'Nulo/Indefinido',
-        envBaseUrl: envBaseUrl || 'Nulo/Indefinido',
-        resovledUrl: apiUrl || 'Vazio'
+    console.log("🛠️ Auth Debug:", {
+      envUrl: envUrl || 'Nulo/Indefinido',
+      envBaseUrl: envBaseUrl || 'Nulo/Indefinido',
+      resovledUrl: apiUrl || 'Vazio'
+    });
+
+    // 🛑 GUARDA DE SEGURANÇA
+    if (!apiUrl || apiUrl === 'undefined' || apiUrl === 'null') {
+      console.error("❌ ERRO CRÍTICO: Nenhuma URL de API configurada (NEXT_PUBLIC_API_URL ou NEXT_PUBLIC_API_BASE_URL).");
+      setLoadingAuth(false);
+      setUser(null);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${apiUrl}/auth/me`, {
+        credentials: 'include',
+        cache: 'no-store'
       });
 
-      // 🛑 GUARDA DE SEGURANÇA
-      if (!apiUrl || apiUrl === 'undefined' || apiUrl === 'null') {
-        console.error("❌ ERRO CRÍTICO: Nenhuma URL de API configurada (NEXT_PUBLIC_API_URL ou NEXT_PUBLIC_API_BASE_URL).");
-        setLoadingAuth(false);
+      if (res.ok) {
+        const userData = await res.json();
+        setUser(userData);
+      } else {
         setUser(null);
-        return;
       }
 
-      try {
-        const res = await fetch(`${apiUrl}/auth/me`, {
-          credentials: 'include',
-          cache: 'no-store'
-        });
-
-        if (res.ok) {
-          const userData = await res.json();
-          setUser(userData);
-        } else {
-          setUser(null);
-        }
-
-      } catch (error) {
-        console.error('Erro ao verificar usuário:', error);
-        setUser(null);
-      } finally {
-        setLoadingAuth(false);
-      }
-    };
-    checkUser();
+    } catch (error) {
+      console.error('Erro ao verificar usuário:', error);
+      setUser(null);
+    } finally {
+      setLoadingAuth(false);
+    }
   }, []);
+
+  useEffect(() => {
+    checkUser();
+  }, [checkUser]);
 
   // Persistência do viewingEmail e Limpeza de Segurança
   useEffect(() => {
@@ -167,7 +169,7 @@ export function DashboardProvider({ children }: { children: React.ReactNode }) {
   return (
     <DashboardContext.Provider value={{ 
       user, viewingEmail, setViewingEmail, isAdmin, isSidebarCollapsed, toggleSidebar,
-      currentTeam, setCurrentTeam, teamMembers 
+      currentTeam, setCurrentTeam, teamMembers, checkUser 
     }}>
       {children}
     </DashboardContext.Provider>
