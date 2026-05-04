@@ -15,7 +15,7 @@ const lock = new WorkerLockRepository(WORKER_ID);
 let isRunning = false;
 let heartbeatInterval: NodeJS.Timeout | null = null;
 
-const checkAndProcessCalls = async (): Promise<void> => {
+export const checkAndProcessCalls = async (): Promise<void> => {
   if (isRunning) {
     console.log('⏳ [Worker] Execução já em andamento nesta instância. Ignorando novo ciclo.');
     return;

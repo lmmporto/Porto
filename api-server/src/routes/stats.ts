@@ -15,6 +15,7 @@ import { checkIfAdmin } from '../utils/auth.js';
 import { requireAdmin } from '../middleware/requireAdmin.js';
 import { MetricsService } from '../services/metrics.service.js';
 import { RankingLogic } from '../domain/analysis/ranking.logic.js';
+import { checkAndProcessCalls } from '../services/calls/call-worker.orchestrator.js';
 import NodeCache from 'node-cache';
 
 
@@ -351,5 +352,24 @@ function aggregateCalls(calls: any[]) {
     duracao_media: Math.round(totalDuration / calls.length),
   };
 }
+
+/**
+ * POST /worker/run
+ * 🏛️ ADMIN: Dispara o ciclo do Worker manualmente (fire-and-forget).
+ * Seguro pois o worker tem guard interno `isRunning`.
+ */
+router.post('/worker/run', requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const isAlreadyRunning = (checkAndProcessCalls as any)._isRunning;
+    console.log(`🎯 [Worker] Disparo manual solicitado por ${(req.user as any)?.email}`);
+    // Fire-and-forget: responde imediatamente sem aguardar o ciclo completar
+    checkAndProcessCalls().catch((err: any) => {
+      console.error('❌ [Worker] Erro no disparo manual:', err?.message || err);
+    });
+    res.json({ success: true, message: 'Worker iniciado com sucesso. Acompanhe os logs do servidor.' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 export default router;
