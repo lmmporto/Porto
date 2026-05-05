@@ -11,6 +11,7 @@ import { CONFIG } from './config.js';
 import { checkIfAdmin } from './utils/auth.js';
 import { initializeWorkers } from './services/worker.service.js';
 import helpChatRouter from './routes/help-chat.routes.js';
+import api4comRoutes from './routes/api4com.routes.js';
 
 declare global {
   namespace Express {
@@ -174,6 +175,7 @@ app.post('/auth/logout', (req: Request, res: Response, next: NextFunction) => {
 });
 
 app.use('/api/calls', callsRouter);
+app.use('/api/calls/api4com', api4comRoutes);
 
 app.use('/api/sdr-registry', sdrRegistryRouter);
 app.use('/api/help-chat', helpChatRouter);
